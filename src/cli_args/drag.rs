@@ -55,4 +55,18 @@ pub(crate) struct DragCliArgs {
     )]
     #[serde(default)]
     pub wait_for_scope: Option<WaitForScopeArg>,
+    #[arg(
+        long,
+        requires = "to_frame",
+        help = "Windows: interpret --from-xy as pixels in this captured window frame"
+    )]
+    #[serde(default)]
+    pub from_frame: Option<String>,
+    #[arg(
+        long,
+        requires = "from_frame",
+        help = "Windows: interpret --to-xy as pixels in this captured window frame"
+    )]
+    #[serde(default)]
+    pub to_frame: Option<String>,
 }

@@ -66,6 +66,26 @@ impl SystemOps for StaleThenOkAdapter {
     crate::adapter::guarded_interaction_lease!();
 }
 
+#[test]
+fn missing_tab_instance_refuses_delivery_to_an_otherwise_writable_control() {
+    let _guard = HomeGuard::new();
+    let ref_id = format!("@{}:e1", snapshot_id());
+    let adapter = StaleThenOkAdapter::new(0);
+    let err = execute(
+        SetValueArgs {
+            ref_id: ref_id.clone(),
+            value: "wrong document".into(),
+            selected_tab: Some(ref_id),
+            timeout_ms: None,
+        },
+        &adapter,
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "STALE_REF");
+    assert!(adapter.value.lock().unwrap().is_empty());
+}
+
 fn snapshot_id() -> String {
     save_one_ref_snapshot("textfield", "SetValue")
 }
@@ -84,6 +104,7 @@ fn transient_stale_ref_retries_then_succeeds_when_timeout_wired() {
         SetValueArgs {
             ref_id: format!("@{}:e1", snapshot_id),
             value: "hi".into(),
+            selected_tab: None,
             timeout_ms: Some(5_000),
         },
         &adapter,
@@ -105,6 +126,7 @@ fn timeout_none_makes_exactly_one_resolve_attempt() {
         SetValueArgs {
             ref_id: format!("@{}:e1", snapshot_id),
             value: "hi".into(),
+            selected_tab: None,
             timeout_ms: None,
         },
         &adapter,

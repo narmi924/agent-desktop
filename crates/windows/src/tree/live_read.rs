@@ -140,7 +140,7 @@ mod imp {
             read_label(element)
         };
         let vocabulary = walk_vocabulary(&properties, &label);
-        let evidence = properties.locator_evidence(vocabulary);
+        let evidence = properties.element_evidence(vocabulary, element);
         if !essential_live_evidence_complete(&evidence) {
             return Err(incomplete_live_evidence());
         }

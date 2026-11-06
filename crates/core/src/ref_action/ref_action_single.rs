@@ -10,7 +10,8 @@ pub(crate) fn dispatch_resolved(
     request: ActionRequest,
     lease: &crate::InteractionLease,
 ) -> Result<ActionResult, crate::AppError> {
-    crate::ref_action::dispatch_resolved_landing(target, request, lease).map(|(result, _)| result)
+    crate::ref_action::dispatch_resolved_landing(target, request, lease, None)
+        .map(|(result, _)| result)
 }
 
 pub(crate) fn execute_single_shot(

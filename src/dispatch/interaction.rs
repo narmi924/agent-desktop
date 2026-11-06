@@ -86,6 +86,7 @@ pub(super) fn set_value(
     set_value_command::execute(
         set_value_command::SetValueArgs {
             ref_id: args.ref_id,
+            selected_tab: args.selected_tab,
             value,
             timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
         },

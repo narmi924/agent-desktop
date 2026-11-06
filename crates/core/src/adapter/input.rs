@@ -49,6 +49,15 @@ pub trait InputOps: Send + Sync {
         Err(AdapterError::not_supported("drag"))
     }
 
+    fn drag_in_frames(
+        &self,
+        _params: DragParams,
+        _frames: [&crate::commands::drag::frame::WindowFrame; 2],
+        _lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        Err(AdapterError::not_supported("drag in window frames"))
+    }
+
     fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<OperationReport, AdapterError> {
         Err(AdapterError::not_supported("clear_clipboard"))
     }

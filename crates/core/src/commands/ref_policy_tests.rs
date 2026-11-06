@@ -223,6 +223,7 @@ fn default_ref_commands_use_least_permissive_supported_policy() {
         set_value::SetValueArgs {
             ref_id: format!("@{}:e1", snapshot_id.clone()),
             value: "value".into(),
+            selected_tab: None,
             timeout_ms: None,
         },
         &adapter,
@@ -312,6 +313,7 @@ fn headed_context_reaches_every_ref_action_without_policy_downgrade() {
         set_value::SetValueArgs {
             ref_id: format!("@{}:e1", snapshot_id.clone()),
             value: "value".into(),
+            selected_tab: None,
             timeout_ms: None,
         },
         &adapter,

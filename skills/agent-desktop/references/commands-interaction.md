@@ -109,6 +109,7 @@ agent-desktop focus @s8f3k2p9:e2
 - `type --interval-ms N` (1 to 2000) types one keystroke every N ms inside one command; `--timeout-ms` then applies to each keystroke, and `0` makes each keystroke try once. A keystroke keeps combining marks, emoji sequences and CR LF together. The first keystroke is a full ref action (headed, it also focuses the window), and the rest go to the same element, taking the interaction lease one keystroke at a time. A headed keystroke is posted only while the target's process and focused element are unchanged; if focus moves, the burst stops with an error. The result adds `keystrokes` and `interval_ms`, and `post_state` is the field after the last keystroke. It stays `delivered_verified` only when that read shows the whole text; otherwise it is `delivered_unverified` with `verification_reason` `postcondition_mismatch`, `insufficient_evidence` (typed part way through the field) or `final_read_failed` (no `post_state`). `--wait-for` waits once, after the last keystroke. A failure part way through adds `details.typed_keystrokes` and `details.keystrokes` and is `delivered_unverified`: read the field before you type again.
 - `set-value` writes the value directly through the semantic value path. It is faster than `type`, but it may not fire every UI callback. Use it for text fields, text areas and sliders.
 - Use `--stdin` with `type` or `set-value` to read text from a pipe or redirected file. Terminal input is rejected. Provide either `--stdin` or a command-line value.
+- On Windows, capture an editor and its selected document tab together. Run `set-value EDITOR VALUE --selected-tab TAB` to check that the same tab instance is still selected immediately before the write. Missing or ambiguous tab evidence refuses delivery. This checks the application's UI at dispatch time; an independent user or provider can still change it during delivery.
 - The action timeout starts after the input ends; it doesn't limit this wait. Empty input and all line breaks are kept, including a final newline. Use `printf '%s'` to avoid adding one. Input must be valid UTF-8 without NUL bytes (`\0`). The limits are 10,000 bytes for `type` and 128 KiB for `set-value`.
 - Batch uses the JSON `text` or `value` field, which puts the text in process arguments. Run secret steps as separate `--stdin` commands.
 - To enter the text `--stdin`, put it after `--`, as in `agent-desktop type @s8f3k2p9:e2 -- --stdin`.
@@ -130,6 +131,47 @@ agent-desktop expand @s8f3k2p9:e7
 - `select` picks an option by display text in a list, dropdown or combobox. For menu-backed controls it opens the menu, activates the item and checks the control value. A missing item or an unchanged value returns a structured error.
 - `check` and `uncheck` are idempotent and verify the final state. Prefer them over `toggle`. Use `toggle` only when the current state is unknown, and it needs readable before and after state.
 - `expand` and `collapse` act on disclosure triangles, tree items and accordions, and verify the final state.
+
+## Choose on a Chromium page (Windows fork)
+
+In a named agent-browser session, use the exact field label and desired value. From the checkout, run:
+
+```powershell
+node npm/bin/workflow.js choose --session work --field "Departure" --value 1990-06-18
+node npm/bin/workflow.js choose --session work --field "Favorite Fruit" --value Huckleberry
+node npm/bin/workflow.js choose --session work --field "Records" --value "Record 734" --position 734
+```
+
+`choose` uses the active session tab, or `--tab t1` to specify one. It reads the selection back from the original field. If the field has no label, pass `--input CSS` instead. Only the main document is supported. Node.js 22+ and the agent-browser executable are required (tested with 0.41.0); set `AGENT_BROWSER_BIN` to give its path.
+
+- Dates use ISO input. For an editable text calendar, also give the page's format: `--format MM/DD/YYYY`, `DD/MM/YYYY` or `YYYY-MM-DD`. A native date needs no format. The command does not submit the form.
+- A single-select dropdown matches its option label. An ARIA combobox must expose its own listbox. For lists that render only some options, the scrollable listbox and its options must expose their positions and total count (`aria-posinset`, `aria-setsize` on the options). A name-only search checks for duplicates within its search budget. If the one-based position is known, `--position` finds that position and checks the label before clicking. Success returns `field`, `value`, `kind` and `scrolls` (explicit list search moves).
+- To choose a file, run `node npm/bin/workflow.js choose-file --session work --tab t1 --input "#attachment" --file "C:\Work\sample.txt"`. Use one visible native browser window in a dedicated headed session. The CSS selector must identify one enabled file input. The command verifies the filename, size and modification time on the original tab. Set `AGENT_DESKTOP_BIN` to override the native executable.
+
+If the field cannot confirm the requested value, inspect it before trying again. An open popup or a changed viewport can remain after an error.
+
+All browser workflows accept `AGENT_BROWSER_SESSION` instead of repeating `--session`. Without `--tab`, they use the active tab in that named session.
+
+- If the page exposes no option positions, run `node npm/bin/workflow.js reveal --session work --within "#records" --text "Record 734"`. It scrolls the specified container until the exact text is visible. It does not click, select or establish uniqueness outside the rendered rows.
+- For a web drop zone, run `node npm/bin/workflow.js drop-file --session work --input "#drop-zone" --file "C:\Work\sample.txt"`. The zone must accept the drag. Success means it received a trusted drop event with that filename, size and modification time; the application may still need a separate save or upload. For a file input, use `choose-file`.
+- For a web canvas, run `node npm/bin/workflow.js browser-move --session work --surface "#drawing" --from 45,50 --to 145,85 --after drawing.png`. Coordinates are CSS pixels from the visible surface's top left. Add `--object "#square"` for a DOM or SVG object to check its displacement. A bitmap canvas returns a gesture result and, with `--after`, an image of that surface. Use these two gestures only in a dedicated, unrestricted local Chromium session: they use the tab's DevTools connection directly and do not move the OS cursor.
+
+## Edit a named document (Windows fork)
+
+Run `node npm/bin/workflow.js edit --app Notepad.exe --document "Notes.txt*" --value "Updated notes"`. Match the tab's accessible name exactly or end it with `*` for a unique prefix when the app appends status text. The tab must already be selected. Add `--field "Editor"` if several fields support writing, or `--window ID` instead of `--app` if multiple windows match. Use `--stdin` for piped content. The command replaces the field value; saving the document is separate. It uses the native selected-tab check immediately before writing.
+
+## Move within or between native windows (Windows fork)
+
+```powershell
+node npm/bin/workflow.js view --app mspaint.exe --output paint.png
+node npm/bin/workflow.js move --frame paint.png --from 812,604 --to 925,671 --after moved.png
+```
+
+Read the image to choose endpoints in its original pixel dimensions. The coordinates above are examples. For a cross-window drag, capture the destination separately and pass its PNG with `--to-frame`; `--to` then uses that image. A frame is an ordinary PNG containing the captured window's identity, title, size and scale. Use the original file. Moving a window before the gesture is supported. A changed title, resized window, stale process or covered endpoint refuses the drag; both windows must remain visible. A window frame does not identify a particular object painted inside it.
+
+`move` uses the physical Windows cursor. If Escape is observed during the gesture, it stops and releases the button if already pressed. The native result reports delivery; use the destination's state or compare the two images to tell whether the object moved. `--after` writes a new destination frame. An error after pickup can mean the application saw part of the gesture; inspect before repeating it.
+
+For a large window, add `--region X,Y,WIDTH,HEIGHT` to `view` to capture only the canvas or drop zone. Read coordinates from that smaller PNG, starting at `0,0`. The after-image uses the same region.
 
 ## Scroll
 

@@ -79,13 +79,14 @@ pub(super) fn screenshot(
     args: ScreenshotArgs,
     adapter: &dyn PlatformAdapter,
 ) -> Result<Value, AppError> {
-    screenshot_command::execute(
+    screenshot_command::execute_region(
         screenshot_command::ScreenshotArgs {
             app: args.scope.app,
             window_id: args.scope.window_id,
             screen: args.screen,
             output_path: args.output_path,
         },
+        args.region.as_deref(),
         adapter,
     )
 }

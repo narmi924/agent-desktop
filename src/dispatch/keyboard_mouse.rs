@@ -79,27 +79,32 @@ pub(super) fn drag(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    drag_command::execute(
-        drag_command::DragArgs {
-            from: drag_command::DragEndpoint {
-                ref_id: args.target.from,
-                xy: parse_xy_opt(args.target.from_xy.as_deref())?,
-            },
-            to: drag_command::DragEndpoint {
-                ref_id: args.target.to,
-                xy: parse_xy_opt(args.target.to_xy.as_deref())?,
-            },
-            duration_ms: args.duration,
-            drop_delay_ms: args.drop_delay,
-            timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
-            wait_for_scope: args
-                .wait_for_scope
-                .map(crate::cli_args::drag::WaitForScopeArg::to_core)
-                .unwrap_or_default(),
+    let request = drag_command::DragArgs {
+        from: drag_command::DragEndpoint {
+            ref_id: args.target.from,
+            xy: parse_xy_opt(args.target.from_xy.as_deref())?,
         },
-        adapter,
-        context,
-    )
+        to: drag_command::DragEndpoint {
+            ref_id: args.target.to,
+            xy: parse_xy_opt(args.target.to_xy.as_deref())?,
+        },
+        duration_ms: args.duration,
+        drop_delay_ms: args.drop_delay,
+        timeout_ms: helpers::normalize_action_timeout_ms(args.timeout_ms),
+        wait_for_scope: args
+            .wait_for_scope
+            .map(crate::cli_args::drag::WaitForScopeArg::to_core)
+            .unwrap_or_default(),
+    };
+    match (args.from_frame, args.to_frame) {
+        (None, None) => drag_command::execute(request, adapter, context),
+        (Some(from), Some(to)) => {
+            drag_command::frame::execute(request, &from, &to, adapter, context)
+        }
+        _ => Err(AppError::invalid_input(
+            "Provide both --from-frame and --to-frame",
+        )),
+    }
 }
 
 pub(super) fn mouse_move(

@@ -17,30 +17,48 @@ pub struct ScreenshotArgs {
 }
 
 pub fn execute(args: ScreenshotArgs, adapter: &dyn PlatformAdapter) -> Result<Value, AppError> {
+    execute_region(args, None, adapter)
+}
+
+pub fn execute_region(
+    args: ScreenshotArgs,
+    region: Option<&str>,
+    adapter: &dyn PlatformAdapter,
+) -> Result<Value, AppError> {
+    let region = region.map(|s| -> Result<[u32;4],AppError> {
+        let invalid = || AppError::invalid_input("Region must be x,y,width,height in nonnegative image pixels, with positive dimensions");
+        let parts: Vec<u32> = s.split(',').map(|v|v.parse().map_err(|_|invalid())).collect::<Result<_,_>>()?;
+        let r: [u32;4] = parts.try_into().map_err(|_|invalid())?;
+        if r[2]==0 || r[3]==0 {return Err(invalid());}
+        Ok(r)
+    }).transpose()?;
     let deadline = crate::Deadline::standard()?;
     let target = resolve_target(&args, adapter, deadline)?;
-    let buf = adapter.screenshot(target, deadline)?;
-
+    let mut buf = adapter.screenshot(target, deadline)?;
+    let full = [buf.width, buf.height];
+    if let Some([x, y, w, h]) = region {
+        if x.checked_add(w).is_none_or(|v| v > full[0])
+            || y.checked_add(h).is_none_or(|v| v > full[1])
+        {
+            return Err(AppError::invalid_input(
+                "Region is outside the captured image",
+            ));
+        }
+        buf = adapter.crop_screenshot(buf, [x, y, w, h], deadline)?;
+    }
+    let mut reply = json!({"format":buf.format.as_str(),"width":buf.width,"height":buf.height,"scale_factor":buf.scale_factor});
+    if region.is_some() {
+        reply["full_size"] = json!(full);
+    }
     if let Some(path) = args.output_path {
         crate::refs::write_user_file(&path, &buf.data)
             .map_err(|error| crate::refs::unwritable_output("the screenshot", &path, error))?;
-        Ok(json!({
-            "path": path.to_string_lossy(),
-            "format": buf.format.as_str(),
-            "width": buf.width,
-            "height": buf.height,
-            "scale_factor": buf.scale_factor
-        }))
+        reply["path"] = json!(path.to_string_lossy());
     } else {
         let encoded = base64::engine::general_purpose::STANDARD.encode(&buf.data);
-        Ok(json!({
-            "data": encoded,
-            "format": buf.format.as_str(),
-            "width": buf.width,
-            "height": buf.height,
-            "scale_factor": buf.scale_factor
-        }))
+        reply["data"] = json!(encoded);
     }
+    Ok(reply)
 }
 
 fn resolve_target(

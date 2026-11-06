@@ -267,6 +267,16 @@ impl InputOps for WindowsAdapter {
         Ok(report)
     }
 
+    #[cfg(target_os = "windows")]
+    fn drag_in_frames(
+        &self,
+        params: DragParams,
+        frames: [&agent_desktop_core::commands::drag::frame::WindowFrame; 2],
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        crate::input::drag_frame::drag(params, frames, lease.deadline())
+    }
+
     fn clear_clipboard(&self, lease: &InteractionLease) -> Result<OperationReport, AdapterError> {
         crate::input::clipboard::clear(lease.deadline())?;
         Ok(OperationReport::clipboard_written("clipboard-clear", false))

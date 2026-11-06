@@ -9,7 +9,8 @@
   },
   "homepage": "https://github.com/vercel-labs/agent-desktop",
   "bin": {
-    "agent-desktop": "bin/agent-desktop"
+    "agent-desktop": "bin/agent-desktop",
+    "agent-desktop-workflow": "bin/workflow.js"
   },
   "scripts": {
     "postinstall": "node scripts/postinstall.js"

@@ -266,7 +266,7 @@ mod windows_only {
     /// rather than quietly accepted, so this assertion holds on every build
     /// the product supports or client creation fails outright.
     #[test]
-    fn the_shipped_client_exposes_the_timeouts_it_sets() {
+    fn the_shipped_client_bounds_calls_and_disables_implicit_focus() {
         use windows::Win32::UI::Accessibility::{IUIAutomation, IUIAutomation2};
         use windows::core::Interface;
         bootstrap();
@@ -276,6 +276,11 @@ mod windows_only {
         let bounded: IUIAutomation2 = raw
             .cast()
             .expect("the shipped client must expose IUIAutomation2");
+        assert!(
+            !unsafe { bounded.AutoSetFocus() }
+                .expect("read automatic focus")
+                .as_bool()
+        );
         assert_eq!(
             unsafe { bounded.ConnectionTimeout() }.expect("a connection timeout is set"),
             crate::tree::automation::CONNECTION_TIMEOUT_MS

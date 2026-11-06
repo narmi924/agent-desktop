@@ -242,6 +242,12 @@ pub(crate) struct ScreenshotArgs {
     pub screen: Option<usize>,
     #[arg(value_name = "PATH", help = "Save to file instead of returning base64")]
     pub output_path: Option<std::path::PathBuf>,
+    #[arg(
+        long,
+        help = "Windows: return only x,y,width,height in captured pixels"
+    )]
+    #[serde(default)]
+    pub region: Option<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]

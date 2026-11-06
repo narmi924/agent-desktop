@@ -183,3 +183,30 @@ fn a_deadline_that_covers_only_one_pickup_delay_is_refused_before_the_button_lan
     );
     assert!(sink::recorded().is_empty(), "nothing may be injected");
 }
+#[test]
+fn escape_after_pickup_releases_the_button_without_reporting_a_completed_drag() {
+    use crate::input::keyboard::{keyboard_map::VK_ESCAPE, keyboard_send::key_state_fake_sink};
+    use crate::input::mouse_send_fake_sink as mouse;
+    mouse::reset();
+    key_state_fake_sink::reset();
+    let params = DragParams {
+        from: Point { x: 10.0, y: 20.0 },
+        to: Point { x: 80.0, y: 70.0 },
+        duration_ms: Some(48),
+        drop_delay_ms: Some(0),
+    };
+    let mut checks = 0;
+    let result = synthesize_checked(params, Deadline::after(2000).unwrap(), || {
+        checks += 1;
+        if checks == 3 {
+            key_state_fake_sink::set_down(VK_ESCAPE);
+        }
+        Ok(())
+    });
+    key_state_fake_sink::reset();
+    let error = result.unwrap_err();
+    assert!(error.message.contains("Escape"));
+    assert_eq!(error.disposition, DeliverySemantics::delivered_unverified());
+    assert_eq!(error.details.unwrap()["emergency_release_posted"], true);
+    assert_eq!(mouse::recorded().last().unwrap().flags, MOUSEEVENTF_LEFTUP);
+}

@@ -201,6 +201,24 @@ impl ElementProperties {
         }
     }
 
+    #[cfg(target_os = "windows")]
+    pub(crate) fn element_evidence(
+        &self,
+        vocabulary: ResolvedVocabulary,
+        node: &crate::tree::element::UIAElement,
+    ) -> LocatorEvidence {
+        let mut evidence = self.locator_evidence(vocabulary);
+        if evidence.role.known().is_some_and(|role| role == "tab")
+            && let Ok(id) = node.0.get_runtime_id()
+            && !id.is_empty()
+        {
+            evidence.identifiers = evidence
+                .identifiers
+                .with_retained_object(format!("tab-instance:{id:?}"));
+        }
+        evidence
+    }
+
     /// Projects the read set onto the evidence slot shape core consumes, so
     /// the consumer needs no translation layer.
     ///

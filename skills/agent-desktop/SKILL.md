@@ -33,6 +33,8 @@ Examples use a POSIX shell. In PowerShell, quote every ref (`'@s8f3k2p9:e1'`), b
 
 Use `find` when you know the role or exact name. Otherwise map the app first and drill into one region.
 
+On the Windows fork, run `node npm/bin/workflow.js --help` from the checkout. Use `edit` to replace text in a named document, `choose` or `reveal` to find an option, and `browser-move` for a web canvas. For native visual input, capture a window with `view` and pass that image to `move`. For a file, use `drop-file` on a web drop zone or `choose-file` on a file input that opens the Windows picker. See `commands-interaction` for examples.
+
 ```
 agent-desktop snapshot --skeleton --app "Notes" -i --compact   # shallow map, children_count on cut branches
 agent-desktop snapshot --root @s8f3k2p9:e3 -i --compact        # drill into one region

@@ -191,6 +191,14 @@ mod imp {
         let client: IUIAutomation2 = unsafe { CoCreateInstance(&CUIAutomation8, None, CLSCTX_ALL) }
             .map_err(|error| unbounded_client_error(error.code().0))?;
         unsafe {
+            // Let explicit focus actions own activation. UIA otherwise sets
+            // focus implicitly before invoking many control patterns.
+            client.SetAutoSetFocus(false).map_err(|error| {
+                uia_failure_error(
+                    UiaFailure::Hresult(error.code().0),
+                    "disable automatic focus before UI Automation actions",
+                )
+            })?;
             client
                 .SetConnectionTimeout(super::CONNECTION_TIMEOUT_MS)
                 .map_err(|error| unbounded_client_error(error.code().0))?;

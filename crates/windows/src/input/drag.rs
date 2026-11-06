@@ -35,12 +35,46 @@ const MAX_DRAG_MS: u64 = 60_000;
 const MAX_DROP_DELAY_MS: u64 = 30_000;
 
 pub(crate) fn synthesize_drag(params: DragParams, deadline: Deadline) -> Result<(), AdapterError> {
-    validate_drag(&params)?;
-    preflight_drag(&params, deadline)?;
-    drag_sequence(params, deadline)
+    synthesize_checked(params, deadline, || Ok(()))
 }
 
-fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterError> {
+pub(crate) fn synthesize_checked(
+    params: DragParams,
+    deadline: Deadline,
+    mut check: impl FnMut() -> Result<(), AdapterError>,
+) -> Result<(), AdapterError> {
+    validate_drag(&params)?;
+    preflight_drag(&params, deadline)?;
+    drag_sequence(params, deadline, &mut check)
+}
+
+fn not_cancelled() -> Result<(), AdapterError> {
+    use crate::input::keyboard::{keyboard_map::VK_ESCAPE, keyboard_send::key_is_down};
+    if key_is_down(VK_ESCAPE) {
+        return Err(
+            AdapterError::new(ErrorCode::ActionFailed, "Drag stopped by Escape")
+                .with_disposition(DeliverySemantics::not_delivered()),
+        );
+    }
+    Ok(())
+}
+
+fn pause(deadline: Deadline, duration: Duration) -> Result<(), AdapterError> {
+    let mut remaining = duration;
+    while !remaining.is_zero() {
+        not_cancelled()?;
+        let tick = remaining.min(Duration::from_millis(DWELL_TICK_MS));
+        sleep_bounded(deadline, tick)?;
+        remaining -= tick;
+    }
+    not_cancelled()
+}
+
+fn drag_sequence(
+    params: DragParams,
+    deadline: Deadline,
+    check: &mut impl FnMut() -> Result<(), AdapterError>,
+) -> Result<(), AdapterError> {
     let duration_ms = params.duration_ms.unwrap_or(DEFAULT_DURATION_MS);
     let drop_delay_ms = params.drop_delay_ms.unwrap_or(DEFAULT_DROP_DELAY_MS);
     let steps = duration_ms.div_ceil(DWELL_TICK_MS).clamp(1, MAX_STEPS);
@@ -49,9 +83,13 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
     let destination = mouse_coord::normalize_point(&params.to);
 
     deadline.ensure_remaining()?;
+    check()?;
+    not_cancelled()?;
     post_mouse_inputs(&[move_input(origin)]);
     deadline.ensure_remaining()?;
-    sleep_bounded(deadline, Duration::from_millis(PICKUP_DELAY_MS))?;
+    pause(deadline, Duration::from_millis(PICKUP_DELAY_MS))?;
+    check()?;
+    not_cancelled()?;
 
     let mut guard = DragReleaseGuard::new(origin);
     guard.arm();
@@ -60,20 +98,26 @@ fn drag_sequence(params: DragParams, deadline: Deadline) -> Result<(), AdapterEr
 
     let outcome = (|| -> Result<(), AdapterError> {
         deadline.ensure_remaining()?;
-        sleep_bounded(deadline, Duration::from_millis(PICKUP_DELAY_MS))?;
+        pause(deadline, Duration::from_millis(PICKUP_DELAY_MS))?;
+        check()?;
 
         for index in 1..=steps {
             let progress = index as f64 / steps as f64;
             let point = interpolate(&params.from, &params.to, progress);
             deadline.ensure_remaining()?;
+            check()?;
+            not_cancelled()?;
             post_mouse_inputs(&[move_input(mouse_coord::normalize_point(&point))]);
             guard.mark_delivered();
-            sleep_bounded(deadline, step_delay)?;
+            pause(deadline, step_delay)?;
         }
 
-        dwell_over_destination(destination, drop_delay_ms, deadline, &mut guard)?;
+        check()?;
+        dwell_over_destination(destination, drop_delay_ms, deadline, &mut guard, check)?;
 
         deadline.ensure_remaining()?;
+        check()?;
+        not_cancelled()?;
         post_mouse_inputs(&[move_input(destination)]);
         guard.mark_delivered();
         post_mouse_inputs(&[button_input(MOUSEEVENTF_LEFTUP)]);
@@ -90,14 +134,17 @@ fn dwell_over_destination(
     delay_ms: u64,
     deadline: Deadline,
     guard: &mut DragReleaseGuard,
+    check: &mut impl FnMut() -> Result<(), AdapterError>,
 ) -> Result<(), AdapterError> {
     let mut remaining_ms = delay_ms;
     while remaining_ms > 0 {
         deadline.ensure_remaining()?;
+        check()?;
+        not_cancelled()?;
         post_mouse_inputs(&[move_input(destination)]);
         guard.mark_delivered();
         let tick_ms = remaining_ms.min(DWELL_TICK_MS);
-        sleep_bounded(deadline, Duration::from_millis(tick_ms))?;
+        pause(deadline, Duration::from_millis(tick_ms))?;
         remaining_ms -= tick_ms;
     }
     Ok(())

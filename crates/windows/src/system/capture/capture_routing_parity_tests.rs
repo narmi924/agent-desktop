@@ -74,7 +74,9 @@ fn clipboard_image_default_path_travels_private_seam_reparse_and_owner() {
         let _ = refused;
 
         std::fs::remove_dir(&tmp_junction).expect("remove junction");
-        std::fs::create_dir_all(&tmp_junction).expect("real tmp");
+        WindowsPrivateFile::new()
+            .ensure_private(&tmp_junction)
+            .expect("private tmp directory");
         let image = clipboard_get::execute(
             ClipboardGetArgs {
                 format: Some(ClipboardFormat::Image),

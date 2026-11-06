@@ -225,6 +225,15 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("screenshot"))
     }
 
+    fn crop_screenshot(
+        &self,
+        _image: ImageBuffer,
+        _region: [u32; 4],
+        _deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        Err(AdapterError::not_supported("crop_screenshot"))
+    }
+
     fn screenshot_window_frame(
         &self,
         _window: &WindowInfo,

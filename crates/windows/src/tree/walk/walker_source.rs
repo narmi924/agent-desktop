@@ -256,7 +256,7 @@ mod imp {
             let vocabulary = walk_vocabulary(&properties, &label);
             (
                 properties.clone(),
-                properties.locator_evidence(vocabulary),
+                properties.element_evidence(vocabulary, node),
                 failed,
             )
         }

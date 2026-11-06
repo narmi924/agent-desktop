@@ -164,7 +164,7 @@ fn execute_landing(
         context,
         |target, request, lease| {
             let (result, handle) =
-                crate::ref_action::dispatch_resolved_landing(target, request, lease)?;
+                crate::ref_action::dispatch_resolved_landing(target, request, lease, None)?;
             landed.set(Some(handle));
             Ok(result)
         },

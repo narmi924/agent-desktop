@@ -18,6 +18,30 @@ use windows::Win32::System::Com::{
 const MAX_PNG_PIXELS: u64 = 64 * 1024 * 1024;
 const BYTES_PER_PIXEL: u32 = 4;
 
+pub(crate) fn crop(
+    mut image: agent_desktop_core::ImageBuffer,
+    [x, y, w, h]: [u32; 4],
+    deadline: Deadline,
+) -> Result<agent_desktop_core::ImageBuffer, AdapterError> {
+    let (pixels, width, height) = decode_png_to_bgra(&image.data, deadline)?;
+    if w == 0
+        || h == 0
+        || x.checked_add(w).is_none_or(|v| v > width)
+        || y.checked_add(h).is_none_or(|v| v > height)
+    {
+        return Err(invalid_image("Region is outside the decoded screenshot"));
+    }
+    let mut out = Vec::with_capacity(w as usize * h as usize * 4);
+    for row in y..y + h {
+        let start = (row as usize * width as usize + x as usize) * 4;
+        out.extend_from_slice(&pixels[start..start + w as usize * 4]);
+    }
+    image.data = encode_bgra_to_png(&out, w, h, w * 4, deadline)?;
+    image.width = w;
+    image.height = h;
+    Ok(image)
+}
+
 pub(crate) fn encode_bgra_to_png(
     pixels: &[u8],
     width: u32,

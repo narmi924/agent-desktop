@@ -246,6 +246,16 @@ impl SystemOps for WindowsAdapter {
     }
 
     #[cfg(target_os = "windows")]
+    fn crop_screenshot(
+        &self,
+        image: ImageBuffer,
+        region: [u32; 4],
+        deadline: Deadline,
+    ) -> Result<ImageBuffer, AdapterError> {
+        crate::system::capture::png_codec::crop(image, region, deadline)
+    }
+
+    #[cfg(target_os = "windows")]
     fn screenshot_window_frame(
         &self,
         window: &WindowInfo,

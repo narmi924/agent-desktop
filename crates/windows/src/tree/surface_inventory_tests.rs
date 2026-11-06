@@ -284,11 +284,11 @@ fn windowless_process_pid() -> Option<u32> {
     process_snapshot()
         .ok()?
         .into_iter()
-        .find(|row| {
+        .filter(|row| {
             WINDOWLESS_NAMES.contains(&row.name.to_ascii_lowercase().as_str())
                 && !window_owners.contains(&u32::from(row.pid))
         })
-        .and_then(|row| {
+        .find_map(|row| {
             token_for_pid(row.pid)
                 .ok()
                 .flatten()

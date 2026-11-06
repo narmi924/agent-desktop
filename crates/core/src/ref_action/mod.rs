@@ -18,6 +18,7 @@ pub(crate) mod ref_action_wait;
 pub(crate) mod ref_action_wait_context;
 pub(crate) mod ref_action_wait_evidence;
 pub(crate) mod ref_action_wait_support;
+mod selected_tab;
 
 const TRACE_CAPTURE_BUDGET_MS: u64 = 1_000;
 const PRE_CAPTURE_DISPATCH_RESERVE_MS: u64 = 100;
@@ -68,6 +69,7 @@ pub(crate) fn dispatch_resolved_landing(
     target: RefActionContext<'_>,
     mut request: ActionRequest,
     lease: &crate::InteractionLease,
+    selected_tab: Option<&RefEntry>,
 ) -> Result<(ActionResult, NativeHandle), AppError> {
     let process_instance = target
         .entry
@@ -144,6 +146,7 @@ pub(crate) fn dispatch_resolved_landing(
     let presentation_action = request.action.clone();
     let ripples = presentation::effect_ripples(&final_target, &presentation_action);
     presentation::before_dispatch(&final_target, &preflight, &presentation_action, lease);
+    selected_tab::check(selected_tab, &target, lease)?;
     let dispatch_result =
         crate::execute_verified_action(final_target.adapter, final_target.handle, request, lease);
     let mut preflight = preflight;
@@ -171,10 +174,7 @@ pub(crate) fn dispatch_resolved_landing(
     Ok((result, handle))
 }
 
-/// An action that opens a sheet, menu, or alert leaves the caller staring at a
-/// success envelope with no hint that the application is now waiting on a
-/// dialog. Reporting the overlays saves a round of window archaeology. Purely
-/// informational, so a failed read never disturbs delivered work.
+/// Lists overlays after an action that may open a dialog.
 fn settled_surfaces(
     target: &ResolvedRefAction<'_>,
     process: crate::ProcessIdentity,

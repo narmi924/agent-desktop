@@ -32,6 +32,8 @@ pub(crate) mod blocked_combo;
 #[cfg(target_os = "windows")]
 pub(crate) mod clipboard;
 pub(crate) mod drag;
+#[cfg(target_os = "windows")]
+pub(crate) mod drag_frame;
 mod drag_state;
 pub(crate) mod elevation;
 pub(crate) mod keyboard;

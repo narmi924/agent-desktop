@@ -101,6 +101,13 @@ pub(crate) struct SetValueArgs {
     #[arg(long, help = "Read up to 128 KiB of UTF-8 text from a pipe or file")]
     #[serde(skip)]
     pub stdin: bool,
+    #[serde(default)]
+    #[arg(
+        long,
+        value_name = "REF",
+        help = "Require this same-snapshot document tab to still be selected (Windows)"
+    )]
+    pub selected_tab: Option<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
