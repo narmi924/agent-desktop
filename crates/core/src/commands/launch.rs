@@ -82,9 +82,9 @@ fn launch_suggestion(cdp_requested: bool, launched: &LaunchResult) -> Option<Str
     }
     if !cdp_requested && launched.renderer == Some(RendererKind::Chromium) {
         return Some(
-            "Chromium app: for web-content work, run close-app and then launch --cdp, then \
-             drive the web contents with agent-browser or any CDP client. Accessibility \
-             commands still cover everything, including native menus and dialogs."
+            "Use accessibility commands in the open window. For an open Chrome page on Windows, \
+             see current in 'skills get desktop commands-interaction'. For DOM access, launch \
+             a dedicated instance with --cdp and connect with agent-browser."
                 .to_owned(),
         );
     }

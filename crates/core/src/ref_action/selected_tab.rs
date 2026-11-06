@@ -4,7 +4,7 @@ use crate::{AdapterError, InteractionLease, RefEntry};
 
 fn refused(message: &str) -> AdapterError {
     AdapterError::stale_ref_because(message).with_suggestion(
-        "Capture the intended editor and its selected tab together before writing.",
+        "Capture the intended control and its selected tab together before acting.",
     )
 }
 
@@ -28,7 +28,7 @@ pub(super) fn check(
         || tab.process.identity() != target.entry.process.identity()
     {
         return Err(refused(
-            "The captured tab was not selected in the editor's window",
+            "The captured tab was not selected in the control's window",
         ));
     }
     let (_, tree, index) =

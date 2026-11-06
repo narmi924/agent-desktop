@@ -188,7 +188,7 @@ fn saved_snapshot_and_click_capture_use_exact_source_evidence() {
     else {
         panic!()
     };
-    let (_, frame) = click_before(&args, &adapter, &context).unwrap();
+    let (_, frame) = click_before(&args.target, &adapter, &context).unwrap();
     assert_eq!(frame["nodes"][0]["kind"], "target");
     assert_eq!(frame["nodes"][0]["bounds"], json!(window.bounds));
 }

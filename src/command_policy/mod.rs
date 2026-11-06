@@ -157,8 +157,13 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         Commands::Is(args) => {
             validate_ref_id(&args.ref_id)?;
         }
-        Commands::Click(args)
-        | Commands::DoubleClick(args)
+        Commands::Click(args) => {
+            validate_ref_id(&args.target.ref_id)?;
+            if let Some(tab) = &args.selected_tab {
+                validate_ref_id(tab)?;
+            }
+        }
+        Commands::DoubleClick(args)
         | Commands::TripleClick(args)
         | Commands::RightClick(args)
         | Commands::Clear(args)

@@ -7,6 +7,16 @@ use agent_desktop_core::{PermissionReport, PermissionState};
 
 const VALID_REF_ID: &str = "@s8f3k2p9:e1";
 
+fn click(ref_id: &str) -> Commands {
+    Commands::Click(crate::cli_args::actions::ClickArgs {
+        target: RefArgs {
+            ref_id: ref_id.into(),
+            timeout_ms: 5000,
+        },
+        selected_tab: None,
+    })
+}
+
 #[test]
 fn permission_report_is_collected_only_for_permission_consumers() {
     let status = Commands::Status;
@@ -76,10 +86,7 @@ fn accessibility_denial_is_preflighted_for_ax_commands() {
         screen_recording: PermissionState::Granted,
         automation: PermissionState::NotRequired,
     };
-    let command = Commands::Click(crate::cli_args::RefArgs {
-        ref_id: VALID_REF_ID.into(),
-        timeout_ms: 5000,
-    });
+    let command = click(VALID_REF_ID);
 
     let err = preflight(&command, &report).expect_err("denied accessibility fails");
 
@@ -96,10 +103,7 @@ fn invalid_ref_args_are_rejected_before_permission_preflight() {
         screen_recording: PermissionState::Granted,
         automation: PermissionState::NotRequired,
     };
-    let command = Commands::Click(RefArgs {
-        ref_id: "bad-ref".into(),
-        timeout_ms: 5000,
-    });
+    let command = click("bad-ref");
 
     let err = preflight(&command, &report).expect_err("invalid ref fails first");
 
@@ -210,10 +214,7 @@ fn trace_show_passes_preflight_with_permissions_denied() {
 
 #[test]
 fn a_multi_agent_desktop_action_needs_an_agent_id_on_every_platform() {
-    let click = Commands::Click(RefArgs {
-        ref_id: VALID_REF_ID.into(),
-        timeout_ms: 5000,
-    });
+    let click = click(VALID_REF_ID);
 
     assert!(agent_id_missing(&click, true, None));
     assert!(!agent_id_missing(&click, true, Some("agent-a")));

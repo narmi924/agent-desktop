@@ -132,6 +132,28 @@ agent-desktop expand @s8f3k2p9:e7
 - `check` and `uncheck` are idempotent and verify the final state. Prefer them over `toggle`. Use `toggle` only when the current state is unknown, and it needs readable before and after state.
 - `expand` and `collapse` act on disclosure triangles, tree items and accordions, and verify the final state.
 
+## Take over the visible Chrome page (Windows fork)
+
+From the checkout, use Node.js 22+ and the local Windows executable. Open an HTTP or HTTPS page in Chrome. `current` reads the selected tab of the foreground Chrome window, or the sole visible Chrome window if another app is in front. If several windows qualify, pass `--window ID` from `list-windows`. The command uses Windows accessibility and works with a normally opened Chrome window.
+
+```powershell
+$page = (node npm/bin/workflow.js current | ConvertFrom-Json).data
+$page.url
+$page.controls
+```
+
+On `https://the-internet.herokuapp.com/`, continue in the same tab and then in the new tab:
+
+```powershell
+$next = (node npm/bin/workflow.js follow --page $page.page --link "Multiple Windows" | ConvertFrom-Json).data
+$child = (node npm/bin/workflow.js follow --page $next.page --link "Click Here" | ConvertFrom-Json).data
+$child.text
+```
+
+Each result includes the URL, page text, control refs and a handle for the next action. `current --page PAGE` refreshes the same tab after a navigation. `follow` returns the observed destination in the original tab or in one newly selected tab in the same window. Supply `--expect-url URL` for a known redirect, or `--button NAME --expect-url URL` for a button that navigates. An unexpected tab switch stops the operation. If a click already happened, inspect the current page before repeating it.
+
+Use `edit --page PAGE --field NAME --value TEXT` to replace a named field on that page. For another native action, the result supplies a same-snapshot `tab` ref for `click REF --selected-tab TAB` or `set-value REF VALUE --selected-tab TAB`. These commands require the window to expose the document and tab through Windows accessibility.
+
 ## Choose on a Chromium page (Windows fork)
 
 In a named agent-browser session, use the exact field label and desired value. From the checkout, run:
@@ -150,9 +172,9 @@ node npm/bin/workflow.js choose --session work --field "Records" --value "Record
 
 If the field cannot confirm the requested value, inspect it before trying again. An open popup or a changed viewport can remain after an error.
 
-All browser workflows accept `AGENT_BROWSER_SESSION` instead of repeating `--session`. Without `--tab`, they use the active tab in that named session.
+Browser workflows that take `--session` also accept `AGENT_BROWSER_SESSION`. Without `--tab`, they use the active tab in that named session.
 
-- If the page exposes no option positions, run `node npm/bin/workflow.js reveal --session work --within "#records" --text "Record 734"`. It scrolls the specified container until the exact text is visible. It does not click, select or establish uniqueness outside the rendered rows.
+- If the page exposes no option positions, run `node npm/bin/workflow.js reveal --session work --within "#records" --text "Record 734"`. It looks for the exact visible text, first probing ordered labels or rows already drawn outside the viewport. If those probes miss, it scans overlapping viewports within the search budget. The result describes visibility and the number of scroll moves. Selecting the item is a separate action.
 - For a web drop zone, run `node npm/bin/workflow.js drop-file --session work --input "#drop-zone" --file "C:\Work\sample.txt"`. The zone must accept the drag. Success means it received a trusted drop event with that filename, size and modification time; the application may still need a separate save or upload. For a file input, use `choose-file`.
 - For a web canvas, run `node npm/bin/workflow.js browser-move --session work --surface "#drawing" --from 45,50 --to 145,85 --after drawing.png`. Coordinates are CSS pixels from the visible surface's top left. Add `--object "#square"` for a DOM or SVG object to check its displacement. A bitmap canvas returns a gesture result and, with `--after`, an image of that surface. Use these two gestures only in a dedicated, unrestricted local Chromium session: they use the tab's DevTools connection directly and do not move the OS cursor.
 

@@ -15,16 +15,20 @@ use serde_json::Value;
 
 use crate::cli_args::{
     RefArgs,
-    actions::{ScrollArgs, SelectArgs, SetValueArgs, TypeArgs},
+    actions::{ClickArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs},
 };
 use crate::dispatch::parse::parse_direction;
 
 pub(super) fn click(
-    args: RefArgs,
+    args: ClickArgs,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    click_command::execute(ref_args(args), adapter, context)
+    let target = ref_args(args.target);
+    match args.selected_tab {
+        Some(tab) => click_command::in_selected_tab(target, adapter, context, &tab),
+        None => click_command::execute(target, adapter, context),
+    }
 }
 
 pub(super) fn double_click(

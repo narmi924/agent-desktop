@@ -1,6 +1,27 @@
 use super::*;
 
 #[test]
+fn only_tab_instances_are_published_from_retained_objects() {
+    let mut identity = NodeIdentity {
+        retained_object: Some("axtok1:private".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        serde_json::to_value(&identity).unwrap(),
+        serde_json::json!({})
+    );
+    identity.retained_object = Some("tab-instance:[1, 2]".into());
+    let json = serde_json::to_value(&identity).unwrap();
+    assert_eq!(json["tab_instance"], "tab-instance:[1, 2]");
+    assert!(
+        serde_json::from_value::<NodeIdentity>(json)
+            .unwrap()
+            .retained_object
+            .is_none()
+    );
+}
+
+#[test]
 fn test_rect_null_fields_deserialize() {
     let json = r#"{"x": null, "y": null, "width": 0.0, "height": 0.0}"#;
     let rect: Rect = serde_json::from_str(json).unwrap();

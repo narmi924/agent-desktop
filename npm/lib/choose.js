@@ -284,6 +284,11 @@ async function revealText(selector, wanted, url) {
       if (!el) throw new Error('Item changed while scrolling into view.');
       r=el.getBoundingClientRect(); b=box.getBoundingClientRect();
     }
+    if (r.bottom <= 0 || r.top >= innerHeight || r.right <= 0 || r.left >= innerWidth) {
+      box.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
+      check();
+      r=el.getBoundingClientRect(); b=box.getBoundingClientRect();
+    }
     const x=Math.max(r.left,b.left,0), right=Math.min(r.right,b.right,innerWidth);
     const y=Math.max(r.top,b.top,0), bottom=Math.min(r.bottom,b.bottom,innerHeight);
     if (x>=right || y>=bottom) throw new Error('Item is not visible in this viewport.');
@@ -291,9 +296,76 @@ async function revealText(selector, wanted, url) {
     if (!at || !(el.contains(at) || at.contains(el))) throw new Error('Another element covers the item.');
     return {text:value,visible:true,scope:'rendered',moves};
   };
+  // Probe text order only to find positive matches. An unordered or changing
+  // slice can never exclude a part of the ordinary scan.
+  const compare = new Intl.Collator(undefined, {numeric:true}).compare;
+  function orderedSlice() {
+    const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+    const labels = [];
+    const viewport = box.getBoundingClientRect();
+    for (let n; (n = walker.nextNode());) {
+      const label = text(n.data), el = n.parentElement;
+      if (!label || !el || !el.getClientRects().length) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.bottom <= viewport.top || rect.top >= viewport.bottom || el.closest('[hidden],[aria-hidden="true"]')) continue;
+      labels.push(label);
+    }
+    if (labels.length < 2) return;
+    const direction = Math.sign(compare(labels.at(-1),labels[0]));
+    if (!direction || labels.slice(1).some((label,i) => direction * compare(label,labels[i]) <= 0)) return;
+    return {first:labels[0],last:labels.at(-1),direction};
+  }
+  async function seek() {
+    const max = box.scrollHeight - box.clientHeight;
+    if (max < box.clientHeight * 8) return;
+    const initial = orderedSlice();
+    if (!initial) return;
+    const order = (a,b) => initial.direction * compare(a,b);
+    let low = 0, high = max;
+    if (order(value,initial.first) < 0) high = Math.floor(origin)-1;
+    else if (order(value,initial.last) > 0) low = Math.floor(origin + box.clientHeight);
+    else return;
+    for (let i = 0; i < 18 && high >= low; i++) {
+      const offset = Math.floor((low+high)/2);
+      await move(offset);
+      const hit = match();
+      if (hit) return hit;
+      const slice = orderedSlice();
+      if (!slice || slice.direction !== initial.direction || box.scrollHeight - box.clientHeight !== max) return;
+      if (order(value,slice.first) < 0) high = offset-1;
+      else if (order(value,slice.last) > 0) low = offset + box.clientHeight;
+      else return;
+    }
+  }
+  function bufferedStep() {
+    const viewport = box.getBoundingClientRect();
+    const walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+    let bottom = viewport.top;
+    for (let n; (n = walker.nextNode());) {
+      if (!text(n.data)) continue;
+      const r = n.parentElement.getBoundingClientRect();
+      if (r.height && r.height <= box.clientHeight && r.top <= bottom+2) bottom = Math.max(bottom,r.bottom);
+    }
+    return Math.min(box.clientHeight*6, Math.floor(bottom-viewport.top-box.clientHeight*0.15));
+  }
+  async function scanBuffer() {
+    if (box.scrollTop !== 0) await move(0);
+    do {
+      const hit = match();
+      if (hit) return hit;
+      const step = bufferedStep();
+      if (step <= box.clientHeight || box.scrollTop+box.clientHeight >= box.scrollHeight-1) return;
+      await move(box.scrollTop+step);
+    } while (Date.now() < end-4000 && moves < 192);
+    return match();
+  }
   try {
     check();
     let found = match();
+    if (found) return await reveal(found);
+    found = await seek();
+    if (found) return await reveal(found);
+    found = await scanBuffer();
     if (found) return await reveal(found);
     for (let offset=0; ; offset+=Math.max(1,Math.floor(box.clientHeight*0.85))) {
       await move(offset);

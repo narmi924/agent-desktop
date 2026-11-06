@@ -56,7 +56,7 @@ fn parses_ref_command_into_cli_enum() {
 
     match command {
         Commands::Click(args) => {
-            assert_eq!(args.ref_id, "@s8f3k2p9:e1");
+            assert_eq!(args.target.ref_id, "@s8f3k2p9:e1");
         }
         other => panic!("unexpected command: {other:?}"),
     }

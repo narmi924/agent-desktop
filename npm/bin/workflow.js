@@ -10,8 +10,12 @@ const { randomUUID } = require('node:crypto');
 const { prepareChoice, finishChoice, revealText } = require('../lib/choose');
 const { view, move, edit } = require('../lib/window-move');
 const { browserMove, dropFile } = require('../lib/browser-move');
+const { current, follow, editPage } = require('../lib/current-page');
 
 const usage = [
+  'agent-desktop-workflow current [--window ID | --page PAGE]',
+  'agent-desktop-workflow follow --page PAGE (--link NAME [--expect-url URL] | --button NAME --expect-url URL)',
+  'agent-desktop-workflow edit --page PAGE --field NAME (--value TEXT | --stdin)',
   'agent-desktop-workflow choose --session NAME [--tab TAB] (--field LABEL | --input CSS) --value VALUE [--position N] [--format DATE_FORMAT]',
   'agent-desktop-workflow choose-file --session NAME [--tab TAB] --input CSS --file ABSOLUTE_PATH',
   'agent-desktop-workflow reveal --session NAME [--tab TAB] --within CSS --text EXACT_TEXT',
@@ -39,7 +43,7 @@ function run(binary, args, input) {
   if (!(reply.ok ?? reply.success)) {
     const message = reply.error?.message ?? reply.error ?? 'Command refused';
     const error = new Error(String(message).replace(/^Evaluation error: Error: ([^\n]*)\n\s+at [\s\S]*$/, '$1'));
-    if (reply.error?.disposition) Object.assign(error, {code:reply.error.code, disposition:reply.error.disposition});
+    if (reply.error?.code) Object.assign(error, {code:reply.error.code, details:reply.error.details, disposition:reply.error.disposition});
     throw error;
   }
   return reply.data;
@@ -207,11 +211,13 @@ async function main() {
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('The workflow commands require Node.js 22 or later.');
   const command = args.shift();
   const commands = {
+    current: ['window', 'page'],
+    follow: ['page', 'link', 'button', 'expect-url'],
     choose: ['session', 'tab', 'field', 'input', 'value', 'position', 'format'],
     reveal: ['session', 'tab', 'within', 'text'],
     'choose-file': ['session', 'tab', 'input', 'file'],
     view: ['window', 'app', 'output', 'region'],
-    edit: ['window', 'app', 'document', 'field', 'value', 'stdin'],
+    edit: ['window', 'app', 'document', 'field', 'value', 'stdin', 'page'],
     move: ['frame', 'from', 'to-frame', 'to', 'after'],
     'browser-move': ['session', 'tab', 'surface', 'from', 'to', 'object', 'after'],
     'drop-file': ['session', 'tab', 'input', 'file'],
@@ -225,6 +231,8 @@ async function main() {
   const ad = (...args) => run(db, args);
   let data;
   switch (command) {
+    case 'current': data = await current(ad, values); break;
+    case 'follow': data = await follow(ad, values); break;
     case 'choose-file': data = await chooseFile(values); break;
     case 'choose': data = choose(values); break;
     case 'reveal': {
@@ -236,7 +244,11 @@ async function main() {
       break;
     }
     case 'view': data = view(ad, values); break;
-    case 'edit': data = edit(ad, (args,data) => run(db,args,data), values); break;
+    case 'edit': {
+      const write = (args,data) => run(db,args,data);
+      data = values.page ? await editPage(ad,write,values) : edit(ad,write,values);
+      break;
+    }
     case 'move': data = move(ad, values); break;
     case 'browser-move': data = await browserMove(boundTab, values); break;
     case 'drop-file': data = await dropFile(boundTab, values); break;

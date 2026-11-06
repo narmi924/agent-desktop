@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 #[path = "post_action_observation.rs"]
 mod post_action_observation;
+pub(crate) mod selected_tab;
 
 pub(crate) use crate::system::app_lookup::{
     process_identity, resolve_app, revalidate_app_for_mutation,

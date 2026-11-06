@@ -36,7 +36,7 @@ impl DebugCapture {
         };
         let (before, window, strip_bounds, mode) = match command {
             Commands::Click(args) => {
-                let (window, before) = capture::click_before(args, adapter, context)?;
+                let (window, before) = capture::click_before(&args.target, adapter, context)?;
                 (Some(before), Some(window), false, "click")
             }
             Commands::Snapshot(args) => {

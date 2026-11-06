@@ -58,6 +58,8 @@ recovery strategy from `recovery.strategy` only when `disposition.retry` is
 `safe`; command strings from older envelopes must not be executed blindly.
 The removed `retry_command` field has no compatibility alias.
 
+Windows snapshot nodes for tabs can include `tab_instance`, an opaque identity valid within the owning window and process instance. Compare it across observations of that window. Use the snapshot-qualified ref to perform an action.
+
 ## Disposition values
 
 Every error carries `disposition`, and commands that act on a target may also

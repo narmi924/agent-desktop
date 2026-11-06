@@ -1,6 +1,20 @@
 use clap::Parser;
 use serde::Deserialize;
 
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ClickArgs {
+    #[command(flatten)]
+    #[serde(flatten)]
+    pub target: super::RefArgs,
+    #[arg(
+        long,
+        value_name = "REF",
+        help = "Require this same-snapshot tab to still be selected (Windows)"
+    )]
+    pub selected_tab: Option<String>,
+}
+
 fn default_scroll_amount() -> u32 {
     3
 }

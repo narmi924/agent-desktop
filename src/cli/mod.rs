@@ -9,8 +9,8 @@ pub(crate) use root::Cli;
 use crate::cli_args::{
     FindArgs, GetArgs, IsArgs, ListSurfacesArgs, RefArgs, ScreenshotArgs, SnapshotArgs,
     actions::{
-        HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs, PressArgs,
-        ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
+        ClickArgs, HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs,
+        PressArgs, ScrollArgs, SelectArgs, SetValueArgs, TypeArgs,
     },
     batch::BatchArgs,
     cursor_overlay::CursorOverlayArgs,
@@ -45,7 +45,7 @@ pub(crate) enum Commands {
     )]
     Is(IsArgs),
     #[command(about = "Click element via accessibility press action")]
-    Click(RefArgs),
+    Click(ClickArgs),
     #[command(about = "Physically double-click element; requires --headed")]
     DoubleClick(RefArgs),
     #[command(
