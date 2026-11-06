@@ -67,11 +67,21 @@ pub(crate) fn ensure_click_delivery_ready(
 pub(crate) fn ensure_keyboard_delivery_ready(
     element: &UIAElement,
     deadline: Deadline,
+    allow_owned_list: bool,
 ) -> Result<bool, AdapterError> {
     deadline.ensure_remaining()?;
     corroborate_verified_process(element)?;
     ensure_elevation_allows(element)?;
-    crate::actions::focus::keyboard_focus_ready(element)
+    if !target_window_is_foreground(element, deadline)? {
+        return Ok(false);
+    }
+    if crate::actions::focus::keyboard_focus_ready(element)? {
+        return Ok(true);
+    }
+    if allow_owned_list {
+        return crate::actions::focus::controls_focused_list(element, deadline);
+    }
+    Ok(false)
 }
 
 pub(crate) fn delivery_point(

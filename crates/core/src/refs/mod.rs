@@ -357,6 +357,7 @@ pub(crate) fn home_override_active() -> bool {
     HOME_OVERRIDE.with(|cell| cell.borrow().is_some())
 }
 
+pub(crate) mod page_capture;
 pub mod ref_alloc;
 pub(crate) mod ref_alloc_config;
 pub(crate) mod ref_alloc_options;

@@ -244,6 +244,15 @@ impl InputOps for WindowsAdapter {
         Ok(report)
     }
 
+    fn pointer_in_window(
+        &self,
+        event: MouseEvent,
+        window: &str,
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        crate::input::page_pointer::dispatch(event, window, lease.deadline())
+    }
+
     /// A standalone key edge has no daemon to own the hold across a request
     /// boundary, so it rejects the same way macOS's `key_event` does -
     /// the atomic `press`/`type` composers live in the

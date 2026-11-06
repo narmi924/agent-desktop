@@ -30,7 +30,7 @@ pub(crate) use live::{
     check_live_with_stability_or_gap,
 };
 pub(crate) use pointer_delivery::PointerDelivery;
-pub(crate) use receives_events::require_receives_events;
+pub(crate) use receives_events::{candidate_points, require_receives_events};
 pub(crate) use report::ActionabilityReport;
 pub(crate) use stability::StabilityExpectation;
 #[cfg(test)]

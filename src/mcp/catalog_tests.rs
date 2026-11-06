@@ -151,6 +151,19 @@ fn flag_shaped_values_stay_values_and_never_become_flags() {
 }
 
 #[test]
+fn page_pointer_refs_reach_the_command_in_order() {
+    let args = Map::from_iter([
+        ("xy".into(), Value::from("10,20")),
+        ("page_refs".into(), json!(["tab", "document", "receiver"])),
+    ]);
+    let cli = parse(&tool_at(&["mouse-click"]), &args).expect("grouped pointer refs");
+    let Some(crate::cli::Commands::MouseClick(click)) = cli.command else {
+        panic!("mouse-click")
+    };
+    assert_eq!(click.page_refs, ["tab", "document", "receiver"]);
+}
+
+#[test]
 fn global_flags_cannot_be_set_per_call() {
     let tool = tool_at(&["snapshot"]);
     for global in [

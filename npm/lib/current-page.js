@@ -23,9 +23,9 @@ function browserWindow(ad, id, owner) {
   return win;
 }
 
-function readPage(ad, win) {
+function readPage(ad, win, bounds=false) {
   let snapshot;
-  try { snapshot = ad('snapshot', '--window-id', win.id, '--compact', '--max-depth', '50'); }
+  try { snapshot = ad('snapshot', '--window-id', win.id, '--compact', '--max-depth', '50', ...(bounds ? ['--include-bounds'] : [])); }
   catch (err) {
     if (err.code === 'ACTION_FAILED' && err.details?.faults?.length) throw pending(err.message);
     throw err;
@@ -70,11 +70,11 @@ function result(state) {
   return {page,window,title,url,tab:state.tab,controls,text:state.text};
 }
 
-async function readyPage(ad, id, owner) {
+async function readyPage(ad, id, owner, bounds=false) {
   const win = browserWindow(ad,id,owner);
   const until = Date.now() + 2500;
   for (;;) {
-    try { return readPage(ad,win); }
+    try { return readPage(ad,win,bounds); }
     catch (err) {
       if (err.code !== 'PAGE_NOT_READY' || Date.now() >= until) throw err;
       await delay(100);
@@ -82,11 +82,11 @@ async function readyPage(ad, id, owner) {
   }
 }
 
-async function source(ad, page) {
+async function source(ad, page, bounds=false) {
   let saved;
   try { saved = JSON.parse(Buffer.from(page, 'base64url').toString()); } catch { /* validated below */ }
   if (!saved?.window || !saved.owner || !saved.instance || !webUrl(saved.url)) throw new Error('Use the page handle returned by current or follow.');
-  const state = await readyPage(ad, saved.window, saved.owner);
+  const state = await readyPage(ad, saved.window, saved.owner, bounds);
   if (state.instance !== saved.instance) throw new Error('The original tab is no longer selected. Run current to take over another tab.');
   return {state,saved};
 }
@@ -107,16 +107,18 @@ async function editPage(ad, write, {page,field,value,stdin,app,window,document})
   return {page,url:state.url,field,delivery:action.disposition?.delivery ?? action.after_action?.disposition?.delivery};
 }
 
-async function follow(ad, {page,link,button,'expect-url':expectedUrl}) {
+async function follow(ad, {page,link,button,visible,'expect-url':expectedUrl}, physicalPointer) {
   if (!page || Boolean(link) === Boolean(button) || (button && !expectedUrl) || (expectedUrl && !webUrl(expectedUrl)))
     throw new Error('Provide --page with --link, or --button with an absolute --expect-url.');
-  const {state,saved} = await source(ad,page);
+  const {state,saved} = await source(ad,page,Boolean(visible));
   if (state.url !== saved.url) throw new Error('The page navigated. Read it with current --page before acting.');
   const targets = state.controls.filter(n => n.role === (link ? 'link' : 'button') && n.name === (link || button));
   if (targets.length !== 1) throw new Error('Expected one named navigation control.');
   const destination = webUrl(expectedUrl) ?? targets[0].href;
   if (!destination) throw new Error('Supply --expect-url for a control without a web destination.');
-  const action = ad('click',targets[0].ref,'--selected-tab',state.tab);
+  const [target] = targets;
+  const action = visible ? physicalPointer(ad,state,'click',{on:target.name, role:target.role, ref:target.ref}) :
+    ad('click',target.ref,'--selected-tab',state.tab);
   try {
     const until = Date.now() + 7000;
     do {
@@ -144,4 +146,4 @@ async function follow(ad, {page,link,button,'expect-url':expectedUrl}) {
   }
 }
 
-module.exports = {current, follow, editPage, source};
+module.exports = {current, follow, editPage, source, result};

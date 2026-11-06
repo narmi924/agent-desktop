@@ -18,7 +18,7 @@ pub(crate) mod ref_action_wait;
 pub(crate) mod ref_action_wait_context;
 pub(crate) mod ref_action_wait_evidence;
 pub(crate) mod ref_action_wait_support;
-mod selected_tab;
+pub(crate) mod selected_tab;
 
 const TRACE_CAPTURE_BUDGET_MS: u64 = 1_000;
 const PRE_CAPTURE_DISPATCH_RESERVE_MS: u64 = 100;

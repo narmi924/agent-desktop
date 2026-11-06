@@ -104,6 +104,22 @@ pub(crate) struct TypeArgs {
     )]
     #[serde(default)]
     pub interval_ms: Option<u64>,
+    /// Type into this captured tab while its editor has keyboard focus
+    #[arg(long, requires = "interval_ms")]
+    #[serde(default)]
+    pub selected_tab: Option<String>,
+    /// Enter line breaks or explicitly replace the captured field
+    #[arg(long, value_enum, requires = "selected_tab")]
+    #[serde(default)]
+    pub entry_mode: Option<PageEntryMode>,
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum PageEntryMode {
+    Multiline,
+    Replace,
+    ReplaceMultiline,
 }
 
 impl TypeArgs {
@@ -283,6 +299,10 @@ pub(crate) struct MouseMoveArgs {
         help = "Absolute coordinates as x,y; requires --headed; write a negative value with = (--xy=-100,50)"
     )]
     pub xy: String,
+    /// Captured tab and document refs, optionally followed by the required pointer receiver
+    #[arg(long, num_args = 1..=3, value_name = "REF")]
+    #[serde(default)]
+    pub page_refs: Vec<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -310,6 +330,10 @@ pub(crate) struct MouseClickArgs {
     )]
     #[serde(default)]
     pub modifiers: Vec<String>,
+    /// Captured tab and document refs, optionally followed by the required pointer receiver
+    #[arg(long, num_args = 1..=3, value_name = "REF")]
+    #[serde(default)]
+    pub page_refs: Vec<String>,
 }
 
 #[derive(Parser, Debug, Deserialize)]

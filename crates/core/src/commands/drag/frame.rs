@@ -1,23 +1,10 @@
 use super::{
     DragArgs, operation_response, point_deadline, require_cursor_policy, require_pointer_capability,
 };
-use crate::{
-    AppError, DragParams, Point, WindowInfo, adapter::PlatformAdapter, context::CommandContext,
-};
+pub use crate::adapter::input::WindowFrame;
+use crate::{AppError, DragParams, Point, adapter::PlatformAdapter, context::CommandContext};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use serde::Deserialize;
 use serde_json::{Value, json};
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WindowFrame {
-    pub window: WindowInfo,
-    pub width: u32,
-    pub height: u32,
-    pub scale: f64,
-    #[serde(default)]
-    pub region: Option<[u32; 4]>,
-}
 
 fn decode(token: &str) -> Result<WindowFrame, AppError> {
     let invalid = || {

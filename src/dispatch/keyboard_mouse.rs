@@ -1,5 +1,5 @@
 use agent_desktop_core::{
-    AppError, PlatformAdapter,
+    AppError, MouseButton, MouseEvent, MouseEventKind, PlatformAdapter, Point,
     commands::{
         drag as drag_command, helpers, hover as hover_command, key_down as key_down_command,
         key_up as key_up_command, mouse_click as mouse_click_command,
@@ -113,6 +113,19 @@ pub(super) fn mouse_move(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let (x, y) = parse_xy(&args.xy)?;
+    if let Some(page) = crate::cli_args::mouse_wheel::binding(&args.page_refs)? {
+        return helpers::page_pointer::execute(
+            page,
+            MouseEvent {
+                point: Point { x, y },
+                kind: MouseEventKind::Move,
+                button: MouseButton::Left,
+                modifiers: Vec::new(),
+            },
+            adapter,
+            context,
+        );
+    }
     mouse_move_command::execute(mouse_move_command::MouseMoveArgs { x, y }, adapter, context)
 }
 
@@ -122,6 +135,19 @@ pub(super) fn mouse_click(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let (x, y) = parse_xy(&args.xy)?;
+    if let Some(page) = crate::cli_args::mouse_wheel::binding(&args.page_refs)? {
+        return helpers::page_pointer::execute(
+            page,
+            MouseEvent {
+                point: Point { x, y },
+                kind: MouseEventKind::Click { count: args.count },
+                button: parse_mouse_button(&args.button)?,
+                modifiers: parse_modifiers(&args.modifiers)?,
+            },
+            adapter,
+            context,
+        );
+    }
     mouse_click_command::execute(
         mouse_click_command::MouseClickArgs {
             x,
@@ -176,6 +202,25 @@ pub(super) fn mouse_wheel(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    if let Some(page) = crate::cli_args::mouse_wheel::binding(&args.page_refs)? {
+        return helpers::page_pointer::execute(
+            page,
+            MouseEvent {
+                point: Point {
+                    x: args.x,
+                    y: args.y,
+                },
+                kind: MouseEventKind::Wheel {
+                    delta_x: args.dx,
+                    delta_y: args.vertical_lines(),
+                },
+                button: MouseButton::Left,
+                modifiers: parse_modifiers(&args.modifiers)?,
+            },
+            adapter,
+            context,
+        );
+    }
     mouse_wheel_command::execute(
         mouse_wheel_command::MouseWheelArgs {
             x: args.x,

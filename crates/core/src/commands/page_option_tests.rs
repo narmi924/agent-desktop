@@ -1,4 +1,6 @@
-use super::*;
+use super::{ChoiceTarget, execute};
+use crate::refs::page_capture::{confirm_document, fingerprint, stamp_documents};
+use crate::{AccessibilityNode, Action, CommandContext};
 use serde_json::json;
 
 #[test]

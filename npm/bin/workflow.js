@@ -12,10 +12,16 @@ const { view, move, edit } = require('../lib/window-move');
 const { browserMove, dropFile } = require('../lib/browser-move');
 const { current, follow, editPage } = require('../lib/current-page');
 const { choosePage } = require('../lib/page-choice');
+const { typePage } = require('../lib/page-input');
+const { wheelPage, pointerPage, physicalPointer } = require('../lib/page-pointer');
 
 const usage = [
   'agent-desktop-workflow current [--window ID | --page PAGE]',
-  'agent-desktop-workflow follow --page PAGE (--link NAME [--expect-url URL] | --button NAME --expect-url URL)',
+  'agent-desktop-workflow follow --page PAGE (--link NAME [--expect-url URL] | --button NAME --expect-url URL) [--visible]',
+  'agent-desktop-workflow type --page PAGE --field NAME (--value TEXT | --stdin) [--interval-ms MS] [--multiline] [--replace] [--after IMAGE.png]',
+  'agent-desktop-workflow wheel --page PAGE --over VISIBLE_TEXT [--lines N] [--until TEXT] (positive is down)',
+  'agent-desktop-workflow point --page PAGE --on NAME [--role ROLE] [--nth N] [--expect-text TEXT]',
+  'agent-desktop-workflow click --page PAGE --on NAME [--role ROLE] [--nth N] [--expect-text TEXT]',
   'agent-desktop-workflow edit --page PAGE --field NAME (--value TEXT | --stdin)',
   'agent-desktop-workflow choose --page PAGE --field LABEL --value OPTION [--within SECTION] [--open BUTTON] [--popup PANEL] [--advance BUTTON] [--search FIELD] [--confirm BUTTON] [--expect-value TEXT]',
   'agent-desktop-workflow choose --session NAME [--tab TAB] (--field LABEL | --input CSS) --value VALUE [--position N] [--format DATE_FORMAT]',
@@ -36,7 +42,8 @@ function one(items, description) {
 function run(binary, args, input) {
   let out;
   try {
-    out = execFileSync(binary, args, { encoding: 'utf8', windowsHide: true, timeout: 15000, maxBuffer: args[0] === 'screenshot' ? 96 * 1024 * 1024 : 8 * 1024 * 1024, input, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
+    const timeout = args[0] === 'type' && args.includes('--interval-ms') ? 0 : 15000;
+    out = execFileSync(binary, args, { encoding: 'utf8', windowsHide: true, timeout, maxBuffer: args[0] === 'screenshot' ? 96 * 1024 * 1024 : 8 * 1024 * 1024, input, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
   } catch (err) {
     if (!err.stdout) throw new Error('Cannot execute ' + basename(binary) + ' (' + (err.code ?? 'command failed') + ')');
     out = err.stdout;
@@ -214,11 +221,15 @@ async function main() {
   const command = args.shift();
   const commands = {
     current: ['window', 'page'],
-    follow: ['page', 'link', 'button', 'expect-url'],
+    follow: ['page', 'link', 'button', 'expect-url', 'visible'],
     choose: ['page', 'session', 'tab', 'field', 'input', 'value', 'position', 'format', 'within', 'open', 'popup', 'advance', 'search', 'confirm', 'expect-value'],
     reveal: ['session', 'tab', 'within', 'text'],
     'choose-file': ['session', 'tab', 'input', 'file'],
     view: ['window', 'app', 'output', 'region'],
+    type: ['page','field','value','stdin','interval-ms','multiline','replace','after'],
+    wheel: ['page','over','lines','until'],
+    point: ['page','on','role','nth','expect-text'],
+    click: ['page','on','role','nth','expect-text'],
     edit: ['window', 'app', 'document', 'field', 'value', 'stdin', 'page'],
     move: ['frame', 'from', 'to-frame', 'to', 'after'],
     'browser-move': ['session', 'tab', 'surface', 'from', 'to', 'object', 'after'],
@@ -226,7 +237,7 @@ async function main() {
   };
   if (!Object.hasOwn(commands, command)) throw new Error(usage);
   const names = commands[command];
-  const options = Object.fromEntries(names.map(key => [key, { type: key === 'stdin' ? 'boolean' : 'string' }]));
+  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible'].includes(key) ? 'boolean' : 'string' }]));
   const { values } = parseArgs({ args, options });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   const db = process.env.AGENT_DESKTOP_BIN ?? join(__dirname, 'agent-desktop-win32-' + process.arch + '.exe');
@@ -234,7 +245,7 @@ async function main() {
   let data;
   switch (command) {
     case 'current': data = await current(ad, values); break;
-    case 'follow': data = await follow(ad, values); break;
+    case 'follow': data = await follow(ad, values, physicalPointer); break;
     case 'choose-file': data = await chooseFile(values); break;
     case 'choose':
       if (!values.page && (values.within || values.open || values.popup || values.advance || values.search || values.confirm || values['expect-value'])) throw new Error('Native choice options require --page.');
@@ -249,6 +260,9 @@ async function main() {
       break;
     }
     case 'view': data = view(ad, values); break;
+    case 'type': data = await typePage(ad,(args,input)=>run(db,args,input),values); break;
+    case 'wheel': data = await wheelPage(ad,values); break;
+    case 'point': case 'click': data = await pointerPage(ad,command,values); break;
     case 'edit': {
       const write = (args,data) => run(db,args,data);
       data = values.page ? await editPage(ad,write,values) : edit(ad,write,values);
@@ -261,4 +275,9 @@ async function main() {
   console.log(JSON.stringify({ ok: true, data }));
 }
 
-main().catch(err => { console.error(JSON.stringify({ ok: false, error: err.message, ...(err.disposition ? {code:err.code,disposition:err.disposition} : {}) })); process.exitCode = 1; });
+main().catch(err => {
+  const partial=err.details?.typed_keystrokes;
+  console.error(JSON.stringify({ok:false,error:err.message,...(err.disposition ? {code:err.code,disposition:err.disposition} : {}),
+    ...(Number.isInteger(partial) ? {typed_keystrokes:partial,keystrokes:err.details.keystrokes} : {})}));
+  process.exitCode=1;
+});

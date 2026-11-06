@@ -1,5 +1,5 @@
 use crate::ref_action::ref_action_context::RefActionContext;
-use crate::refs::resolve_saved_ref::observe_saved_ref;
+use crate::refs::resolve_saved_ref::{observe_whole_window, recorded_window};
 use crate::{AdapterError, InteractionLease, RefEntry};
 
 fn refused(message: &str) -> AdapterError {
@@ -16,6 +16,30 @@ pub(super) fn check(
     let Some((tab, document)) = guard else {
         return Ok(());
     };
+    let tree = observe(tab, target, lease)?;
+    if let Some(doc) = document {
+        if doc.process != tab.process
+            || doc.source.source_window_id != tab.source.source_window_id
+            || !tree.is_exhaustive()
+        {
+            return Err(refused(
+                "Cannot establish the complete form in the selected tab",
+            ));
+        }
+        crate::refs::page_capture::confirm_document(
+            &tree.into_accessibility_tree()?,
+            doc,
+            target.entry,
+        )?;
+    }
+    Ok(())
+}
+
+pub(crate) fn observe(
+    tab: &RefEntry,
+    target: &RefActionContext<'_>,
+    lease: &InteractionLease,
+) -> Result<crate::locator::live_locator::ObservedTree, AdapterError> {
     let captured = tab
         .identity
         .retained_object
@@ -33,43 +57,51 @@ pub(super) fn check(
             "The captured tab was not selected in the control's window",
         ));
     }
-    let (_, tree, index) =
-        observe_saved_ref(target.adapter, tab, target.deadline, Some(lease), false).map_err(
-            |err| {
-                refused("Cannot establish the selected document tab")
-                    .with_details(serde_json::json!({"cause": err.code, "message": err.message}))
-            },
-        )?;
-    let live = &tree.nodes[index].evidence;
-    if live.identifiers.retained_object() != Some(captured)
-        || !live
-            .states
-            .known()
-            .is_some_and(|states| states.iter().any(|s| s == "selected"))
+    let window = recorded_window(target.adapter, tab, target.deadline)?;
+    if window.process_instance != tab.process.process_instance {
+        return Err(refused("The captured tab's process changed"));
+    }
+    let options = crate::adapter::TreeOptions {
+        surface: tab.source.source_surface,
+        force_renderer_accessibility: tab.source.renderer_accessibility_forced,
+        ..Default::default()
+    };
+    let tree = observe_whole_window(
+        target.adapter,
+        &options,
+        &window,
+        target.deadline,
+        Some(lease),
+    )?;
+    if !tree.is_exhaustive() {
+        return Err(refused("Cannot establish all tabs in the captured window"));
+    }
+    // Browser history restores can change a tab's title or description while its native instance stays selected.
+    let mut matches = tree
+        .nodes
+        .iter()
+        .map(|n| &n.evidence)
+        .filter(|n| n.identifiers.retained_object() == Some(captured));
+    let Some(live) = matches.next() else {
+        return Err(refused("The captured tab is no longer in the window"));
+    };
+    let selected = live
+        .states
+        .known()
+        .is_some_and(|s| s.iter().any(|v| v == "selected"));
+    if matches.next().is_some() || live.role.known().map(String::as_str) != Some("tab") || !selected
     {
         return Err(refused(
             "The captured document tab changed or is no longer selected",
         ));
     }
-    if let Some(doc) = document {
-        if doc.process != tab.process
-            || doc.source.source_window_id != tab.source.source_window_id
-            || !tree.is_exhaustive()
-        {
-            return Err(refused(
-                "Cannot establish the complete form in the selected tab",
-            ));
-        }
-        crate::commands::page_option::confirm_document(
-            &tree.into_accessibility_tree()?,
-            doc,
-            target.entry,
-        )?;
-    }
-    Ok(())
+    target
+        .adapter
+        .validate_saved_ref_context(tab, Some(captured))?;
+    Ok(tree)
 }
 
-pub(super) fn resolve_choice(
+pub(crate) fn resolve_choice(
     target: &RefActionContext<'_>,
 ) -> Result<crate::NativeHandle, AdapterError> {
     let mut anchor = target.entry.clone();

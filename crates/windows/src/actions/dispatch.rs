@@ -65,12 +65,21 @@ mod imp {
         let element = uia_element(handle)?;
         deadline.ensure_remaining()?;
         corroborate_verified_process(element)?;
+        if request.focused_page_typing() {
+            crate::input::keyboard::require_free_typing_keys()?;
+        }
         match &request.action {
             Action::Click => execute_click(element, request.policy, deadline),
             Action::SetFocus => focus_element(element, &request, deadline),
             Action::ScrollTo => execute_scroll_to(handle, lease),
             Action::TypeText(text) => {
-                let steps = type_text_steps(element, text, request.policy, deadline)?;
+                let steps = type_text_steps(
+                    element,
+                    text,
+                    request.policy,
+                    deadline,
+                    request.focused_page_typing(),
+                )?;
                 Ok(ActionResult::from_execution(&request.action, steps))
             }
             Action::PressKey(combo) => {

@@ -51,6 +51,28 @@ pub fn execute(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    execute_with_tab(args, None, adapter, context)
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct PageTypingMode {
+    pub multiline: bool,
+    pub replace: bool,
+}
+
+pub fn execute_with_tab(
+    args: TypeArgs,
+    binding: Option<(&str, PageTypingMode)>,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    if binding.is_some()
+        && (args.interval_ms.is_none() || !context.is_headed() || args.text.is_empty())
+    {
+        return Err(AppError::invalid_input(
+            "Typing in a selected tab requires text, --headed and --interval-ms",
+        ));
+    }
     if args.text.len() > MAX_TEXT_LEN {
         return Err(AppError::invalid_input(format!(
             "Text exceeds maximum length of {MAX_TEXT_LEN} characters"
@@ -64,7 +86,44 @@ pub fn execute(
             )));
         }
         if !args.text.is_empty() {
-            return super::type_text_interval::execute(args, interval_ms, adapter, context);
+            let mode = binding.map(|(_, mode)| mode).unwrap_or_default();
+            let multiline = mode.multiline;
+            if binding.is_some()
+                && (args.text.contains('\t') || (!multiline && args.text.contains(['\r', '\n'])))
+            {
+                return Err(AppError::invalid_input(
+                    "Use spaces for indentation and a multiline entry mode for line breaks",
+                ));
+            }
+            let tab = binding
+                .map(|(id, _)| id)
+                .map(|id| super::helpers::selected_tab::load_tab(&args.ref_id, id, context))
+                .transpose()?;
+            if let Some(tab) = &tab
+                && !super::helpers::load_ref_entry(&args.ref_id, context)?
+                    .capabilities
+                    .states
+                    .iter()
+                    .any(|s| s == "focused")
+            {
+                super::helpers::selected_tab::dispatch_in_tab(
+                    RefArgs {
+                        ref_id: args.ref_id.clone(),
+                        timeout_ms: None,
+                    },
+                    adapter,
+                    context.request_base(Action::SetFocus),
+                    context,
+                    tab,
+                )?;
+            }
+            return super::type_text_interval::execute(
+                args,
+                interval_ms,
+                adapter,
+                context,
+                tab.as_ref().map(|tab| (tab, mode)),
+            );
         }
     }
     let request = context.request_base(Action::TypeText(args.text));

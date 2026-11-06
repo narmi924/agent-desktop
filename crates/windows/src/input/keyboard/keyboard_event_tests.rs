@@ -4,6 +4,30 @@ use crate::input::keyboard::keyboard_send::key_state_fake_sink as key_state;
 use crate::input::keyboard::keyboard_send::keyboard_send_fake_sink as sink;
 use agent_desktop_core::{DeliverySemantics, ErrorCode};
 
+#[test]
+fn page_typing_stops_before_editing_when_escape_or_shift_is_held() {
+    for key in [keyboard_map::VK_ESCAPE, keyboard_map::VK_SHIFT] {
+        reset();
+        key_state::set_down(key);
+        let error = crate::input::keyboard::require_free_typing_keys().unwrap_err();
+        assert_eq!(error.disposition, DeliverySemantics::not_delivered());
+        assert!(sink::recorded().is_empty());
+    }
+    reset();
+    assert!(crate::input::keyboard::require_free_typing_keys().is_ok());
+}
+
+#[test]
+fn navigation_keys_use_the_dedicated_key_cluster() {
+    let end = key_input(keyboard_map::VK_END, false);
+    let end_up = key_input(keyboard_map::VK_END, true);
+    let shift = key_input(keyboard_map::VK_SHIFT, false);
+    assert!(end.scan > 0 && shift.scan > 0);
+    assert_eq!(end.flags & 1, 1);
+    assert_eq!(end_up.flags, end.flags | KEYEVENTF_KEYUP);
+    assert_eq!(shift.flags & 1, 0);
+}
+
 fn reset() {
     sink::reset();
     key_state::reset();

@@ -22,12 +22,24 @@ pub(crate) fn type_text_steps(
     text: &str,
     policy: InteractionPolicy,
     deadline: Deadline,
+    layout_keys: bool,
 ) -> Result<Vec<ActionStep>, AdapterError> {
     ensure_keyboard_policy(policy)?;
     preflight_text(text, deadline)?;
-    let focus_ready = ensure_keyboard_delivery_ready(element, deadline)?;
+    if crate::input::keyboard::escape_held() {
+        return Err(AdapterError::new(
+            agent_desktop_core::ErrorCode::ActionFailed,
+            "Typing stopped by Escape",
+        )
+        .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered()));
+    }
+    let focus_ready = ensure_keyboard_delivery_ready(element, deadline, layout_keys)?;
+    if layout_keys && focus_ready && crate::input::keyboard::type_layout_character(text, deadline)?
+    {
+        return Ok(vec![physical_step(TYPE_TEXT_LABEL)]);
+    }
     type_text_from_gate(text, focus_ready, deadline, |deadline| {
-        match ensure_keyboard_delivery_ready(element, deadline)? {
+        match ensure_keyboard_delivery_ready(element, deadline, layout_keys)? {
             true => Ok(()),
             false => Err(focus_lost_before_delivery()),
         }
@@ -43,7 +55,7 @@ pub(crate) fn press_key_element_steps(
 ) -> Result<Vec<ActionStep>, AdapterError> {
     ensure_keyboard_policy(policy)?;
     deadline.ensure_remaining()?;
-    let focus_ready = ensure_keyboard_delivery_ready(element, deadline)?;
+    let focus_ready = ensure_keyboard_delivery_ready(element, deadline, false)?;
     press_key_from_gate(combo, focus_ready, deadline).map(|step| vec![step])
 }
 

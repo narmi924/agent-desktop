@@ -10,6 +10,7 @@ use crate::{
 };
 use serde_json::{Value, json};
 
+pub mod page_pointer;
 #[path = "post_action_observation.rs"]
 mod post_action_observation;
 pub(crate) mod selected_tab;

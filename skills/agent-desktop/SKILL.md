@@ -31,6 +31,8 @@ Examples use a POSIX shell. In PowerShell, quote every ref (`'@s8f3k2p9:e1'`), b
 
 ## The loop
 
+On Windows, when operating an open web page for a person to watch, use the companion's `type --page` for visible typing and `wheel --page` to read successive parts of a pane. See `commands-interaction`. Use `current` to identify the tab and named targets, and `follow --visible` to keep operating after a link opens in the same or a new tab.
+
 Use `find` when you know the role or exact name. Otherwise map the app first and drill into one region.
 
 On the Windows fork, run `node npm/bin/workflow.js current` to read the selected page in an open Chrome window. Pass its page handle to `follow` to continue after navigation or to `edit` to fill a field. In a named Chromium session, use `choose`, `reveal` or `browser-move` for lists and canvases. Use `view` and `move` for native visual input, or `choose-file` and `drop-file` for attachments. See `commands-interaction` for examples.

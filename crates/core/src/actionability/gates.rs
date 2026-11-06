@@ -8,6 +8,28 @@ use crate::{
     actions::capability,
 };
 
+pub(super) fn focused_editor(
+    evidence: &ActionabilityEvidence,
+    request: &ActionRequest,
+) -> Option<ActionabilityCheck> {
+    if request.focused_page_typing
+        && matches!(request.action, Action::TypeText(_))
+        && matches!(evidence.state.role.as_str(), "textfield" | "textarea")
+        && evidence.states_complete
+        && evidence.state.hidden != Some(true)
+        && !evidence.state.states.iter().any(|s| s == "hidden")
+        && evidence
+            .bounds
+            .is_none_or(|r| r.width == 0.0 || r.height == 0.0)
+    {
+        let mut check = pass("visible");
+        check.reason =
+            Some("the captured editor's keyboard receiver is checked at delivery".into());
+        return Some(check);
+    }
+    None
+}
+
 pub(super) fn visibility(
     evidence: &ActionabilityEvidence,
     requires_geometry: bool,
@@ -28,6 +50,7 @@ pub(super) fn visibility(
         None => {}
         Some(false) => {}
     }
+
     match evidence.state.offscreen {
         Some(true) => return fail("visible", "live offscreen state is true"),
         None if !evidence.states_complete => {

@@ -145,14 +145,33 @@ $page.controls
 On `https://the-internet.herokuapp.com/`, continue in the same tab and then in the new tab:
 
 ```powershell
-$next = (node npm/bin/workflow.js follow --page $page.page --link "Multiple Windows" | ConvertFrom-Json).data
-$child = (node npm/bin/workflow.js follow --page $next.page --link "Click Here" | ConvertFrom-Json).data
+$next = (node npm/bin/workflow.js follow --visible --page $page.page --link "Multiple Windows" | ConvertFrom-Json).data
+$child = (node npm/bin/workflow.js follow --visible --page $next.page --link "Click Here" | ConvertFrom-Json).data
 $child.text
 ```
 
-Each result includes the URL, page text, control refs and a handle for the next action. `current --page PAGE` refreshes the same tab after a navigation. `follow` returns the observed destination in the original tab or in one newly selected tab in the same window. Supply `--expect-url URL` for a known redirect, or `--button NAME --expect-url URL` for a button that navigates. An unexpected tab switch stops the operation. If a click already happened, inspect the current page before repeating it.
+Each result includes the URL, page text, control refs and a handle for the next action. `current --page PAGE` refreshes the same tab after a navigation. `follow --visible` moves the cursor to the link or button and clicks it. `follow` returns the observed destination in the original tab or in one newly selected tab in the same window. Supply `--expect-url URL` for a known redirect, or `--button NAME --expect-url URL` for a button that navigates. An unexpected tab switch stops the operation. If a click already happened, inspect the current page before repeating it.
 
-Use `edit --page PAGE --field NAME --value TEXT` to replace a named field on that page. For another native action, the result supplies a same-snapshot `tab` ref for `click REF --selected-tab TAB` or `set-value REF VALUE --selected-tab TAB`. These commands require the window to expose the document and tab through Windows accessibility.
+For visible interaction, type at the caret and turn the mouse wheel over text in the intended pane:
+
+```powershell
+node npm/bin/workflow.js type --page $page.page --field "Search" --value "linked lists"
+node npm/bin/workflow.js wheel --page $page.page --over "Example 1:" --lines 3
+node npm/bin/workflow.js point --page $page.page --on "Details" --role button
+node npm/bin/workflow.js click --page $page.page --on "Details" --role button --expect-text "More information"
+```
+
+Typing inserts at the caret. The default interval is 75 ms between keystroke units; `--interval-ms` changes the pace. Windows uses the foreground keyboard layout for characters available on a key and Unicode input for other text. A change of tab or receiver stops a burst. Printable keys can continue in an editor's own suggestion list. Hold Escape to interrupt.
+
+Use `--multiline` only where Enter inserts a new line. A single-line form or chat can bind Enter to submission. When inserting at the caret, let the editor supply its own automatic indentation. To replace the entire named field with prepared source, use `--replace --multiline --stdin`. This explicitly selects the field's contents, types the source and clears editor-generated indentation and closing characters beyond the caret. Use spaces for indentation. A partial replacement reports the completed input count. Inspect partial delivery before continuing.
+
+`verified` means the field exposed the expected text. Some code editors expose only a focused proxy or update the URL when they save. Pass `--after IMAGE.png` to capture the rendered result in a new file while the original document is visible. Inspect the image when text readback is unavailable.
+
+Keep the browser in front. `wheel --over "Example 1:" --lines 3` moves the real wheel downward over that text and measures its movement. Add `--until "Constraints:"` to scroll the same region until that label appears. Negative lines scroll upward. A changed region, covered point or different selected tab stops delivery. A bounded search can finish before its destination is visible.
+
+Use `point` to move the real cursor onto a visible control, text or image. Specify `--nth 2` to deliberately choose the second visible match in reading order. Use `click` for a named control. It moves there, checks which element will receive the click, then presses the left mouse button. Moving the cursor yourself during travel, holding a mouse button or holding Escape interrupts travel. Add `--expect-text` to check what a hover or click reveals on the same page. Use `follow` for a navigation with an expected destination.
+
+For a background value replacement, use `edit --page PAGE --field NAME --value TEXT`. A `current` result also supplies a same-snapshot `tab` ref for `click REF --selected-tab TAB` or `set-value REF VALUE --selected-tab TAB`.
 
 Use `choose --page` for choices on the open page. No extension, debugging port or named browser session is required:
 

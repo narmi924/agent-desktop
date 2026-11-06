@@ -49,8 +49,7 @@ pub(crate) fn synthesize_checked(
 }
 
 fn not_cancelled() -> Result<(), AdapterError> {
-    use crate::input::keyboard::{keyboard_map::VK_ESCAPE, keyboard_send::key_is_down};
-    if key_is_down(VK_ESCAPE) {
+    if crate::input::keyboard::escape_held() {
         return Err(
             AdapterError::new(ErrorCode::ActionFailed, "Drag stopped by Escape")
                 .with_disposition(DeliverySemantics::not_delivered()),

@@ -74,7 +74,7 @@ pub(super) fn receives_events_check(
     Ok((check, None))
 }
 
-fn candidate_points(bounds: crate::Rect) -> [Point; 5] {
+pub(crate) fn candidate_points(bounds: crate::Rect) -> [Point; 5] {
     let point = |x: f64, y: f64| Point {
         x: bounds.x + bounds.width * x,
         y: bounds.y + bounds.height * y,

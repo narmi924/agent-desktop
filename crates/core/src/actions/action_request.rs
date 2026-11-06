@@ -15,6 +15,8 @@ pub struct ActionRequest {
     pub(crate) expected_process: Option<crate::ProcessIdentity>,
     #[serde(skip)]
     pub(crate) scroll_by_viewport: bool,
+    #[serde(skip)]
+    pub(crate) focused_page_typing: bool,
 }
 
 impl ActionRequest {
@@ -34,6 +36,7 @@ impl ActionRequest {
             verified_point: None,
             expected_process: None,
             scroll_by_viewport: false,
+            focused_page_typing: false,
         }
     }
 
@@ -45,6 +48,7 @@ impl ActionRequest {
             verified_point: None,
             expected_process: None,
             scroll_by_viewport: false,
+            focused_page_typing: false,
         }
     }
 
@@ -56,6 +60,7 @@ impl ActionRequest {
             verified_point: None,
             expected_process: None,
             scroll_by_viewport: false,
+            focused_page_typing: false,
         }
     }
 
@@ -72,6 +77,10 @@ impl ActionRequest {
     pub fn with_expected_process(mut self, process: crate::ProcessIdentity) -> Self {
         self.expected_process = Some(process);
         self
+    }
+
+    pub fn focused_page_typing(&self) -> bool {
+        self.focused_page_typing
     }
 
     pub fn scroll_by_viewport(&self) -> bool {

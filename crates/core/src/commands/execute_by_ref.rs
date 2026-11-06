@@ -50,6 +50,7 @@ pub fn execute_with_timeout(
         verified_point: None,
         expected_process: None,
         scroll_by_viewport: false,
+        focused_page_typing: false,
     };
     execute_ref_action_with_context(
         RefArgs {

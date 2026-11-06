@@ -25,11 +25,14 @@ use crate::{
     context::CommandContext,
 };
 
+mod replace;
+
 pub(crate) fn execute(
     args: TypeArgs,
     interval_ms: u64,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
+    binding: Option<(&crate::RefEntry, super::type_text::PageTypingMode)>,
 ) -> Result<Value, AppError> {
     crate::commands::helpers::validate_post_action_wait(context)?;
     let per_keystroke = context.clone().with_wait_selector(None);
@@ -45,13 +48,41 @@ pub(crate) fn execute(
             .unwrap_or_else(|| default_timeout_ms(unit))
     };
     let mut last = Value::Null;
-    let mut burst: Option<Burst> = None;
+    let replacing = binding.is_some_and(|(_, mode)| mode.replace);
+    let mut burst = if let Some((tab, mode)) = binding
+        && mode.replace
+    {
+        Some(replace::start(&args, tab, adapter, &per_keystroke)?)
+    } else {
+        None
+    };
     for (index, unit) in units.iter().enumerate() {
         let slot = clock.wait();
-        let request = context.request_base(Action::TypeText(unit.clone()));
+        let newline = binding.is_some_and(|(_, mode)| mode.multiline)
+            && matches!(unit.as_str(), "\r" | "\n" | "\r\n");
+        if replacing
+            && newline
+            && let Some(burst) = &burst
+        {
+            replace::discard_tail(burst, adapter, context)
+                .map_err(|e| replace::partial(e, index, units.len()))?;
+        }
+        let action = if newline {
+            Action::PressKey(crate::KeyCombo {
+                key: "return".into(),
+                modifiers: Vec::new(),
+            })
+        } else {
+            Action::TypeText(unit.clone())
+        };
+        let mut request = context.request_base(action);
+        request.focused_page_typing = binding.is_some();
         let mut landed = None;
         let delivered = match &burst {
-            Some(burst) => deliver(adapter, burst, request, budget(unit)).map(|_| {
+            Some(burst) => deliver(adapter, burst, request, budget(unit)).map(|result| {
+                if last.is_null() {
+                    last = json!(result);
+                }
                 crate::ref_action::presentation::move_caret(adapter, context, &burst.handle);
             }),
             None => execute_landing(
@@ -62,23 +93,49 @@ pub(crate) fn execute(
                 adapter,
                 request,
                 &per_keystroke,
+                binding.map(|(tab, _)| tab),
             )
             .map(|(value, handle)| {
                 last = value;
                 landed = Some(handle);
             }),
         };
-        delivered.map_err(|error| after_partial_delivery(error, index, units.len()))?;
+        delivered.map_err(|error| {
+            if replacing {
+                replace::partial(error, index, units.len())
+            } else {
+                after_partial_delivery(error, index, units.len())
+            }
+        })?;
+        if replacing
+            && newline
+            && let Some(burst) = &burst
+        {
+            replace::start_line(burst, adapter, context)
+                .map_err(|e| replace::partial(e, index + 1, units.len()))?;
+        }
         clock.delivered(slot);
         if let Some(handle) = landed.filter(|_| index + 1 < units.len()) {
             burst = Some(
-                burst_around(handle, &args.ref_id, context)
-                    .map_err(|error| after_partial_delivery(error, index + 1, units.len()))?,
+                burst_around(
+                    handle,
+                    &args.ref_id,
+                    context,
+                    adapter,
+                    binding.map(|(tab, _)| tab),
+                )
+                .map_err(|error| after_partial_delivery(error, index + 1, units.len()))?,
             );
         }
     }
     if let Some(burst) = &burst {
-        let expected = expected_final_value(&last, &units);
+        let expected = if replacing {
+            replace::discard_tail(burst, adapter, context)
+                .map_err(|e| replace::partial(e, units.len(), units.len()))?;
+            Some(args.text)
+        } else {
+            expected_final_value(&last, &units)
+        };
         super::type_text_interval_verify::verify_burst(
             &mut last,
             adapter,
@@ -145,6 +202,7 @@ struct Burst {
     entry: crate::RefEntry,
     handle: crate::NativeHandle,
     process: Option<crate::ProcessIdentity>,
+    tab: Option<(crate::NativeHandle, String)>,
 }
 
 /// Runs the first unit as a full ref action and returns the element it landed
@@ -155,6 +213,7 @@ fn execute_landing(
     adapter: &dyn PlatformAdapter,
     request: crate::ActionRequest,
     context: &CommandContext,
+    tab: Option<&crate::RefEntry>,
 ) -> Result<(Value, crate::NativeHandle), AppError> {
     let landed = Cell::new(None);
     let value = execute_ref_action_dispatching(
@@ -163,8 +222,12 @@ fn execute_landing(
         request,
         context,
         |target, request, lease| {
-            let (result, handle) =
-                crate::ref_action::dispatch_resolved_landing(target, request, lease, None)?;
+            let (result, handle) = crate::ref_action::dispatch_resolved_landing(
+                target,
+                request,
+                lease,
+                tab.map(|entry| (entry, None)),
+            )?;
             landed.set(Some(handle));
             Ok(result)
         },
@@ -179,6 +242,8 @@ fn burst_around(
     handle: crate::NativeHandle,
     ref_id: &str,
     context: &CommandContext,
+    adapter: &dyn PlatformAdapter,
+    selected_tab: Option<&crate::RefEntry>,
 ) -> Result<Burst, AppError> {
     let entry = crate::commands::helpers::load_ref_entry(ref_id, context)?;
     let process = entry
@@ -187,10 +252,23 @@ fn burst_around(
         .as_deref()
         .filter(|instance| !instance.is_empty())
         .map(|instance| crate::ProcessIdentity::new(entry.process.pid, instance));
+    let tab = selected_tab
+        .map(|tab| -> Result<_, AppError> {
+            let id = tab
+                .identity
+                .retained_object
+                .as_ref()
+                .filter(|s| s.starts_with("tab-instance:"))
+                .ok_or_else(|| AdapterError::stale_ref_because("Cannot retain the selected tab"))?;
+            let handle = adapter.resolve_locator_anchor(tab, crate::Deadline::standard()?)?;
+            Ok((handle, id.clone()))
+        })
+        .transpose()?;
     Ok(Burst {
         entry,
         handle,
         process,
+        tab,
     })
 }
 
@@ -203,6 +281,18 @@ fn deliver(
     let deadline = crate::Deadline::after(timeout_ms)?;
     let lease = adapter.acquire_interaction_lease(deadline)?;
     confirm_target(adapter, burst, &request, deadline)?;
+    if let Some((tab, id)) = &burst.tab {
+        let live = adapter.get_live_element(tab, deadline)?;
+        if live.identity.identifiers.retained_object() != Some(id.as_str())
+            || !live.state.states.iter().any(|s| s == "selected")
+        {
+            return Err(
+                AdapterError::stale_ref_because("The selected tab changed during typing")
+                    .with_disposition(DeliverySemantics::not_delivered())
+                    .into(),
+            );
+        }
+    }
     let request = match &burst.process {
         Some(process) => request.with_expected_process(process.clone()),
         None => request,

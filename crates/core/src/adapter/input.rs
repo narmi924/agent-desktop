@@ -3,6 +3,17 @@ use crate::{
     KeyCombo, MouseEvent, OperationReport,
 };
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WindowFrame {
+    pub window: crate::WindowInfo,
+    pub width: u32,
+    pub height: u32,
+    pub scale: f64,
+    #[serde(default)]
+    pub region: Option<[u32; 4]>,
+}
+
 /// `get_clipboard`/`set_clipboard` were removed pre-1.0 in favor of
 /// `get_clipboard_content`/`set_clipboard_content`; the C ABI
 /// (`ad_get_clipboard`/`ad_set_clipboard`) is unaffected.
@@ -32,6 +43,17 @@ pub trait InputOps: Send + Sync {
         Err(AdapterError::not_supported("mouse_event"))
     }
 
+    fn pointer_in_window(
+        &self,
+        _event: MouseEvent,
+        _window: &str,
+        _lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        Err(AdapterError::not_supported(
+            "pointer input in a captured window",
+        ))
+    }
+
     fn key_event(
         &self,
         _combo: &KeyCombo,
@@ -52,7 +74,7 @@ pub trait InputOps: Send + Sync {
     fn drag_in_frames(
         &self,
         _params: DragParams,
-        _frames: [&crate::commands::drag::frame::WindowFrame; 2],
+        _frames: [&WindowFrame; 2],
         _lease: &InteractionLease,
     ) -> Result<OperationReport, AdapterError> {
         Err(AdapterError::not_supported("drag in window frames"))

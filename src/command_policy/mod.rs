@@ -182,7 +182,12 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::ScrollTo(args) => {
             validate_ref_id(&args.ref_id)?;
         }
-        Commands::Type(args) => validate_ref_id(&args.ref_id)?,
+        Commands::Type(args) => {
+            validate_ref_id(&args.ref_id)?;
+            if let Some(tab) = &args.selected_tab {
+                validate_ref_id(tab)?;
+            }
+        }
         Commands::SetValue(args) => validate_ref_id(&args.ref_id)?,
         Commands::Select(args) => validate_ref_id(&args.ref_id)?,
         Commands::Scroll(args) => {

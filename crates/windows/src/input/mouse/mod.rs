@@ -261,7 +261,13 @@ pub(crate) mod fixture {
     pub(crate) fn modifier_events() -> Vec<(u16, bool)> {
         key_sink::recorded()
             .into_iter()
-            .map(|event| (event.vk, event.flags != 0))
+            .map(|event| {
+                (
+                    event.vk,
+                    event.flags & windows_sys::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_KEYUP
+                        != 0,
+                )
+            })
             .collect()
     }
 

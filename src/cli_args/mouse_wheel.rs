@@ -38,6 +38,35 @@ pub(crate) struct MouseWheelArgs {
     )]
     #[serde(default)]
     pub modifiers: Vec<String>,
+    /// Captured tab and document refs, optionally followed by the required pointer receiver
+    #[arg(long, num_args = 1..=3, value_name = "REF")]
+    #[serde(default)]
+    pub page_refs: Vec<String>,
+}
+
+pub fn binding(
+    refs: &[String],
+) -> Result<
+    Option<agent_desktop_core::commands::helpers::page_pointer::PagePointer<'_>>,
+    agent_desktop_core::AppError,
+> {
+    use agent_desktop_core::commands::helpers::page_pointer::PagePointer;
+    match refs {
+        [] => Ok(None),
+        [tab, document] => Ok(Some(PagePointer {
+            tab,
+            document,
+            receiver: None,
+        })),
+        [tab, document, receiver] => Ok(Some(PagePointer {
+            tab,
+            document,
+            receiver: Some(receiver),
+        })),
+        _ => Err(agent_desktop_core::AppError::invalid_input(
+            "Expected tab, document and optionally receiver refs from the same capture",
+        )),
+    }
 }
 
 impl MouseWheelArgs {
@@ -61,6 +90,7 @@ mod tests {
             dy,
             dx,
             modifiers: Vec::new(),
+            page_refs: Vec::new(),
         }
     }
 

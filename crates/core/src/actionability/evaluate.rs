@@ -167,7 +167,8 @@ fn build_report_with_requirement(
     if requirements.visible {
         let requires_geometry =
             requirements.requires_geometry(request, &evidence.available_actions);
-        let visibility = gates::visibility(evidence, requires_geometry, without_pointer);
+        let visibility = gates::focused_editor(evidence, request)
+            .unwrap_or_else(|| gates::visibility(evidence, requires_geometry, without_pointer));
         if requires_geometry
             && evidence.bounds.is_none()
             && matches!(

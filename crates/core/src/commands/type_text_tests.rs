@@ -8,6 +8,24 @@ use crate::{
 };
 use std::sync::Mutex;
 
+#[test]
+fn guarded_typing_refuses_an_implicit_enter_before_focusing() {
+    let args = TypeArgs {
+        ref_id: "unused".into(),
+        text: "query\n".into(),
+        timeout_ms: None,
+        interval_ms: Some(75),
+    };
+    let err = execute_with_tab(
+        args,
+        Some(("unused", PageTypingMode::default())),
+        &crate::adapter::NoopAdapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("multiline"));
+}
+
 struct StaleThenOkAdapter {
     retry: StaleRetryCounter,
     value: Mutex<String>,

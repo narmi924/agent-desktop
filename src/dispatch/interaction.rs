@@ -94,6 +94,22 @@ pub(super) fn type_text(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    use crate::cli_args::actions::PageEntryMode;
+    if args.entry_mode.is_some() && args.selected_tab.is_none() {
+        return Err(AppError::invalid_input(
+            "--entry-mode requires --selected-tab",
+        ));
+    }
+    let mode = type_text_command::PageTypingMode {
+        multiline: matches!(
+            args.entry_mode,
+            Some(PageEntryMode::Multiline | PageEntryMode::ReplaceMultiline)
+        ),
+        replace: matches!(
+            args.entry_mode,
+            Some(PageEntryMode::Replace | PageEntryMode::ReplaceMultiline)
+        ),
+    };
     let timeout_ms = match args.interval_ms {
         Some(_) => args.timeout_ms,
         None => helpers::normalize_action_timeout_ms(args.effective_timeout_ms()),
@@ -101,13 +117,14 @@ pub(super) fn type_text(
     let text = args
         .text
         .ok_or_else(|| AppError::invalid_input("type text is missing"))?;
-    type_text_command::execute(
+    type_text_command::execute_with_tab(
         type_text_command::TypeArgs {
             ref_id: args.ref_id,
             text,
             timeout_ms,
             interval_ms: args.interval_ms,
         },
+        args.selected_tab.as_deref().map(|tab| (tab, mode)),
         adapter,
         context,
     )

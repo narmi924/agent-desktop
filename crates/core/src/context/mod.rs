@@ -220,6 +220,7 @@ impl CommandContext {
             verified_point: None,
             expected_process: None,
             scroll_by_viewport: false,
+            focused_page_typing: false,
         }
     }
 

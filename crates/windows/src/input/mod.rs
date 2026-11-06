@@ -38,6 +38,8 @@ mod drag_state;
 pub(crate) mod elevation;
 pub(crate) mod keyboard;
 pub(crate) mod mouse;
+#[cfg(target_os = "windows")]
+pub(crate) mod page_pointer;
 mod release_state;
 
 #[cfg(all(test, target_os = "windows"))]

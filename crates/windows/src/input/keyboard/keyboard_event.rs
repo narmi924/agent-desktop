@@ -96,11 +96,41 @@ pub(crate) fn modifier_vk(modifier: &Modifier) -> u16 {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn scan_code(vk: u16) -> (u16, bool) {
+    use windows_sys::Win32::UI::{
+        Input::KeyboardAndMouse::{GetKeyboardLayout, MAPVK_VK_TO_VSC_EX, MapVirtualKeyExW},
+        WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
+    };
+    let thread = unsafe { GetWindowThreadProcessId(GetForegroundWindow(), std::ptr::null_mut()) };
+    let layout = unsafe { GetKeyboardLayout(thread) };
+    let mapped = unsafe { MapVirtualKeyExW(u32::from(vk), MAPVK_VK_TO_VSC_EX, layout) };
+    let extended = matches!(
+        vk,
+        keyboard_map::VK_HOME
+            | keyboard_map::VK_END
+            | keyboard_map::VK_LEFT
+            | keyboard_map::VK_RIGHT
+            | keyboard_map::VK_UP
+            | keyboard_map::VK_DOWN
+            | keyboard_map::VK_PRIOR
+            | keyboard_map::VK_NEXT
+            | keyboard_map::VK_DELETE
+    ) || mapped >> 8 == 0xE0;
+    ((mapped & 255) as u16, extended)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn scan_code(_vk: u16) -> (u16, bool) {
+    (0, false)
+}
+
 pub(crate) fn key_input(vk: u16, key_up: bool) -> KeyboardInputEvent {
+    let (scan, extended) = scan_code(vk);
     KeyboardInputEvent {
         vk,
-        scan: 0,
-        flags: if key_up { KEYEVENTF_KEYUP } else { 0 },
+        scan,
+        flags: (if key_up { KEYEVENTF_KEYUP } else { 0 }) | u32::from(extended),
     }
 }
 
