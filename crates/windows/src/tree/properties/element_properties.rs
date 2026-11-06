@@ -208,13 +208,32 @@ impl ElementProperties {
         node: &crate::tree::element::UIAElement,
     ) -> LocatorEvidence {
         let mut evidence = self.locator_evidence(vocabulary);
-        if evidence.role.known().is_some_and(|role| role == "tab")
+        let prefix = if evidence.role.known().is_some_and(|r| r == "tab") {
+            Some("tab-instance")
+        } else if evidence
+            .ref_evidence
+            .available_actions
+            .known()
+            .is_some_and(|actions| {
+                actions.iter().any(|a| {
+                    matches!(
+                        a.as_str(),
+                        "Click" | "Select" | "Toggle" | "SetValue" | "Expand" | "Scroll"
+                    )
+                })
+            })
+        {
+            Some("choice-instance")
+        } else {
+            None
+        };
+        if let Some(prefix) = prefix
             && let Ok(id) = node.0.get_runtime_id()
             && !id.is_empty()
         {
             evidence.identifiers = evidence
                 .identifiers
-                .with_retained_object(format!("tab-instance:{id:?}"));
+                .with_retained_object(format!("{prefix}:{id:?}"));
         }
         evidence
     }

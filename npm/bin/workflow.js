@@ -11,11 +11,13 @@ const { prepareChoice, finishChoice, revealText } = require('../lib/choose');
 const { view, move, edit } = require('../lib/window-move');
 const { browserMove, dropFile } = require('../lib/browser-move');
 const { current, follow, editPage } = require('../lib/current-page');
+const { choosePage } = require('../lib/page-choice');
 
 const usage = [
   'agent-desktop-workflow current [--window ID | --page PAGE]',
   'agent-desktop-workflow follow --page PAGE (--link NAME [--expect-url URL] | --button NAME --expect-url URL)',
   'agent-desktop-workflow edit --page PAGE --field NAME (--value TEXT | --stdin)',
+  'agent-desktop-workflow choose --page PAGE --field LABEL --value OPTION [--within SECTION] [--open BUTTON] [--popup PANEL] [--advance BUTTON] [--search FIELD] [--confirm BUTTON] [--expect-value TEXT]',
   'agent-desktop-workflow choose --session NAME [--tab TAB] (--field LABEL | --input CSS) --value VALUE [--position N] [--format DATE_FORMAT]',
   'agent-desktop-workflow choose-file --session NAME [--tab TAB] --input CSS --file ABSOLUTE_PATH',
   'agent-desktop-workflow reveal --session NAME [--tab TAB] --within CSS --text EXACT_TEXT',
@@ -213,7 +215,7 @@ async function main() {
   const commands = {
     current: ['window', 'page'],
     follow: ['page', 'link', 'button', 'expect-url'],
-    choose: ['session', 'tab', 'field', 'input', 'value', 'position', 'format'],
+    choose: ['page', 'session', 'tab', 'field', 'input', 'value', 'position', 'format', 'within', 'open', 'popup', 'advance', 'search', 'confirm', 'expect-value'],
     reveal: ['session', 'tab', 'within', 'text'],
     'choose-file': ['session', 'tab', 'input', 'file'],
     view: ['window', 'app', 'output', 'region'],
@@ -226,7 +228,7 @@ async function main() {
   const names = commands[command];
   const options = Object.fromEntries(names.map(key => [key, { type: key === 'stdin' ? 'boolean' : 'string' }]));
   const { values } = parseArgs({ args, options });
-  if (names.includes('session') && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
+  if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   const db = process.env.AGENT_DESKTOP_BIN ?? join(__dirname, 'agent-desktop-win32-' + process.arch + '.exe');
   const ad = (...args) => run(db, args);
   let data;
@@ -234,7 +236,10 @@ async function main() {
     case 'current': data = await current(ad, values); break;
     case 'follow': data = await follow(ad, values); break;
     case 'choose-file': data = await chooseFile(values); break;
-    case 'choose': data = choose(values); break;
+    case 'choose':
+      if (!values.page && (values.within || values.open || values.popup || values.advance || values.search || values.confirm || values['expect-value'])) throw new Error('Native choice options require --page.');
+      data = values.page !== undefined ? await choosePage(ad, values) : choose(values);
+      break;
     case 'reveal': {
       if (!values.session || !values.within || !values.text?.trim()) throw new Error(usage);
       const {original,check,evaluate}=boundTab(values.session,values.tab);

@@ -74,6 +74,7 @@ fn dispatch_command(
         Commands::Get(args) => observation::get(args, adapter, context),
         Commands::Is(args) => observation::is(args, adapter, context),
         Commands::Click(args) => interaction::click(args, adapter, context),
+        Commands::PageOption(args) => interaction::page_option(args, adapter, context),
         Commands::DoubleClick(args) => interaction::double_click(args, adapter, context),
         Commands::TripleClick(args) => interaction::triple_click(args, adapter, context),
         Commands::RightClick(args) => interaction::right_click(args, adapter, context),

@@ -66,7 +66,10 @@ pub(crate) fn build_for_owners(
         }
     })?;
     let identity_unproven = capture.identity_unproven.clone();
-    let (raw_tree, complete, nodes_observed, observed) = capture.into_parts()?;
+    let (mut raw_tree, complete, nodes_observed, observed) = capture.into_parts()?;
+    if complete && opts.max_depth == crate::refs::resolve_saved_ref::WHOLE_WINDOW_DEPTH {
+        crate::commands::page_option::stamp_documents(&mut raw_tree);
+    }
     let capture_proof = crate::refs::ref_capture_proof::CaptureProof::new(&observed);
 
     let mut refmap = RefMap::new();

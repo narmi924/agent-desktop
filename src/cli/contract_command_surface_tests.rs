@@ -46,6 +46,7 @@ const COMMAND_SPECIFIC_TESTS: &[&str] = &[
     "cursor-overlay",
     "find",
     "focus-window",
+    "page-option",
     "is",
     "list-apps",
     "right-click",
@@ -158,7 +159,7 @@ fn macos_capability_count_includes_restored_notifications() {
     let commands = cli_command_names();
     assert_eq!(
         commands.len(),
-        60,
+        61,
         "the published CLI command count changed; update capability documentation"
     );
 }

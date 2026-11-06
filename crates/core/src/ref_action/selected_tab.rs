@@ -9,11 +9,13 @@ fn refused(message: &str) -> AdapterError {
 }
 
 pub(super) fn check(
-    tab: Option<&RefEntry>,
+    guard: Option<(&RefEntry, Option<&RefEntry>)>,
     target: &RefActionContext<'_>,
     lease: &InteractionLease,
 ) -> Result<(), AdapterError> {
-    let Some(tab) = tab else { return Ok(()) };
+    let Some((tab, document)) = guard else {
+        return Ok(());
+    };
     let captured = tab
         .identity
         .retained_object
@@ -49,5 +51,36 @@ pub(super) fn check(
             "The captured document tab changed or is no longer selected",
         ));
     }
+    if let Some(doc) = document {
+        if doc.process != tab.process
+            || doc.source.source_window_id != tab.source.source_window_id
+            || !tree.is_exhaustive()
+        {
+            return Err(refused(
+                "Cannot establish the complete form in the selected tab",
+            ));
+        }
+        crate::commands::page_option::confirm_document(
+            &tree.into_accessibility_tree()?,
+            doc,
+            target.entry,
+        )?;
+    }
     Ok(())
+}
+
+pub(super) fn resolve_choice(
+    target: &RefActionContext<'_>,
+) -> Result<crate::NativeHandle, AdapterError> {
+    let mut anchor = target.entry.clone();
+    let id = anchor
+        .identity
+        .retained_object
+        .as_deref()
+        .filter(|s| s.starts_with("choice-instance:"))
+        .ok_or_else(|| refused("This control has no captured native instance"))?;
+    anchor.identity.retained_object = Some(format!("require:{id}"));
+    target
+        .adapter
+        .resolve_locator_anchor(&anchor, target.deadline)
 }

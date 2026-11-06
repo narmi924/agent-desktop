@@ -69,7 +69,7 @@ pub(crate) fn dispatch_resolved_landing(
     target: RefActionContext<'_>,
     mut request: ActionRequest,
     lease: &crate::InteractionLease,
-    selected_tab: Option<&RefEntry>,
+    selected_tab: Option<(&RefEntry, Option<&RefEntry>)>,
 ) -> Result<(ActionResult, NativeHandle), AppError> {
     let process_instance = target
         .entry
@@ -79,7 +79,11 @@ pub(crate) fn dispatch_resolved_landing(
         .filter(|instance| !instance.is_empty())
         .ok_or_else(|| AdapterError::stale_ref_because("target process instance is unavailable"))?;
     let expected_process = crate::ProcessIdentity::new(target.entry.process.pid, process_instance);
-    let mut handle = resolve_saved_ref(target.adapter, target.entry, target.deadline, Some(lease))
+    let resolve = || match selected_tab {
+        Some((_, Some(_))) => selected_tab::resolve_choice(&target),
+        _ => resolve_saved_ref(target.adapter, target.entry, target.deadline, Some(lease)),
+    };
+    let mut handle = resolve()
         .map_err(mark_pre_dispatch_resolution_failure)
         .inspect_err(|error| {
             crate::ref_action::ref_action_wait_support::trace_resolve_error(
@@ -99,6 +103,9 @@ pub(crate) fn dispatch_resolved_landing(
             ) {
                 return Err(error.into());
             }
+            if matches!(selected_tab, Some((_, Some(_)))) {
+                selected_tab::check(selected_tab, &target, lease)?;
+            }
             let recovered = match target
                 .adapter
                 .scroll_ref_into_view(target.entry, &handle, lease)
@@ -116,11 +123,8 @@ pub(crate) fn dispatch_resolved_landing(
                 }
             };
             handle = match recovered {
-                Some(handle) => handle,
-                None => {
-                    resolve_saved_ref(target.adapter, target.entry, target.deadline, Some(lease))
-                        .map_err(after_scroll)?
-                }
+                Some(handle) if !matches!(selected_tab, Some((_, Some(_)))) => handle,
+                _ => resolve().map_err(after_scroll)?,
             };
             let scrolled_target = ResolvedRefAction::new(target, &handle);
             stable_preflight(&scrolled_target, &request)
@@ -162,7 +166,10 @@ pub(crate) fn dispatch_resolved_landing(
     );
     let mut result = dispatch_result?;
     if raises_surface {
-        result.surfaces = settled_surfaces(&final_target, expected_process);
+        result.surfaces = final_target
+            .adapter
+            .list_surfaces(expected_process, final_target.deadline)
+            .unwrap_or_default();
     }
     final_target
         .context
@@ -172,17 +179,6 @@ pub(crate) fn dispatch_resolved_landing(
         )
         .map_err(trace_error_after_delivery)?;
     Ok((result, handle))
-}
-
-/// Lists overlays after an action that may open a dialog.
-fn settled_surfaces(
-    target: &ResolvedRefAction<'_>,
-    process: crate::ProcessIdentity,
-) -> Vec<crate::SurfaceInfo> {
-    target
-        .adapter
-        .list_surfaces(process, target.deadline)
-        .unwrap_or_default()
 }
 
 pub(crate) fn mark_pre_dispatch_resolution_failure(error: AdapterError) -> AdapterError {

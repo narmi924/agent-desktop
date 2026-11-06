@@ -111,6 +111,15 @@ fn anchor_role_verdict(
         .role
         .known()
         .is_some_and(|role| role == &entry.identity.role);
+    if let Some(instance) = entry
+        .identity
+        .retained_object
+        .as_deref()
+        .and_then(|s| s.strip_prefix("require:"))
+        && evidence.identifiers.retained_object() != Some(instance)
+    {
+        return Err(stale_ref_error(entry));
+    }
     if role_matches {
         Ok(())
     } else {

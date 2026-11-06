@@ -31,6 +31,40 @@ pub(super) fn click(
     }
 }
 
+pub(super) fn page_option(
+    args: crate::cli_args::actions::PageOptionArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    use crate::cli_args::actions::ChoiceOperation;
+    use agent_desktop_core::{Action, Direction, commands::page_option};
+    let action = match (args.operation, args.value) {
+        (ChoiceOperation::Select, Some(value)) => Action::Select(value),
+        (ChoiceOperation::Search, Some(value)) => Action::SetValue(value),
+        (ChoiceOperation::Check, None) => Action::Check,
+        (ChoiceOperation::Expand, None) => Action::Expand,
+        (ChoiceOperation::Collapse, None) => Action::Collapse,
+        (ChoiceOperation::ScrollDown, None) => Action::Scroll(Direction::Down, 3),
+        (ChoiceOperation::ScrollUp, None) => Action::Scroll(Direction::Up, 3),
+        (ChoiceOperation::Click, None) => Action::Click,
+        _ => {
+            return Err(AppError::invalid_input(
+                "Only select and search require --value",
+            ));
+        }
+    };
+    page_option::execute(
+        page_option::ChoiceTarget {
+            control: &args.target,
+            tab: &args.selected_tab,
+            document: &args.document,
+        },
+        action,
+        adapter,
+        context,
+    )
+}
+
 pub(super) fn double_click(
     args: RefArgs,
     adapter: &dyn PlatformAdapter,

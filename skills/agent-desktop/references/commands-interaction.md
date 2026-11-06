@@ -134,7 +134,7 @@ agent-desktop expand @s8f3k2p9:e7
 
 ## Take over the visible Chrome page (Windows fork)
 
-From the checkout, use Node.js 22+ and the local Windows executable. Open an HTTP or HTTPS page in Chrome. `current` reads the selected tab of the foreground Chrome window, or the sole visible Chrome window if another app is in front. If several windows qualify, pass `--window ID` from `list-windows`. The command uses Windows accessibility and works with a normally opened Chrome window.
+From the checkout, use Node.js 22+ and the local Windows executable. Open an HTTP(S) page or a local HTML file in Chrome. `current` reads the selected tab of the foreground Chrome window, or the sole visible Chrome window if another app is in front. If several windows qualify, pass `--window ID` from `list-windows`. An explicit window also works with Edge. The command uses Windows accessibility.
 
 ```powershell
 $page = (node npm/bin/workflow.js current | ConvertFrom-Json).data
@@ -153,6 +153,20 @@ $child.text
 Each result includes the URL, page text, control refs and a handle for the next action. `current --page PAGE` refreshes the same tab after a navigation. `follow` returns the observed destination in the original tab or in one newly selected tab in the same window. Supply `--expect-url URL` for a known redirect, or `--button NAME --expect-url URL` for a button that navigates. An unexpected tab switch stops the operation. If a click already happened, inspect the current page before repeating it.
 
 Use `edit --page PAGE --field NAME --value TEXT` to replace a named field on that page. For another native action, the result supplies a same-snapshot `tab` ref for `click REF --selected-tab TAB` or `set-value REF VALUE --selected-tab TAB`. These commands require the window to expose the document and tab through Windows accessibility.
+
+Use `choose --page` for choices on the open page. No extension, debugging port or named browser session is required:
+
+```powershell
+node npm/bin/workflow.js choose --page $page.page --field "Favorite Fruit" --value "Fig"
+node npm/bin/workflow.js choose --page $page.page --within "Shipping" --field "Region" --value "South"
+node npm/bin/workflow.js choose --page $page.page --field "Languages" --value "French" --search "Search language" --confirm "Apply"
+```
+
+Names match the visible field or its adjacent label. A named section disambiguates repeated fields. For a separate calendar or picker button, use `--open NAME`; `--popup NAME` identifies an exposed panel, and `--expect-value TEXT` sets the exact field readback when its display differs from the option label. A radio or checkbox can be chosen by its own name or inside a labelled group. A multi-choice picker adds one option and preserves the others. `--confirm` names a button in the choice popup only. The command checks the original field and reports `changed:false` if the value was already selected.
+
+When a dialog displays one named month or page at a time, `--popup "December 2026" --advance "next month"` moves within that picker until the named panel appears. Choose the day by its visible label and use `--expect-value` for the formatted date. Navigation stops if the panel does not change or the limit is reached.
+
+Only choices the main document exposes through Windows accessibility can be resolved. An exposed list can scroll to find more options; a bounded search can stop before the end. If a picker offers neither distinguishable options nor a readable result, the command stops. Inspect the field after an unverified delivery. A verified field does not mean the form was submitted.
 
 ## Choose on a Chromium page (Windows fork)
 

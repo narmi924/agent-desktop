@@ -17,7 +17,7 @@ pub(crate) fn execute_in_selected_tab(
     }
     let tab = load_ref_entry(tab_ref, context)?;
     execute_ref_action_dispatching(args, adapter, request, context, |target, request, lease| {
-        crate::ref_action::dispatch_resolved_landing(target, request, lease, Some(&tab))
+        crate::ref_action::dispatch_resolved_landing(target, request, lease, Some((&tab, None)))
             .map(|(result, _)| result)
     })
 }

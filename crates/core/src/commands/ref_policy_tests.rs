@@ -27,6 +27,7 @@ const POLICY_TESTED_COMMANDS: &[&str] = &[
     "double_click",
     "expand",
     "focus",
+    "page_option",
     "press",
     "right_click",
     "scroll",
@@ -40,17 +41,12 @@ const POLICY_TESTED_COMMANDS: &[&str] = &[
     "uncheck",
 ];
 
+#[derive(Default)]
 struct RecordingAdapter {
     requests: Mutex<Vec<ActionRequest>>,
 }
 
 impl RecordingAdapter {
-    fn new() -> Self {
-        Self {
-            requests: Mutex::new(Vec::new()),
-        }
-    }
-
     fn last_request(&self) -> ActionRequest {
         self.requests.lock().unwrap().last().cloned().unwrap()
     }
@@ -196,7 +192,7 @@ fn assert_headless(request: &ActionRequest) {
 fn default_ref_commands_use_least_permissive_supported_policy() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_id();
-    let adapter = RecordingAdapter::new();
+    let adapter = RecordingAdapter::default();
     let context = CommandContext::default();
 
     click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();
@@ -275,7 +271,7 @@ fn default_ref_commands_use_least_permissive_supported_policy() {
 fn focus_command_is_explicit_headless_policy() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_id();
-    let adapter = RecordingAdapter::new();
+    let adapter = RecordingAdapter::default();
 
     focus::execute(ref_args(&snapshot_id), &adapter, &CommandContext::default()).unwrap();
 
@@ -288,7 +284,7 @@ fn focus_command_is_explicit_headless_policy() {
 fn headed_context_reaches_every_ref_action_without_policy_downgrade() {
     let _guard = HomeGuard::new();
     let snapshot_id = snapshot_id();
-    let adapter = RecordingAdapter::new();
+    let adapter = RecordingAdapter::default();
     let context = CommandContext::default().with_headed(true);
 
     click::execute(ref_args(&snapshot_id), &adapter, &context).unwrap();

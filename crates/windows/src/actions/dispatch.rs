@@ -140,7 +140,11 @@ mod imp {
                 Ok(ActionResult::from_execution(&request.action, steps))
             }
             Action::Scroll(direction, amount) => {
-                let steps = scroll_steps(element, direction, *amount, deadline)?;
+                let steps = if request.scroll_by_viewport() {
+                    crate::actions::scroll::scroll_viewport(element, direction, deadline)?
+                } else {
+                    scroll_steps(element, direction, *amount, deadline)?
+                };
                 Ok(ActionResult::from_execution(&request.action, steps))
             }
         }

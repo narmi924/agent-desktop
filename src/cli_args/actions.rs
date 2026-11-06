@@ -15,6 +15,40 @@ pub(crate) struct ClickArgs {
     pub selected_tab: Option<String>,
 }
 
+#[derive(Parser, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PageOptionArgs {
+    /// Choice ref from a full window snapshot
+    pub target: String,
+    /// Selected browser tab ref from that snapshot
+    #[arg(long)]
+    pub selected_tab: String,
+    /// Owning web document ref from that snapshot
+    #[arg(long)]
+    pub document: String,
+    /// Semantic action to perform on the captured choice
+    #[arg(long, value_enum, default_value_t=ChoiceOperation::Click)]
+    #[serde(default)]
+    pub operation: ChoiceOperation,
+    /// Exact option label for select or text for search
+    #[arg(long)]
+    pub value: Option<String>,
+}
+
+#[derive(Debug, Default, Clone, Copy, clap::ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ChoiceOperation {
+    #[default]
+    Click,
+    Select,
+    Search,
+    Check,
+    Expand,
+    Collapse,
+    ScrollDown,
+    ScrollUp,
+}
+
 fn default_scroll_amount() -> u32 {
     3
 }

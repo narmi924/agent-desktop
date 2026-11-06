@@ -6,7 +6,7 @@ const { readFileSync } = require('node:fs');
 function webUrl(value) {
   try {
     const url = new URL(value);
-    if (['http:', 'https:'].includes(url.protocol)) return url.href;
+    if (['http:', 'https:'].includes(url.protocol) || (url.protocol==='file:' && !url.hostname && /^\/[A-Za-z]:\//.test(url.pathname))) return url.href;
   } catch { /* Windows controls may contain plain text. */ }
 }
 
@@ -38,6 +38,7 @@ function readPage(ad, win) {
     if (node.role === 'tablist') {
       const tabs = (node.children ?? []).filter(n => n.role === 'tab' && n.tab_instance);
       for (const tab of tabs.filter(n => n.states?.includes('selected'))) groups.push({tab,tabs});
+      for (const child of node.children ?? []) if(child.role!=='tab') visit(child);
       return;
     }
     for (const child of node.children ?? []) visit(child);
@@ -59,7 +60,7 @@ function readPage(ad, win) {
     for (const child of node.children ?? []) collect(child);
   }
   for (const child of doc.children ?? []) collect(child);
-  return {window:win.id, owner:win.process_instance, instance:tab.tab_instance, tab:tab.ref_id,
+  return {doc, window:win.id, owner:win.process_instance, instance:tab.tab_instance, tab:tab.ref_id,
     instances:tabs.map(t=>t.tab_instance), title:doc.name, url:webUrl(doc.value), controls, text:text.join('\n')};
 }
 
@@ -143,4 +144,4 @@ async function follow(ad, {page,link,button,'expect-url':expectedUrl}) {
   }
 }
 
-module.exports = {current, follow, editPage};
+module.exports = {current, follow, editPage, source};

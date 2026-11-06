@@ -46,6 +46,7 @@ pub(crate) mod notification_identity;
 pub(crate) mod notification_policy;
 pub mod open_system_surface;
 pub(crate) mod operation_response;
+pub mod page_option;
 pub mod permissions;
 pub(crate) mod point_resolve;
 pub(crate) mod pointer_action;

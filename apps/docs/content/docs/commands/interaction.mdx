@@ -256,6 +256,10 @@ Moving focus can change the foreground, so headless it returns `POLICY_DENIED` o
 
 On Linux, a GTK4 app rejects the call with cause `grab_focus_rejected`; use [`focus-window`](/desktop/commands/app-window#focus-window) for its window.
 
+## page-option
+
+On Windows, the `choose --page` workflow uses `page-option REF --document DOC --selected-tab TAB` to act on an exact control. All three refs must come from the same full window snapshot at depth 50. A changed page or tab refuses the action. Use the workflow to choose by field and option labels and read the selection back.
+
 ## select
 
 Picks an option by display text in a list, dropdown, or combo box.

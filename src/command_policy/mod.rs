@@ -39,6 +39,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         Commands::Get(_) | Commands::Is(_) => Accessibility,
 
         Commands::Click(_)
+        | Commands::PageOption(_)
         | Commands::DoubleClick(_)
         | Commands::TripleClick(_)
         | Commands::RightClick(_)
@@ -156,6 +157,11 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         }
         Commands::Is(args) => {
             validate_ref_id(&args.ref_id)?;
+        }
+        Commands::PageOption(args) => {
+            validate_ref_id(&args.target)?;
+            validate_ref_id(&args.document)?;
+            validate_ref_id(&args.selected_tab)?;
         }
         Commands::Click(args) => {
             validate_ref_id(&args.target.ref_id)?;

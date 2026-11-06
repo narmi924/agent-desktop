@@ -47,6 +47,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "get" => decode(command, item.args).map(Commands::Get),
         "is" => decode(command, item.args).map(Commands::Is),
         "click" => decode(command, item.args).map(Commands::Click),
+        "page-option" => decode(command, item.args).map(Commands::PageOption),
         "double-click" => decode(command, item.args).map(Commands::DoubleClick),
         "triple-click" => decode(command, item.args).map(Commands::TripleClick),
         "right-click" => decode(command, item.args).map(Commands::RightClick),

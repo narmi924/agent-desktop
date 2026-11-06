@@ -219,6 +219,7 @@ impl CommandContext {
             timeout_ms: None,
             verified_point: None,
             expected_process: None,
+            scroll_by_viewport: false,
         }
     }
 

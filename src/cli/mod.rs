@@ -46,6 +46,8 @@ pub(crate) enum Commands {
     Is(IsArgs),
     #[command(about = "Click element via accessibility press action")]
     Click(ClickArgs),
+    #[command(about = "Operate a choice from the same captured web document and selected tab")]
+    PageOption(crate::cli_args::actions::PageOptionArgs),
     #[command(about = "Physically double-click element; requires --headed")]
     DoubleClick(RefArgs),
     #[command(
@@ -192,6 +194,7 @@ impl Commands {
             Self::Get(_) => CommandMetadata::new("get", false),
             Self::Is(_) => CommandMetadata::new("is", false),
             Self::Click(_) => CommandMetadata::new("click", true),
+            Self::PageOption(_) => CommandMetadata::new("page-option", true),
             Self::DoubleClick(_) => CommandMetadata::new("double-click", true),
             Self::TripleClick(_) => CommandMetadata::new("triple-click", true),
             Self::RightClick(_) => CommandMetadata::new("right-click", true),
@@ -262,6 +265,7 @@ impl Commands {
     pub(crate) fn is_mutating(&self) -> bool {
         match self {
             Self::Click(_)
+            | Self::PageOption(_)
             | Self::DoubleClick(_)
             | Self::TripleClick(_)
             | Self::RightClick(_)

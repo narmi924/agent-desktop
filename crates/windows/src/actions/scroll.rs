@@ -169,6 +169,51 @@ mod imp {
         )])
     }
 
+    pub(crate) fn scroll_viewport(
+        element: &UIAElement,
+        direction: &Direction,
+        deadline: Deadline,
+    ) -> Result<Vec<ActionStep>, AdapterError> {
+        deadline.ensure_remaining()?;
+        let pattern = element
+            .0
+            .get_pattern::<UIScrollPattern>()
+            .map_err(|_| scroll_unavailable())?;
+        let percent = pattern
+            .get_vertical_scroll_percent()
+            .ok()
+            .filter(|v| (0.0..=100.0).contains(v));
+        let visible = pattern
+            .get_vertical_view_size()
+            .ok()
+            .filter(|v| *v > 0.0 && *v < 100.0);
+        let (Some(percent), Some(visible)) = (percent, visible) else {
+            return scroll_steps(element, direction, 3, deadline);
+        };
+        let offset = 75.0 * visible / (100.0 - visible);
+        let next = match direction {
+            Direction::Down => (percent + offset).min(100.0),
+            Direction::Up => (percent - offset).max(0.0),
+            _ => return Err(axis_not_scrollable("vertical")),
+        };
+        let label = "ScrollPattern.SetScrollPercent";
+        let changed = (next - percent).abs() > f64::EPSILON;
+        if changed
+            && let Err(error) = pattern.set_scroll_percent(-1.0, next)
+            && !classify_write("SetScrollPercent", label, &error)?
+        {
+            return Err(scroll_unavailable());
+        }
+        let outcome = if changed {
+            let verified =
+                read_percent(&pattern, direction).is_some_and(|after| (after - next).abs() < 0.01);
+            DeliveryOutcome::from_delivery(true, verified)
+        } else {
+            DeliveryOutcome::SatisfiedNoDelivery
+        };
+        Ok(vec![build_step(label, outcome)])
+    }
+
     fn axis_is_scrollable(pattern: &UIScrollPattern, direction: &Direction) -> bool {
         match direction {
             Direction::Up | Direction::Down => pattern.is_vertically_scrollable().unwrap_or(false),
@@ -281,7 +326,7 @@ mod imp {
 pub(crate) use imp::scroll_steps;
 
 #[cfg(target_os = "windows")]
-pub(crate) use imp::known_bounds;
+pub(crate) use imp::{known_bounds, scroll_viewport};
 
 #[cfg(all(test, target_os = "windows"))]
 pub(crate) use imp::scroll_judged_for;
