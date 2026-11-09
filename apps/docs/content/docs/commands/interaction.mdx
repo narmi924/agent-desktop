@@ -118,6 +118,8 @@ The result is the one in [Result shape](#result-shape). A click usually ends `de
 
 Platform limits: semantic everywhere headless; `--headed` tries physical input first on macOS and Linux. See [macOS](/desktop/platforms/macos), [Windows](/desktop/platforms/windows), and [Linux](/desktop/platforms/linux).
 
+On Windows, `--headed --human natural|careful` clicks with the real cursor along a curved path. `type` with the same flags sends one key at a time at uneven intervals and corrects occasional mistakes, except in password, verification-code and payment fields. `--seed N` repeats a plan, `--when-idle MS` waits for the keyboard and mouse to go quiet first, and `--expect-file PATH` adds `data.receipt` saying whether that file changed.
+
 ## double-click
 
 Double-clicks an element. It is a physical gesture, so it needs `--headed` unless the element exposes a semantic open action.

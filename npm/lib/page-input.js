@@ -42,8 +42,22 @@ function observedInsertion(before, after, text) {
   return false;
 }
 
+const WHEN_IDLE_MS = '600';
+
 function inForeground(ad, state) {
   return ad('list-windows').some(w => w.id === state.window && w.process_instance === state.owner && w.is_focused);
+}
+
+function bringToFront(ad, state) {
+  if (inForeground(ad, state)) return;
+  ad('focus-window', '--window-id', state.window, '--headed');
+  if (!inForeground(ad, state)) throw new Error('Windows refused to bring the intended browser to the foreground.');
+}
+
+function physicalArgs({human, seed}) {
+  if (human !== undefined && !['natural', 'careful'].includes(human)) throw new Error('--human must be natural or careful.');
+  if (seed !== undefined && (human === undefined || !/^\d+$/.test(seed))) throw new Error('--seed requires --human and a whole number.');
+  return ['--when-idle', WHEN_IDLE_MS, ...(human ? ['--human', human] : []), ...(seed ? ['--seed', seed] : [])];
 }
 
 async function captureTypedPage(ad, output, report, originalUrl) {
@@ -64,7 +78,7 @@ async function captureTypedPage(ad, output, report, originalUrl) {
   }
 }
 
-async function typePage(ad, write, {page, field, value, stdin, multiline, replace, after: output, 'interval-ms': interval = '75'}) {
+async function typePage(ad, write, {page, field, value, stdin, multiline, replace, after: output, human, seed, 'interval-ms': interval = '75'}) {
   if (!page || !field || (value !== undefined) === Boolean(stdin)) throw new Error('Use --page, --field and either --value or --stdin.');
   if (stdin && process.stdin.isTTY) throw new Error('Pipe text to --stdin.');
   if (output && existsSync(output)) throw new Error('Use a new path for --after.');
@@ -76,12 +90,12 @@ async function typePage(ad, write, {page, field, value, stdin, multiline, replac
 
   const state = await pageState(ad, page);
   const original = namedField(state.doc, field);
-  if (!inForeground(ad, state)) throw new Error('Bring the intended browser to the foreground before typing.');
+  bringToFront(ad, state);
   if (/[\r\n]/.test(text) && (original.role === 'combobox' || original.subrole === 'searchbox')) {
     throw new Error('Enter can confirm or submit this field. Use single-line text.');
   }
   const mode = replace ? (multiline ? 'replace-multiline' : 'replace') : (multiline ? 'multiline' : undefined);
-  const args = ['type', original.ref_id, '--headed', '--selected-tab', state.tab, '--interval-ms', interval];
+  const args = ['type', original.ref_id, '--headed', '--selected-tab', state.tab, '--interval-ms', interval, ...physicalArgs({human, seed})];
   if (mode) args.push('--entry-mode', mode);
   const action = write([...args, '--stdin'], text);
   const report = {page, field, keystrokes: action.keystrokes, interval_ms: Number(interval), verified: false};
@@ -103,4 +117,4 @@ async function typePage(ad, write, {page, field, value, stdin, multiline, replac
   return captureTypedPage(ad, output, report, state.url);
 }
 
-module.exports = {typePage, pageState, descendants};
+module.exports = {typePage, pageState, descendants, bringToFront, physicalArgs, observedInsertion};

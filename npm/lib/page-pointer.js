@@ -1,7 +1,7 @@
 'use strict';
 
 const { setTimeout: delay } = require('node:timers/promises');
-const { pageState, descendants } = require('./page-input');
+const { pageState, descendants, bringToFront, physicalArgs } = require('./page-input');
 
 function intersection(a, b) {
   const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
@@ -64,11 +64,13 @@ function visibleRows(panel) {
   }).slice(0, 30).map(node => [node.name, node.bounds.y]));
 }
 
-async function wheelPage(ad, {page, over, lines = '3', until}) {
+async function wheelPage(ad, {page, over, lines = '3', until, human, seed}) {
   if (!page || !over || !/^-?\d+$/.test(lines) || !Number(lines) || Math.abs(Number(lines)) > 12) {
     throw new Error('Use --page, --over and 1 to 12 wheel lines. Positive is down.');
   }
   let state = await pageState(ad, page, true);
+  bringToFront(ad, state);
+  const flags = physicalArgs({human, seed});
   const anchor = one(state.doc, over);
   const point = center(anchor.clip);
   const original = panelAt(state.doc, anchor.panel);
@@ -94,7 +96,7 @@ async function wheelPage(ad, {page, over, lines = '3', until}) {
       const area = panel(), rows = until && visibleRows(area);
       const receiver = area !== state.doc && area.ref_id;
       const action = ad('mouse-wheel', '--headed', '--x=' + point.x, '--y=' + point.y, '--dy=' + (-Number(lines)),
-        '--page-refs', state.tab, state.doc.ref_id, ...(receiver ? [receiver] : []));
+        '--page-refs', state.tab, state.doc.ref_id, ...(receiver ? [receiver] : []), ...flags);
       report.delivery = action.disposition?.delivery;
       report.moves++;
       const settle = Date.now() + 1400;
@@ -120,19 +122,20 @@ async function wheelPage(ad, {page, over, lines = '3', until}) {
   return {...report, until, message: 'The named destination was not observed in this region.'};
 }
 
-function physicalPointer(ad, state, command, {on, role, nth, ref}) {
+function physicalPointer(ad, state, command, {on, role, nth, ref, human, seed}) {
+  bringToFront(ad, state);
   const target = one(state.doc, on, {receiver: command === 'click', role, nth});
   if (ref && target.ref !== ref) throw new Error('The visible receiver differs from the selected navigation control.');
   const {x, y} = center(target.clip);
   return ad(command === 'point' ? 'mouse-move' : 'mouse-click', '--headed', '--xy=' + x + ',' + y,
-    '--page-refs', state.tab, state.doc.ref_id, ...(target.ref ? [target.ref] : []));
+    '--page-refs', state.tab, state.doc.ref_id, ...(target.ref ? [target.ref] : []), ...physicalArgs({human, seed}));
 }
 
-async function pointerPage(ad, command, {page, on, role, nth, 'expect-text': expected}) {
+async function pointerPage(ad, command, {page, on, role, nth, human, seed, 'expect-text': expected}) {
   if (!page || !on) throw new Error('Use --page and --on with a visible name.');
   const state = await pageState(ad, page, true);
   if (expected && matches(state.doc, expected).length) throw new Error('The expected text is already visible.');
-  const action = physicalPointer(ad, state, command, {on, role, nth});
+  const action = physicalPointer(ad, state, command, {on, role, nth, human, seed});
   const report = {page, on, x: action.x, y: action.y, delivery: action.disposition?.delivery};
   if (expected) {
     report.expected_text = expected;

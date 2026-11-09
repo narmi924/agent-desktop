@@ -75,7 +75,7 @@ function same(a, b) {
   return a.id === b.id && a.pid === b.pid && a.process_instance === b.process_instance && a.title === b.title;
 }
 
-function view(ad, { window, app, output, region }) {
+function view(ad, { window, app, output, region, popups }) {
   if (Boolean(window) === Boolean(app) || !output) throw new Error('Provide either --window or --app, and --output for the window image.');
   const initial = windowOf(ad, window, app);
   const img = ad('screenshot', '--window-id', initial.id, ...(region ? ['--region',region] : []));
@@ -85,13 +85,43 @@ function view(ad, { window, app, output, region }) {
     scale: img.scale_factor, ...(region ? {region:region.split(',').map(Number)} : {}) })).toString('base64url');
   const path = resolve(output);
   storeImage(Buffer.from(img.data,'base64'),frame,path);
-  return { window: current.id, title: current.title, path, width: img.width, height: img.height };
+  const result = { window: current.id, title: current.title, path, width: img.width, height: img.height };
+  if (!popups) return result;
+  const owned = ad('list-windows').filter(w => w.pid === current.pid && w.id !== current.id && w.visible && !w.minimized && w.process_instance === current.process_instance);
+  const base = path.replace(/\.png\$/i, '');
+  result.popups = owned.map((w, index) => ({ layer: owned.length - index, ...view(ad, { window: w.id, output: base + '-popup' + (index + 1) + '.png' }) }));
+  return result;
 }
 
 function decoded(token) {
   if (!token || token.length > 65536) throw new Error('Expected a frame from view.');
   try { return JSON.parse(Buffer.from(token, 'base64url').toString()); }
   catch { throw new Error('Invalid frame; capture with view again.'); }
+}
+
+function humanFlags({ human, seed }) {
+  if (human !== undefined && !['natural', 'careful'].includes(human)) throw new Error('--human must be natural or careful.');
+  return [...(human ? ['--human', human] : []), ...(seed ? ['--seed', seed] : [])];
+}
+
+function pointForText(ad, frame, text, nth) {
+  const found = ad('ocr', '--image', resolve(frame), '--find', text).matches ?? [];
+  if (nth !== undefined) {
+    if (!/^[1-9]\d*$/.test(nth)) throw new Error('--nth must be a positive integer.');
+    if (!found[Number(nth) - 1]) throw new Error('No match at position ' + nth + ' for ' + text + '.');
+    return found[Number(nth) - 1].center.x + ',' + found[Number(nth) - 1].center.y;
+  }
+  if (found.length !== 1) throw new Error('Expected one place showing ' + text + ', found ' + found.length + '. Use --nth to choose.');
+  return found[0].center.x + ',' + found[0].center.y;
+}
+
+function tap(ad, args) {
+  const { frame, text, button = 'left', count = '1' } = args;
+  if (!frame || Boolean(args.at) === Boolean(text)) throw new Error('Provide --frame and either --at in image pixels or --text to find.');
+  imageToken(frame);
+  const at = args.at ?? pointForText(ad, frame, text, args.nth);
+  const report = ad('--headed', '--when-idle', '600', ...humanFlags(args), 'mouse-click', '--frame', resolve(frame), '--xy', at, '--button', button, '--count', count);
+  return { delivery: report.disposition?.delivery, x: report.x, y: report.y, window: report.window };
 }
 
 function move(ad, args) {
@@ -102,7 +132,7 @@ function move(ad, args) {
   const srcToken = imageToken(frame);
   const destToken = destination === frame ? srcToken : imageToken(destination);
   const target = decoded(destToken);
-  const report = ad('--headed', 'drag', '--from-frame', srcToken, '--to-frame', destToken, '--from-xy', from, '--to-xy', to,
+  const report = ad('--headed', ...humanFlags(args), 'drag', '--from-frame', resolve(frame), '--to-frame', resolve(destination), '--from-xy', from, '--to-xy', to,
     '--drop-delay', target.window.id === decoded(srcToken).window.id ? '0' : '700');
   const result = { delivery: report.disposition.delivery, source: report.source_window, destination: report.destination_window };
   if (after) {
@@ -118,4 +148,4 @@ function move(ad, args) {
   return result;
 }
 
-module.exports = { view, move, edit };
+module.exports = { view, move, edit, tap };

@@ -74,6 +74,7 @@ Before a ref action dispatches, core checks the target under one bounded budget.
 - `receives_events` runs only when the action reaches the target by pointer: a headed action, `hover`, `drag`, or a click with no semantic delivery. A headless click that dispatches by a semantic action skips it.
 - `receives_events` fails with `reason: "occluded by <role>"` and an `occluder` of `{ role, name, bounds }` when another element is on top. Bring the target window to the front or dismiss the occluder, then retry. A blind retry fails the same way.
 - `receives_events` fails open. An inconclusive hit test reports `unknown` and the action dispatches. A passing check is not proof that nothing covered the target.
+- A pointer action aims at the first point that reaches the target: the center, four inner points, then a 9 by 5 grid from the center outward. A partly covered or clipped control is pressed on its visible part. The chosen point is `verified_point` in the `actionability.check.ok` trace event.
 - `details.kind: "live_read_incomplete"` with `retryable: false` means native reads failed on every poll. Take a fresh snapshot and use a fresh ref.
 - Pick recovery from the failing check's `reason`: `wait --element <ref> --predicate actionable`, a fresh snapshot, or `--headed` when `policy` failed and physical input is intended.
 
@@ -161,7 +162,7 @@ node npm/bin/workflow.js point --page $page.page --on "Details" --role button
 node npm/bin/workflow.js click --page $page.page --on "Details" --role button --expect-text "More information"
 ```
 
-Typing inserts at the caret. The default interval is 75 ms between keystroke units; `--interval-ms` changes the pace. Windows uses the foreground keyboard layout for characters available on a key and Unicode input for other text. A change of tab or receiver stops a burst. Printable keys can continue in an editor's own suggestion list. Hold Escape to interrupt.
+Typing inserts at the caret. The default interval is 75 ms between keystroke units; `--interval-ms` changes the pace. Windows uses the foreground keyboard layout for characters available on a key and Unicode input for other text. While an input method is in a composing mode such as Chinese Pinyin, every character uses Unicode input, so text is committed instead of waiting in the candidate window. A change of tab or receiver stops a burst. Printable keys can continue in an editor's own suggestion list. Hold Escape to interrupt.
 
 Use `--multiline` only where Enter inserts a new line. A single-line form or chat can bind Enter to submission. When inserting at the caret, let the editor supply its own automatic indentation. To replace the entire named field with prepared source, use `--replace --multiline --stdin`. This explicitly selects the field's contents, types the source and clears editor-generated indentation and closing characters beyond the caret. Use spaces for indentation. A partial replacement reports the completed input count. Inspect partial delivery before continuing.
 
@@ -228,6 +229,37 @@ Read the image to choose endpoints in its original pixel dimensions. The coordin
 
 For a large window, add `--region X,Y,WIDTH,HEIGHT` to `view` to capture only the canvas or drop zone. Read coordinates from that smaller PNG, starting at `0,0`. The after-image uses the same region.
 
+`view --popups` also saves each popup the window owns, as `NAME-popup1.png` and so on, and lists them under `popups`. `layer` gives the stacking order, and a popup is captured and clicked like any other window.
+
+Click a place in a saved image with `tap`:
+
+```powershell
+node npm/bin/workflow.js tap --frame paint.png --at 812,604
+node npm/bin/workflow.js tap --frame paint.png --text "Save" --human natural
+```
+
+`--text` finds the place with Windows OCR. Several matches fail unless you pass `--nth N`. `tap` takes the same refusals as `mouse-click --frame`, and waits for 600 ms of quiet first.
+
+## Use your running Chrome without the cursor (Windows fork)
+
+```powershell
+node npm/bin/workflow.js connect
+```
+
+Run this once, after enabling `chrome://inspect/#remote-debugging`. Chrome asks you to allow each new connection, so expect one prompt now and one more after Chrome restarts. The connection stays open while Chrome runs, and later commands reconnect by themselves after a restart or reboot. After that, `current` binds the tab it read over this connection and reports `route: "web"`. On a `web` page handle, `type`, `edit`, `click` and `follow` run over DevTools without moving the cursor or taking the foreground. A field is found by its label, then its placeholder, then the visible text before it.
+
+These commands stay on the visible desktop route: `--human`, `--visible`, `--nth`, `--interval-ms`, `--multiline`, `--after`, `--stdin`, a value containing a tab or line break, and any page the connection cannot reach. A page handle from an earlier connection that can no longer be reached also falls back to the desktop route. `connect --cdp URL` uses a specific DevTools endpoint, and `disconnect` forgets the connection.
+
+## Record and replay (Windows fork)
+
+Set `AGENT_DESKTOP_RECORD=flow.jsonl` while running `follow`, `type`, `wheel`, `point`, `click`, `edit`, `choose`, `tap` or `move`. Each step is appended with its options and the pause before it, up to 5 seconds. `--stdin` text is not recorded.
+
+```powershell
+node npm/bin/workflow.js replay --file flow.jsonl --window w-1234 --speed 2
+```
+
+`replay` runs the steps with the same checks as the original commands and stops at the first failure. Page steps are aimed at the current page of `--window`.
+
 ## Scroll
 
 ```bash
@@ -287,7 +319,36 @@ agent-desktop --headed mouse-move --xy 100,200
 - `drag` accepts refs, coordinates, or a mix. The destination app is never pre-focused, because raising it could cover the source point. For a cross-app drag, keep the destination visible. Both endpoints still pass visibility, stability and hit-test checks.
 - `drag --timeout-ms` covers the whole gesture as well as target preparation. An explicit `--duration` plus `--drop-delay` at or above the budget returns `INVALID_ARGS` before target work. Leave additional room for platform pickup/default delays, resolution and completion: for a 5000 ms movement, use `--duration 5000 --timeout-ms 10000`. A valid request can still return `TIMEOUT` if preparation consumes the remaining gesture budget. Optional `--wait-for`/`--wait-for-gone` verification has its own separate wait budget.
 - A drop target often needs the item to dwell over it. The default `--drop-delay` is 500 ms (150 ms on Linux, where a longer hold opens a hovered Files folder). Raise it (800 to 1200) for list reorders and cross-window drops.
-- `mouse-click` takes `--button left|right|middle`, `--count`, and `--modifiers`.
+- `mouse-click` takes `--button left|right|middle`, `--count`, and `--modifiers`. On Windows `--hold-ms N` (1 to 10000, one click) keeps the button down for a long press.
+- On Windows, `mouse-move` and `mouse-click` take `--frame IMAGE.png`. `--xy` is then in the pixels of an image saved by the companion's `view` command. Moving the window afterwards is fine. The command fails with `STALE_REF` before any input if the window closed, was resized or retitled, or the pixels around the point no longer match the image.
+
+## Human-like input
+
+```bash
+agent-desktop --headed --human natural click @s8f3k2p9:e5
+agent-desktop --headed --human careful --seed 7 type @s8f3k2p9:e2 "Meeting notes"
+agent-desktop --headed --human natural drag --from-xy 100,200 --to-xy 400,500
+```
+
+`--human natural|careful` needs `--headed` and applies to `click`, `double-click`, `triple-click`, `right-click`, `type`, `drag`, `mouse-move` and `mouse-click`. Use it when input should look like a person's: demo recordings, or software that reacts to input rhythm. `careful` is slower than `natural`. `--seed N` repeats the same plan.
+
+- The real cursor follows a curved path that speeds up and slows down, sometimes overshoots and corrects, and rests briefly before pressing.
+- `type` sends one key at a time at uneven intervals and sometimes types a wrong key and corrects it with Backspace. The first character is never wrong.
+- A secure field, or a field whose name or description says password, verification code, card number or payment, never gets a wrong key.
+- Moving the mouse, holding a mouse button, holding Escape or losing the foreground stops pointer motion with an error.
+- During `type`, input from anyone else pauses the burst until the keyboard and mouse have been quiet for 600 ms. Escape stops it, and so does 60 seconds of continued use. The result is a partial-delivery error with `details.typed_keystrokes`. Read the field before you type again.
+
+## Wait for a quiet desk, confirm a file
+
+`--when-idle MS` with `--headed` waits until the keyboard and mouse have been untouched for `MS` before any input. After 60 seconds of continued use it fails with `TIMEOUT` and `not_delivered`.
+
+`--expect-file PATH` on a mutating command reports whether that file was created or changed. `--expect-within MS` (default 3000) sets how long to wait. The result gains `data.receipt`:
+
+```json
+{ "receipt": { "verified": true, "checks": [ { "kind": "file_changed", "path": "out.pdf", "exists": true, "size": 18244, "changed": true } ] } }
+```
+
+`verified: false` is reported, not raised as an error. Inspect the application before you repeat the action.
 
 ## Choose the command
 

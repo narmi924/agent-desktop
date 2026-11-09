@@ -30,6 +30,7 @@ observation, actions and capture there fail or return nothing.
 | Group | Commands | Status on Windows |
 |-------|----------|-------------------|
 | Observation | `snapshot`, `find`, `get`, `is`, `screenshot` | Works. Surfaces are `window`, `focused`, a Chromium modal as `sheet`, and an open application menu as `menu` |
+| Text recognition | `ocr` | Works in a window or a saved PNG. Needs the Windows language pack for `--lang` |
 | Surfaces | `list-surfaces` | Works. Lists `window`, `focused` and `sheet` per process, plus `menu` with `item_count` while a menu is open |
 | Shell surfaces | `open-system-surface` | Works for `start-menu`, `taskbar`, `system-tray`, `system-tray-overflow` and `action-center`, and returns the window `snapshot --surface <kind>` reads. `quick-settings` returns `INVALID_ARGS` naming `action-center` |
 | Ref interaction | `click`, `right-click`, `type`, `set-value`, `clear`, `select`, `toggle`, `check`, `uncheck`, `expand`, `collapse`, `scroll`, `scroll-to` | Works, semantic in headless and `--headed` mode. `right-click` and `type` need `--headed` and return `POLICY_DENIED` headless |
@@ -94,6 +95,9 @@ observation, actions and capture there fail or return nothing.
 - Ref actions are semantic UI Automation calls in headless and `--headed` mode, except `right-click`, `double-click`, `triple-click`, `type` and `focus`, which are physical or take focus and need `--headed`.
 - A ref resolves only when it was the only element in the window its snapshot captured with its role, native id, name and description, and exactly one live element still matches. Uniqueness counts the whole window, not the shallow tree a `--skeleton` or `--max-depth` snapshot presents, so a twin below the cut still refuses the ref. Identical twins, such as several identical `Delete` buttons, are refused with `AMBIGUOUS_TARGET`, `details.kind: identity_not_unique`, before anything reaches the app; a live second match is `saved_ref_ambiguous`, and a removed element is `STALE_REF`, `saved_ref_absent`. Take a fresh snapshot after a list changes, and use `--headed mouse-click --xy` when you must pick one of two identical controls.
 - The cursor overlay plays its per-action travel only for headless semantic actions. A `--headed` action moves the real cursor instead.
+- `--human natural|careful` makes a `--headed` `click` physical. Other headed clicks stay semantic.
+- Text goes through a keyboard layout key only when no input method is composing; under Chinese, Japanese or Korean composition each character is sent as Unicode input, so `type` is unaffected by the active input mode and leaves it as it was.
+- Chromium answers a hit test from the box of its previous hit, so a point inside that box can read as reachable while covered. A `reaches the target` answer is asked again after up to 40 ms before a click relies on it.
 
 ## References
 

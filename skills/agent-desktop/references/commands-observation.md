@@ -36,6 +36,7 @@ Choose the scope:
 - `--root <REF>` starts from a ref found earlier. Re-drilling a root replaces the refs from that root's previous drill, and those of any drill made under it. Refs outside the drilled subtree keep working, skeleton refs inside it are replaced, and the new refs join the same snapshot id. A drill inherits the whole-window identity count of its snapshot, so its refs resolve like the skeleton's. `--root` cannot combine with `--surface` or `--wait-for`.
 - `--max-depth` (default 10) limits depth. Reach deeper subtrees with `--root`.
 - Use `--include-bounds` only when you need coordinates.
+- `--since SNAPSHOT_ID` adds `data.changes` compared with an earlier snapshot in the same session: `added` and `changed` carry refs, `removed` carries role and name, and `unchanged` is a count. Controls sharing a role and name are paired in document order.
 - With `--app` and no `--window-id`, `snapshot` and `find` take the app's only visible window, else its only focused window, and answer `AMBIGUOUS_TARGET` with the candidates when neither settles it. Pass `--window-id` when an app has several windows.
 - On macOS, `menu` and `menubar` are application-owned and skip window selection. If you pass `--window-id`, it selects the owning app for that surface.
 
@@ -116,6 +117,17 @@ agent-desktop screenshot --screen 0 display.png
 ```
 
 With no path, the PNG returns as base64 in `data`. `--screen` takes a display index from `list-displays`; `0` is the primary display. A screenshot is evidence for you, not proof that an action worked. Permission denial returns `PERM_DENIED` (see the platform skill).
+
+## ocr
+
+Windows reads text in a window or a saved PNG with its built-in OCR. Use it where the accessibility tree has no text, such as canvases, images and remote desktops.
+
+```powershell
+agent-desktop ocr --window-id w-1234
+agent-desktop ocr --image shot.png --find "Save" --lang en-US
+```
+
+`data` has `text`, `lines` (each with `words` and their `bounds`) and, with `--find`, `matches` of `{ text, bounds, center }`. Bounds are in image pixels. `--find` ignores spacing and case and treats `I` and `|` as `l`. `--lang` needs that Windows language pack, otherwise `INVALID_ARGS`; it defaults to the user's languages.
 
 ## list-displays
 

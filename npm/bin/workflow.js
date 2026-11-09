@@ -8,30 +8,36 @@ const { parseArgs } = require('node:util');
 const { setTimeout: delay } = require('node:timers/promises');
 const { randomUUID } = require('node:crypto');
 const { prepareChoice, finishChoice, revealText } = require('../lib/choose');
-const { view, move, edit } = require('../lib/window-move');
+const { view, move, edit, tap } = require('../lib/window-move');
 const { browserMove, dropFile } = require('../lib/browser-move');
 const { current, follow, editPage } = require('../lib/current-page');
 const { choosePage } = require('../lib/page-choice');
 const { typePage } = require('../lib/page-input');
 const { wheelPage, pointerPage, physicalPointer } = require('../lib/page-pointer');
+const { recordStep, readSteps } = require('../lib/flow-record');
+const { connect, disconnect, webPerform, withRoute } = require('../lib/web-page');
 
 const usage = [
+  'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
+  'agent-desktop-workflow disconnect',
   'agent-desktop-workflow current [--window ID | --page PAGE]',
   'agent-desktop-workflow follow --page PAGE (--link NAME [--expect-url URL] | --button NAME --expect-url URL) [--visible]',
-  'agent-desktop-workflow type --page PAGE --field NAME (--value TEXT | --stdin) [--interval-ms MS] [--multiline] [--replace] [--after IMAGE.png]',
-  'agent-desktop-workflow wheel --page PAGE --over VISIBLE_TEXT [--lines N] [--until TEXT] (positive is down)',
-  'agent-desktop-workflow point --page PAGE --on NAME [--role ROLE] [--nth N] [--expect-text TEXT]',
-  'agent-desktop-workflow click --page PAGE --on NAME [--role ROLE] [--nth N] [--expect-text TEXT]',
+  'agent-desktop-workflow type --page PAGE --field NAME (--value TEXT | --stdin) [--interval-ms MS] [--multiline] [--replace] [--after IMAGE.png] [--human natural|careful] [--seed N]',
+  'agent-desktop-workflow wheel --page PAGE --over VISIBLE_TEXT [--lines N] [--until TEXT] [--human natural|careful] [--seed N] (positive is down)',
+  'agent-desktop-workflow point --page PAGE --on NAME [--role ROLE] [--nth N] [--expect-text TEXT] [--human natural|careful] [--seed N]',
+  'agent-desktop-workflow click --page PAGE --on NAME [--role ROLE] [--nth N] [--expect-text TEXT] [--human natural|careful] [--seed N]',
   'agent-desktop-workflow edit --page PAGE --field NAME (--value TEXT | --stdin)',
   'agent-desktop-workflow choose --page PAGE --field LABEL --value OPTION [--within SECTION] [--open BUTTON] [--popup PANEL] [--advance BUTTON] [--search FIELD] [--confirm BUTTON] [--expect-value TEXT]',
   'agent-desktop-workflow choose --session NAME [--tab TAB] (--field LABEL | --input CSS) --value VALUE [--position N] [--format DATE_FORMAT]',
   'agent-desktop-workflow choose-file --session NAME [--tab TAB] --input CSS --file ABSOLUTE_PATH',
   'agent-desktop-workflow reveal --session NAME [--tab TAB] --within CSS --text EXACT_TEXT',
-  'agent-desktop-workflow view (--window ID | --app NAME) --output IMAGE.png [--region X,Y,W,H]',
+  'agent-desktop-workflow view (--window ID | --app NAME) --output IMAGE.png [--region X,Y,W,H] [--popups]',
   'agent-desktop-workflow edit (--window ID | --app NAME) --document TAB_NAME [--field LABEL] (--value TEXT | --stdin)',
-  'agent-desktop-workflow move --frame IMAGE.png --from X,Y --to X,Y [--to-frame DEST.png] [--after IMAGE.png]',
+  'agent-desktop-workflow move --frame IMAGE.png --from X,Y --to X,Y [--to-frame DEST.png] [--after IMAGE.png] [--human natural|careful] [--seed N]',
+  'agent-desktop-workflow tap --frame IMAGE.png (--at X,Y | --text VISIBLE_TEXT [--nth N]) [--button left|right|middle] [--count N] [--human natural|careful] [--seed N]',
   'agent-desktop-workflow browser-move --session NAME [--tab TAB] --surface CSS --from X,Y --to X,Y [--object CSS] [--after IMAGE.png]',
   'agent-desktop-workflow drop-file --session NAME [--tab TAB] --input DROP_ZONE_CSS --file ABSOLUTE_PATH',
+  'agent-desktop-workflow replay --file FLOW.jsonl [--window ID] [--speed N]   (record a flow by setting AGENT_DESKTOP_RECORD=FLOW.jsonl)',
 ].join('\n');
 
 function one(items, description) {
@@ -109,6 +115,10 @@ function browserBinary() {
     if (existsSync(candidate)) return candidate;
   }
   throw new Error('Set AGENT_BROWSER_BIN to the installed agent-browser executable.');
+}
+
+function optionalBrowserBinary() {
+  try { return browserBinary(); } catch { return undefined; }
 }
 
 async function browserPid(url) {
@@ -220,31 +230,70 @@ async function main() {
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('The workflow commands require Node.js 22 or later.');
   const command = args.shift();
   const commands = {
+    connect: ['cdp'],
+    disconnect: [],
     current: ['window', 'page'],
-    follow: ['page', 'link', 'button', 'expect-url', 'visible'],
+    follow: ['page', 'link', 'button', 'expect-url', 'visible', 'human', 'seed'],
     choose: ['page', 'session', 'tab', 'field', 'input', 'value', 'position', 'format', 'within', 'open', 'popup', 'advance', 'search', 'confirm', 'expect-value'],
     reveal: ['session', 'tab', 'within', 'text'],
     'choose-file': ['session', 'tab', 'input', 'file'],
-    view: ['window', 'app', 'output', 'region'],
-    type: ['page','field','value','stdin','interval-ms','multiline','replace','after'],
-    wheel: ['page','over','lines','until'],
-    point: ['page','on','role','nth','expect-text'],
-    click: ['page','on','role','nth','expect-text'],
+    view: ['window', 'app', 'output', 'region', 'popups'],
+    type: ['page','field','value','stdin','interval-ms','multiline','replace','after','human','seed'],
+    wheel: ['page','over','lines','until','human','seed'],
+    point: ['page','on','role','nth','expect-text','human','seed'],
+    click: ['page','on','role','nth','expect-text','human','seed'],
     edit: ['window', 'app', 'document', 'field', 'value', 'stdin', 'page'],
-    move: ['frame', 'from', 'to-frame', 'to', 'after'],
+    move: ['frame', 'from', 'to-frame', 'to', 'after', 'human', 'seed'],
+    tap: ['frame', 'at', 'text', 'nth', 'button', 'count', 'human', 'seed'],
+    replay: ['file', 'window', 'speed'],
     'browser-move': ['session', 'tab', 'surface', 'from', 'to', 'object', 'after'],
     'drop-file': ['session', 'tab', 'input', 'file'],
   };
   if (!Object.hasOwn(commands, command)) throw new Error(usage);
   const names = commands[command];
-  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible'].includes(key) ? 'boolean' : 'string' }]));
+  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups'].includes(key) ? 'boolean' : 'string' }]));
   const { values } = parseArgs({ args, options });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
-  const db = process.env.AGENT_DESKTOP_BIN ?? join(__dirname, 'agent-desktop-win32-' + process.arch + '.exe');
+  const data = command === 'replay' ? await replay(values) : await perform(command, values);
+  if (process.env.AGENT_DESKTOP_RECORD) recordStep(process.env.AGENT_DESKTOP_RECORD, command, values);
+  console.log(JSON.stringify({ ok: true, data }));
+}
+
+function nativeBinary() {
+  return process.env.AGENT_DESKTOP_BIN ?? join(__dirname, 'agent-desktop-win32-' + process.arch + '.exe');
+}
+
+async function replay({ file, window, speed = '1' }) {
+  const ad = (...args) => run(nativeBinary(), args);
+  const factor = Number(speed);
+  if (!file || !(factor > 0)) throw new Error('Use --file FLOW.jsonl and a positive --speed.');
+  const steps = readSteps(file);
+  const report = [];
+  for (const [index, step] of steps.entries()) {
+    if (step.wait_ms) await delay(step.wait_ms / factor);
+    const options = { ...step.options };
+    if (step.needs_page) options.page = (await current(ad, { window })).page;
+    try {
+      const data = await perform(step.command, options);
+      report.push({ step: index + 1, command: step.command, delivery: data?.delivery, verified: data?.verified });
+    } catch (error) {
+      error.message = 'Replay stopped at step ' + (index + 1) + ' (' + step.command + '): ' + error.message;
+      throw error;
+    }
+  }
+  return { steps: report.length, report };
+}
+
+async function perform(command, values) {
+  const db = nativeBinary();
   const ad = (...args) => run(db, args);
+  const web = await webPerform(optionalBrowserBinary(), command, values);
+  if (web) return web;
   let data;
   switch (command) {
-    case 'current': data = await current(ad, values); break;
+    case 'connect': data = connect(browserBinary(), values); break;
+    case 'disconnect': data = disconnect(); break;
+    case 'current': data = withRoute(optionalBrowserBinary(), await current(ad, values)); break;
     case 'follow': data = await follow(ad, values, physicalPointer); break;
     case 'choose-file': data = await chooseFile(values); break;
     case 'choose':
@@ -269,10 +318,11 @@ async function main() {
       break;
     }
     case 'move': data = move(ad, values); break;
+    case 'tap': data = tap(ad, values); break;
     case 'browser-move': data = await browserMove(boundTab, values); break;
     case 'drop-file': data = await dropFile(boundTab, values); break;
   }
-  console.log(JSON.stringify({ ok: true, data }));
+  return data;
 }
 
 main().catch(err => {

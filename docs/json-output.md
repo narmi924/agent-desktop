@@ -164,6 +164,30 @@ When a ref action returns `delivery_uncertain` with a post-action wait selector,
 | `timed_out` | The wait budget expired without observing the expected state, including when transient read errors persisted through the last poll. `last_observation_error` may hold the last error. |
 | `identity_unavailable` | The ref has no usable process generation, so observation was skipped. |
 
+## Action receipts
+
+`--expect-file PATH` on a mutating command adds `data.receipt`. It is omitted otherwise.
+
+| Field | Meaning |
+| --- | --- |
+| `verified` | Whether every check passed. A `false` is not an error, and the action's own result stands. |
+| `checks[].kind` | `file_changed`. |
+| `checks[].path` | The file named by `--expect-file`. |
+| `checks[].exists` | Whether it exists when the wait ended. |
+| `checks[].size` | Its size in bytes, when it exists. |
+| `checks[].changed` | Whether it was created or its size or modified time differs from before the action. |
+
+## Snapshot changes
+
+`snapshot --since SNAPSHOT_ID` adds `data.changes`, compared with that earlier snapshot in the same session.
+
+| Field | Meaning |
+| --- | --- |
+| `added` | `{ ref, role, name }` of controls in this snapshot only. |
+| `removed` | `{ role, name }` of controls in the earlier snapshot only. |
+| `changed` | `{ ref, role, name, before, after }`, where `before` and `after` are `{ value, states }`. |
+| `unchanged` | How many controls are the same. |
+
 ## Find result shape
 
 `find` match objects report the element's actual accessibility `name`. Elements

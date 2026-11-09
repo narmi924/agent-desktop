@@ -1,7 +1,7 @@
 ---
 title: Observation commands
 navTitle: Observation
-description: Reference for snapshot, find, get, is, screenshot, list-displays, list-surfaces, and open-system-surface.
+description: Reference for snapshot, find, get, is, screenshot, ocr, list-displays, list-surfaces, and open-system-surface.
 ---
 
 Observation commands read UI state. All of them except `open-system-surface` leave the UI as it was, and their errors carry `not_delivered` because nothing was sent to the app.
@@ -15,7 +15,7 @@ Captures an application's accessibility tree as JSON. Window-owned surfaces are 
 ```bash
 agent-desktop snapshot [--app NAME] [--window-id ID] [-i] [--compact] [--skeleton] \
                        [--root REF] [--surface KIND] [--max-depth N] [--include-bounds] \
-                       [--timeout-ms MS] [--force-electron-a11y]
+                       [--timeout-ms MS] [--force-electron-a11y] [--since SNAPSHOT_ID]
 ```
 
 <table>
@@ -34,6 +34,7 @@ agent-desktop snapshot [--app NAME] [--window-id ID] [-i] [--compact] [--skeleto
     <tr><td><code>--timeout-ms MS</code></td><td><code>3000</code></td><td>Observation deadline. A full snapshot that runs out succeeds with <code>complete: false</code>. See <a href="/desktop/skeleton-and-drill-down#partial-observations">Partial observations</a>.</td></tr>
     <tr><td><code>--surface KIND</code></td><td><code>window</code></td><td>Read the selected UI surface. On macOS, <code>menu</code> and <code>menubar</code> are application-owned. See <a href="/desktop/surfaces#surface-kinds">Surface kinds</a>.</td></tr>
     <tr><td><code>--force-electron-a11y</code></td><td>off</td><td>Assume Chromium renderer accessibility is already forced, which skips the activation guidance.</td></tr>
+    <tr><td><code>--since SNAPSHOT_ID</code></td><td>none</td><td>Add <code>data.changes</code> with the controls added, removed and changed since that snapshot.</td></tr>
   </tbody>
 </table>
 
@@ -204,6 +205,27 @@ agent-desktop screenshot --screen 0 screen.png
 Errors specific to `screenshot`: `PERM_DENIED` without screen-capture permission; `INVALID_ARGS` for `--screen` with a window selector, an out-of-range index, or an unwritable `PATH`; `WINDOW_NOT_FOUND` or `APP_NOT_FOUND` for an unknown target. On Linux, a covered window on a non-compositing window manager fails with `ACTION_FAILED` and `details.reason: "covered"`, and a display capture under a compositing one returns `PLATFORM_NOT_SUPPORTED`.
 
 Platform limits: macOS needs Screen Recording permission, and Wayland asks for portal consent. See [macOS](/desktop/platforms/macos) and [Linux](/desktop/platforms/linux).
+
+## ocr
+
+Reads text from a window or a saved PNG with the OCR engine built into Windows. Use it where the accessibility tree has no text. Other platforms return `PLATFORM_NOT_SUPPORTED`.
+
+```bash
+agent-desktop ocr [--app NAME] [--window-id ID] [--image PATH] [--find TEXT] [--lang TAG]
+```
+
+<table>
+  <thead>
+    <tr><th>Flag</th><th>Default</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>--image PATH</code></td><td>none</td><td>Read this PNG instead of capturing a window.</td></tr>
+    <tr><td><code>--find TEXT</code></td><td>none</td><td>Report each place this text appears. Spacing and case are ignored.</td></tr>
+    <tr><td><code>--lang TAG</code></td><td>user languages</td><td>A language such as <code>zh-Hans-CN</code>. Without its Windows language pack the command returns <code>INVALID_ARGS</code>.</td></tr>
+  </tbody>
+</table>
+
+`data` has `text`, `lines` with `words` and their `bounds`, and with `--find`, `matches` of `{ text, bounds, center }`. Coordinates are image pixels.
 
 ## list-displays
 

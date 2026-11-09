@@ -92,6 +92,8 @@ agent-desktop --headed mouse-move --xy 700,450
 
 The report matches the [`hover`](#hover) example. On macOS the position is read back (`details.verification_scope: "pointer_position"`).
 
+On Windows, `--frame IMAGE.png` reads `--xy` as pixels of a window image saved by the companion's `view` command. The command fails with `STALE_REF` before any input if the window closed, was resized or retitled, or the picture around the point changed.
+
 ## mouse-click
 
 Clicks at absolute coordinates.
@@ -109,6 +111,8 @@ agent-desktop --headed mouse-click --xy 500,300 [--button left|right|middle] [--
     <tr><td><code>--button</code></td><td><code>left</code></td><td><code>left</code>, <code>right</code>, or <code>middle</code>.</td></tr>
     <tr><td><code>--count N</code></td><td><code>1</code></td><td>Clicks, 1 to 100. Use 2 for a double click and 3 for a triple click.</td></tr>
     <tr><td><code>--modifiers NAME</code></td><td>none</td><td>A modifier held during the click: <code>shift</code>, <code>meta</code>, <code>ctrl</code>, <code>alt</code>. Repeat the flag for several.</td></tr>
+    <tr><td><code>--frame IMAGE.png</code></td><td>none</td><td>Windows: read <code>--xy</code> as pixels of this captured window image. See <a href="#mouse-move"><code>mouse-move</code></a>.</td></tr>
+    <tr><td><code>--hold-ms N</code></td><td>none</td><td>Windows: keep the button down for a long press, 1 to 10000 ms, one click.</td></tr>
   </tbody>
 </table>
 

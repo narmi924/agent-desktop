@@ -107,7 +107,7 @@ async function editPage(ad, write, {page,field,value,stdin,app,window,document})
   return {page,url:state.url,field,delivery:action.disposition?.delivery ?? action.after_action?.disposition?.delivery};
 }
 
-async function follow(ad, {page,link,button,visible,'expect-url':expectedUrl}, physicalPointer) {
+async function follow(ad, {page,link,button,visible,human,seed,'expect-url':expectedUrl}, physicalPointer) {
   if (!page || Boolean(link) === Boolean(button) || (button && !expectedUrl) || (expectedUrl && !webUrl(expectedUrl)))
     throw new Error('Provide --page with --link, or --button with an absolute --expect-url.');
   const {state,saved} = await source(ad,page,Boolean(visible));
@@ -117,7 +117,7 @@ async function follow(ad, {page,link,button,visible,'expect-url':expectedUrl}, p
   const destination = webUrl(expectedUrl) ?? targets[0].href;
   if (!destination) throw new Error('Supply --expect-url for a control without a web destination.');
   const [target] = targets;
-  const action = visible ? physicalPointer(ad,state,'click',{on:target.name, role:target.role, ref:target.ref}) :
+  const action = visible ? physicalPointer(ad,state,'click',{on:target.name, role:target.role, ref:target.ref, human, seed}) :
     ad('click',target.ref,'--selected-tab',state.tab);
   try {
     const until = Date.now() + 7000;
