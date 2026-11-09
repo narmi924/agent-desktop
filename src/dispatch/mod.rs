@@ -71,6 +71,7 @@ fn dispatch_command(
         Commands::Snapshot(args) => observation::snapshot(args, adapter, context),
         Commands::Find(args) => observation::find(args, adapter, context),
         Commands::Screenshot(args) => observation::screenshot(args, adapter),
+        Commands::Ocr(args) => observation::ocr(args, adapter, context),
         Commands::Get(args) => observation::get(args, adapter, context),
         Commands::Is(args) => observation::is(args, adapter, context),
         Commands::Click(args) => interaction::click(args, adapter, context),

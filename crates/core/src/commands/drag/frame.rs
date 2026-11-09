@@ -6,6 +6,61 @@ use crate::{AppError, DragParams, Point, adapter::PlatformAdapter, context::Comm
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde_json::{Value, json};
 
+const FRAME_KEYWORD: &[u8] = b"agent-desktop-frame\0";
+const PNG_SIGNATURE: &[u8] = &[137, 80, 78, 71, 13, 10, 26, 10];
+const FRAME_CHUNK_OFFSET: usize = 33;
+const MAX_FRAME_IMAGE_BYTES: u64 = 96 * 1024 * 1024;
+
+fn invalid_image() -> AppError {
+    AppError::invalid_input("Use an unedited PNG produced by the companion's view command")
+}
+
+pub(crate) fn read_frame_image(path: &std::path::Path) -> Result<Vec<u8>, AppError> {
+    let size = std::fs::metadata(path).map_err(|_| invalid_image())?.len();
+    if size > MAX_FRAME_IMAGE_BYTES {
+        return Err(invalid_image());
+    }
+    std::fs::read(path).map_err(|_| invalid_image())
+}
+
+/// Reads the window identity the capture stored right after the PNG header.
+pub(crate) fn frame_from_image(png: &[u8]) -> Result<WindowFrame, AppError> {
+    let header = FRAME_CHUNK_OFFSET + 8;
+    if png.len() < header
+        || !png.starts_with(PNG_SIGNATURE)
+        || &png[FRAME_CHUNK_OFFSET + 4..header] != b"tEXt"
+    {
+        return Err(invalid_image());
+    }
+    let mut size = [0u8; 4];
+    size.copy_from_slice(&png[FRAME_CHUNK_OFFSET..FRAME_CHUNK_OFFSET + 4]);
+    let size = u32::from_be_bytes(size) as usize;
+    let body = png.get(header..header + size).ok_or_else(invalid_image)?;
+    let token = body.strip_prefix(FRAME_KEYWORD).ok_or_else(invalid_image)?;
+    decode(std::str::from_utf8(token).map_err(|_| invalid_image())?)
+}
+
+pub(crate) fn image_point(frame: &WindowFrame, x: f64, y: f64) -> Result<Point, AppError> {
+    local_point(
+        frame,
+        &super::DragEndpoint {
+            ref_id: None,
+            xy: Some((x, y)),
+        },
+    )
+}
+
+/// Accepts either a frame token or the path of a captured image. An image also
+/// lets the drag confirm the picture still matches before the button goes down.
+fn load_frame(source: &str) -> Result<(WindowFrame, Option<Vec<u8>>), AppError> {
+    let path = std::path::Path::new(source);
+    if source.len() < 1024 && path.is_file() {
+        let image = read_frame_image(path)?;
+        return Ok((frame_from_image(&image)?, Some(image)));
+    }
+    Ok((decode(source)?, None))
+}
+
 fn decode(token: &str) -> Result<WindowFrame, AppError> {
     let invalid = || {
         AppError::invalid_input(
@@ -77,8 +132,8 @@ pub fn execute(
             "Frame coordinates do not identify a UI element for a post-action wait",
         ));
     }
-    let from = decode(source)?;
-    let to = decode(dest)?;
+    let (from, from_image) = load_frame(source)?;
+    let (to, to_image) = load_frame(dest)?;
     let deadline = point_deadline(args.timeout_ms)?;
     let params = DragParams {
         from: local_point(&from, &args.from)?,
@@ -88,6 +143,20 @@ pub fn execute(
     };
     params.validate(deadline)?;
     let lease = adapter.acquire_interaction_lease(deadline)?;
+    for (frame, image, point) in [
+        (&from, &from_image, &params.from),
+        (&to, &to_image, &params.to),
+    ] {
+        if let Some(image) = image
+            && !adapter.frame_patch_matches(frame, image, point, deadline)?
+        {
+            return Err(crate::AdapterError::stale_ref_because(
+                "The picture around a drag point changed since the image was captured",
+            )
+            .with_disposition(crate::DeliverySemantics::not_delivered())
+            .into());
+        }
+    }
     operation_response(
         &adapter.drag_in_frames(params, [&from, &to], &lease)?,
         json!({"source_window":from.window.id,"destination_window":to.window.id}),
@@ -97,6 +166,43 @@ pub fn execute(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn png_with_chunk(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
+        let mut png = PNG_SIGNATURE.to_vec();
+        png.extend_from_slice(&[0, 0, 0, 13]);
+        png.extend_from_slice(b"IHDR");
+        png.extend_from_slice(&[0; 13]);
+        png.extend_from_slice(&[0; 4]);
+        png.extend_from_slice(&(body.len() as u32).to_be_bytes());
+        png.extend_from_slice(kind);
+        png.extend_from_slice(body);
+        png.extend_from_slice(&[0; 4]);
+        png
+    }
+
+    fn token() -> String {
+        URL_SAFE_NO_PAD.encode(
+            json!({
+                "window":{"id":"w-1","title":"t","app_name":"a","pid":1,"process_instance":"p","is_focused":false},
+                "width":10,"height":10,"scale":1.0
+            })
+            .to_string(),
+        )
+    }
+
+    #[test]
+    fn a_captured_image_carries_its_window() {
+        let mut body = FRAME_KEYWORD.to_vec();
+        body.extend_from_slice(token().as_bytes());
+        let frame = frame_from_image(&png_with_chunk(b"tEXt", &body)).unwrap();
+        assert_eq!(frame.window.id, "w-1");
+    }
+
+    #[test]
+    fn an_ordinary_png_is_refused() {
+        assert!(frame_from_image(&png_with_chunk(b"IDAT", b"pixels")).is_err());
+        assert!(frame_from_image(&png_with_chunk(b"tEXt", b"Comment\0hello")).is_err());
+    }
 
     #[test]
     fn crop_pixels_translate_to_window_pixels_and_cannot_escape_the_crop() {

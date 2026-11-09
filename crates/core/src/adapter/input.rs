@@ -54,6 +54,25 @@ pub trait InputOps: Send + Sync {
         ))
     }
 
+    fn frame_screen_point(
+        &self,
+        _frame: &WindowFrame,
+        _local: &crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::Point, AdapterError> {
+        Err(AdapterError::not_supported("frame coordinates"))
+    }
+
+    fn frame_patch_matches(
+        &self,
+        _frame: &WindowFrame,
+        _image: &[u8],
+        _local: &crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<bool, AdapterError> {
+        Err(AdapterError::not_supported("frame comparison"))
+    }
+
     /// Milliseconds since the person last used the keyboard or mouse.
     fn user_idle_ms(&self) -> Result<u64, AdapterError> {
         Err(AdapterError::not_supported("user idle time"))

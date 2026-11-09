@@ -35,6 +35,8 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
             AccessibilityAndScreenRecording
         }
         Commands::Screenshot(_) => ScreenRecording,
+        Commands::Ocr(a) if a.image.is_some() => None,
+        Commands::Ocr(_) => ScreenRecording,
 
         Commands::Get(_) | Commands::Is(_) => Accessibility,
 
@@ -228,6 +230,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
             ));
         }
         Commands::Find(_)
+        | Commands::Ocr(_)
         | Commands::Screenshot(_)
         | Commands::Press(_)
         | Commands::KeyDown(_)

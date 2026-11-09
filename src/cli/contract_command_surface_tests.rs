@@ -7,6 +7,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "combo",
     "execute_by_ref",
     "find_live",
+    "frame_pointer",
     "helpers",
     "helpers_test_support",
     "input_hold_policy",
@@ -109,6 +110,7 @@ const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "press",
     "resize-window",
     "restore",
+    "ocr",
     "screenshot",
 ];
 
@@ -159,7 +161,7 @@ fn macos_capability_count_includes_restored_notifications() {
     let commands = cli_command_names();
     assert_eq!(
         commands.len(),
-        61,
+        62,
         "the published CLI command count changed; update capability documentation"
     );
 }

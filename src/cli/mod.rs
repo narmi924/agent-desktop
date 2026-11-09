@@ -38,6 +38,8 @@ pub(crate) enum Commands {
     Find(FindArgs),
     #[command(about = "Take a PNG screenshot of an application window")]
     Screenshot(ScreenshotArgs),
+    #[command(about = "Read visible text from a window or saved image and locate it")]
+    Ocr(crate::cli_args::ocr::OcrArgs),
     #[command(about = "Read an element property (text, value, title, bounds, role, states)")]
     Get(GetArgs),
     #[command(
@@ -191,6 +193,7 @@ impl Commands {
             Self::Snapshot(_) => CommandMetadata::new("snapshot", true),
             Self::Find(_) => CommandMetadata::new("find", false),
             Self::Screenshot(_) => CommandMetadata::new("screenshot", false),
+            Self::Ocr(_) => CommandMetadata::new("ocr", false),
             Self::Get(_) => CommandMetadata::new("get", false),
             Self::Is(_) => CommandMetadata::new("is", false),
             Self::Click(_) => CommandMetadata::new("click", true),
@@ -317,6 +320,7 @@ impl Commands {
                 matches!(&args.action, crate::cli_args::trace::TraceAction::Export(_))
             }
             Self::Snapshot(_)
+            | Self::Ocr(_)
             | Self::Find(_)
             | Self::Get(_)
             | Self::Is(_)

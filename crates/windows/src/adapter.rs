@@ -253,6 +253,27 @@ impl InputOps for WindowsAdapter {
         crate::input::page_pointer::dispatch(event, window, lease.deadline())
     }
 
+    #[cfg(target_os = "windows")]
+    fn frame_screen_point(
+        &self,
+        frame: &agent_desktop_core::commands::drag::frame::WindowFrame,
+        local: &agent_desktop_core::Point,
+        deadline: Deadline,
+    ) -> Result<agent_desktop_core::Point, AdapterError> {
+        crate::input::drag_frame::screen_point(frame, local, deadline)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn frame_patch_matches(
+        &self,
+        frame: &agent_desktop_core::commands::drag::frame::WindowFrame,
+        image: &[u8],
+        local: &agent_desktop_core::Point,
+        deadline: Deadline,
+    ) -> Result<bool, AdapterError> {
+        crate::input::drag_frame::patch_matches(frame, image, local, deadline)
+    }
+
     fn stop_requested(&self) -> bool {
         crate::input::keyboard::escape_pressed()
     }

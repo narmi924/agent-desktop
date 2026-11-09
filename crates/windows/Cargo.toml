@@ -19,7 +19,12 @@ uiautomation = { version = "0.25", default-features = false, features = [
 ] }
 windows = { version = "0.62.2", features = [
   "Foundation",
+  "Foundation_Collections",
+  "Globalization",
   "Graphics_Capture",
+  "Graphics_Imaging",
+  "Media_Ocr",
+  "Storage_Streams",
   "Graphics_DirectX_Direct3D11",
   "Win32_Graphics_Direct3D",
   "Win32_Graphics_Direct3D11",

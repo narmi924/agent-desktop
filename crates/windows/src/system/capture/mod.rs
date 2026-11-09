@@ -15,6 +15,8 @@ pub(crate) mod capture_window;
 #[cfg(target_os = "windows")]
 pub(crate) mod gdi_surface;
 #[cfg(target_os = "windows")]
+pub(crate) mod ocr;
+#[cfg(target_os = "windows")]
 pub(crate) mod png_codec;
 #[cfg(target_os = "windows")]
 pub(crate) mod screenshot;

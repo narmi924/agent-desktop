@@ -303,6 +303,10 @@ pub(crate) struct MouseMoveArgs {
     #[arg(long, num_args = 1..=3, value_name = "REF")]
     #[serde(default)]
     pub page_refs: Vec<String>,
+    /// Captured window image from the companion's view command; --xy is then in that image's pixels
+    #[arg(long, value_name = "IMAGE.png", conflicts_with = "page_refs")]
+    #[serde(default)]
+    pub frame: Option<std::path::PathBuf>,
 }
 
 #[derive(Parser, Debug, Deserialize)]
@@ -334,6 +338,10 @@ pub(crate) struct MouseClickArgs {
     #[arg(long, num_args = 1..=3, value_name = "REF")]
     #[serde(default)]
     pub page_refs: Vec<String>,
+    /// Captured window image from the companion's view command; --xy is then in that image's pixels
+    #[arg(long, value_name = "IMAGE.png", conflicts_with = "page_refs")]
+    #[serde(default)]
+    pub frame: Option<std::path::PathBuf>,
 }
 
 #[derive(Parser, Debug, Deserialize)]

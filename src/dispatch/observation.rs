@@ -1,7 +1,7 @@
 use agent_desktop_core::{
     AppError, PlatformAdapter,
     commands::{
-        find as find_command, get as get_command, is_check as is_command,
+        find as find_command, get as get_command, is_check as is_command, ocr as ocr_command,
         screenshot as screenshot_command, snapshot as snapshot_command,
     },
     context::CommandContext,
@@ -29,6 +29,24 @@ pub(super) fn snapshot(
             root_ref: args.root,
             timeout_ms: args.timeout_ms,
             force_electron_a11y: args.force_electron_a11y,
+        },
+        adapter,
+        context,
+    )
+}
+
+pub(super) fn ocr(
+    args: crate::cli_args::ocr::OcrArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    ocr_command::execute(
+        ocr_command::OcrArgs {
+            image: args.image,
+            app: args.scope.app,
+            window_id: args.scope.window_id,
+            find: args.find,
+            language: args.lang,
         },
         adapter,
         context,

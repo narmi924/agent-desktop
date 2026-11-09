@@ -1,8 +1,8 @@
 use agent_desktop_core::{
     AppError, MouseButton, MouseEvent, MouseEventKind, PlatformAdapter, Point,
     commands::{
-        drag as drag_command, helpers, hover as hover_command, key_down as key_down_command,
-        key_up as key_up_command, mouse_click as mouse_click_command,
+        drag as drag_command, frame_pointer, helpers, hover as hover_command,
+        key_down as key_down_command, key_up as key_up_command, mouse_click as mouse_click_command,
         mouse_down as mouse_down_command, mouse_move as mouse_move_command,
         mouse_up as mouse_up_command, mouse_wheel as mouse_wheel_command, press as press_command,
     },
@@ -113,6 +113,19 @@ pub(super) fn mouse_move(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let (x, y) = parse_xy(&args.xy)?;
+    if let Some(image) = &args.frame {
+        return frame_pointer::execute(
+            frame_pointer::FramePointer { image, x, y },
+            MouseEvent {
+                point: Point { x, y },
+                kind: MouseEventKind::Move,
+                button: MouseButton::Left,
+                modifiers: Vec::new(),
+            },
+            adapter,
+            context,
+        );
+    }
     if let Some(page) = crate::cli_args::mouse_wheel::binding(&args.page_refs)? {
         return helpers::page_pointer::execute(
             page,
@@ -135,6 +148,19 @@ pub(super) fn mouse_click(
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     let (x, y) = parse_xy(&args.xy)?;
+    if let Some(image) = &args.frame {
+        return frame_pointer::execute(
+            frame_pointer::FramePointer { image, x, y },
+            MouseEvent {
+                point: Point { x, y },
+                kind: MouseEventKind::Click { count: args.count },
+                button: parse_mouse_button(&args.button)?,
+                modifiers: parse_modifiers(&args.modifiers)?,
+            },
+            adapter,
+            context,
+        );
+    }
     if let Some(page) = crate::cli_args::mouse_wheel::binding(&args.page_refs)? {
         return helpers::page_pointer::execute(
             page,

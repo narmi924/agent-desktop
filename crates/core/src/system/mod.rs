@@ -8,6 +8,8 @@ pub(crate) mod image_buffer;
 pub(crate) mod image_format;
 pub mod launch_options;
 pub mod launch_result;
+pub(crate) mod ocr_line;
+pub(crate) mod ocr_word;
 pub(crate) mod operation_report;
 pub(crate) mod operation_report_build;
 pub(crate) mod operation_report_dispatch;
