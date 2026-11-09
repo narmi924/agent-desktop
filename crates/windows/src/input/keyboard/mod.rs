@@ -54,6 +54,8 @@ pub(crate) fn reject_standalone_key_state(
 }
 
 #[cfg(target_os = "windows")]
+mod input_method;
+#[cfg(target_os = "windows")]
 mod layout_text;
 #[cfg(target_os = "windows")]
 pub(crate) use layout_text::{require_free_typing_keys, type_layout_character};

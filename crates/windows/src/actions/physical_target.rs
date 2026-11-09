@@ -75,7 +75,7 @@ pub(crate) fn ensure_keyboard_delivery_ready(
     if !target_window_is_foreground(element, deadline)? {
         return Ok(false);
     }
-    if crate::actions::focus::keyboard_focus_ready(element)? {
+    if crate::actions::focus::keyboard_focus_ready(element, deadline)? {
         return Ok(true);
     }
     if allow_owned_list {

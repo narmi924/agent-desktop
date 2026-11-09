@@ -1,8 +1,8 @@
 use super::keyboard_send::{KeyboardInputEvent, key_is_down, post_keyboard_inputs};
 use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics, ErrorCode};
+use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::{
-    Input::KeyboardAndMouse::*,
-    WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId},
+    Input::KeyboardAndMouse::*, WindowsAndMessaging::GetWindowThreadProcessId,
 };
 
 pub(crate) fn require_free_typing_keys() -> Result<(), AdapterError> {
@@ -20,8 +20,20 @@ pub(crate) fn require_free_typing_keys() -> Result<(), AdapterError> {
         .with_disposition(DeliverySemantics::not_delivered()))
 }
 
-/// Sends a printable key only when the foreground layout maps it back to the requested character.
-/// Other text uses the existing Unicode input path, including multi-character grapheme clusters.
+fn foreground_window() -> HWND {
+    #[cfg(test)]
+    {
+        std::ptr::dangling_mut()
+    }
+    #[cfg(not(test))]
+    unsafe {
+        windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow()
+    }
+}
+
+/// Sends a printable key only when the foreground layout maps it back to the requested character
+/// and no input method would compose it. Other text uses the existing Unicode input path,
+/// including multi-character grapheme clusters.
 pub(crate) fn type_layout_character(text: &str, deadline: Deadline) -> Result<bool, AdapterError> {
     let mut units = text.encode_utf16();
     let Some(unit) = units.next() else {
@@ -30,7 +42,7 @@ pub(crate) fn type_layout_character(text: &str, deadline: Deadline) -> Result<bo
     if units.next().is_some() || unit < 32 {
         return Ok(false);
     }
-    let window = unsafe { GetForegroundWindow() };
+    let window = foreground_window();
     if window.is_null() {
         return Err(AdapterError::stale_ref_because(
             "The keyboard has no active window",
@@ -38,6 +50,9 @@ pub(crate) fn type_layout_character(text: &str, deadline: Deadline) -> Result<bo
     }
     let thread = unsafe { GetWindowThreadProcessId(window, std::ptr::null_mut()) };
     let layout = unsafe { GetKeyboardLayout(thread) };
+    if super::input_method::takes_printable_keys(window, layout) {
+        return Ok(false);
+    }
     let mapping = unsafe { VkKeyScanExW(unit, layout) };
     if mapping < 0 || (mapping >> 8) & !1 != 0 {
         return Ok(false);

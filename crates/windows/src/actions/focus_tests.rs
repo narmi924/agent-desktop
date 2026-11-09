@@ -1,7 +1,23 @@
-use super::{focus_from_delivery, headless_denied};
+use super::{focus_from_delivery, focus_ready_from, headless_denied};
 use agent_desktop_core::{
     DeliveryDisposition, ErrorCode, InteractionPolicy, RetryDisposition, StepMechanism,
 };
+
+#[test]
+fn a_composite_control_is_ready_while_focus_is_inside_it() {
+    assert!(focus_ready_from(false, || Ok(true), || false).unwrap());
+}
+
+#[test]
+fn focus_elsewhere_with_no_active_caret_is_not_ready() {
+    assert!(!focus_ready_from(false, || Ok(false), || false).unwrap());
+}
+
+#[test]
+fn exact_focus_skips_the_inner_focus_search() {
+    let ready = focus_ready_from(true, || panic!("no climb is needed"), || false);
+    assert!(ready.unwrap());
+}
 
 #[test]
 fn headless_set_focus_is_policy_denied_not_delivered() {

@@ -19,11 +19,13 @@ mod imp {
     use crate::actions::mutation::{classify_mutation, classify_success};
     use crate::tree::automation::{automation_client, failure_of};
     use crate::tree::element::UIAElement;
-
+    use crate::tree::properties::property_ids::TreeProperty;
+    use crate::tree::properties::read_one;
     use crate::tree::walk::walker_source::same_element;
 
     const SET_FOCUS_API: &str = "UIElement.SetFocus";
     const SET_FOCUS_OP: &str = "SetFocus";
+    const FOCUS_CLIMB_LIMIT: usize = 24;
 
     pub(crate) fn focus_element(
         element: &UIAElement,
@@ -57,17 +59,64 @@ mod imp {
         }
     }
 
-    pub(crate) fn keyboard_focus_ready(element: &UIAElement) -> Result<bool, AdapterError> {
-        if focus_matches_target(element)? {
-            return Ok(true);
+    pub(crate) fn keyboard_focus_ready(
+        element: &UIAElement,
+        deadline: Deadline,
+    ) -> Result<bool, AdapterError> {
+        focus_ready_from(
+            focus_matches_target(element)?,
+            || focus_is_inside_target(element, deadline),
+            || has_active_caret(element),
+        )
+    }
+
+    pub(crate) fn focus_ready_from(
+        exact: bool,
+        inside: impl FnOnce() -> Result<bool, AdapterError>,
+        caret: impl FnOnce() -> bool,
+    ) -> Result<bool, AdapterError> {
+        Ok(exact || inside()? || caret())
+    }
+
+    /// A composite control such as an editable combo box reports keyboard focus
+    /// while the focused element is its inner edit. The flag alone can outlive
+    /// real focus, so the focused element must also sit under the target.
+    fn focus_is_inside_target(
+        element: &UIAElement,
+        deadline: Deadline,
+    ) -> Result<bool, AdapterError> {
+        if read_one(element, TreeProperty::HasKeyboardFocus).flag() != Some(true) {
+            return Ok(false);
         }
-        let active_caret = element
+        let client = automation_client()?;
+        let (Ok(mut node), Ok(walker)) =
+            (client.get_focused_element(), client.get_raw_view_walker())
+        else {
+            return Ok(false);
+        };
+        for _ in 0..FOCUS_CLIMB_LIMIT {
+            deadline.ensure_remaining()?;
+            let Ok(parent) = walker.get_parent(&node) else {
+                return Ok(false);
+            };
+            if client
+                .compare_elements(&parent, &element.0)
+                .unwrap_or(false)
+            {
+                return Ok(true);
+            }
+            node = parent;
+        }
+        Ok(false)
+    }
+
+    fn has_active_caret(element: &UIAElement) -> bool {
+        element
             .0
             .get_pattern::<uiautomation::patterns::UITextPattern>()
             .ok()
             .and_then(|pattern| pattern.get_caret_range().ok())
-            .is_some_and(|(active, _)| active);
-        Ok(active_caret)
+            .is_some_and(|(active, _)| active)
     }
 
     pub(crate) fn controls_focused_list(
@@ -97,10 +146,10 @@ mod imp {
                 {
                     return Ok(true);
                 }
-                if let Ok(uiautomation::variants::Value::STRING(role)) = focused
-                    .get_property_value(UIProperty::AriaRole)
-                    .and_then(|v| v.get_value())
-                    && role.split_whitespace().any(|role| role == "code")
+                let aria_role =
+                    read_one(&UIAElement::from(focused.clone()), TreeProperty::AriaRole)
+                        .non_blank_text();
+                if aria_role.is_some_and(|role| role.split_whitespace().any(|role| role == "code"))
                 {
                     let condition = client.create_property_condition(
                         UIProperty::ControlType,
@@ -183,7 +232,7 @@ pub(crate) use imp::focus_element;
 pub(crate) use imp::{controls_focused_list, keyboard_focus_ready};
 
 #[cfg(all(test, target_os = "windows"))]
-pub(crate) use imp::{focus_from_delivery, headless_denied};
+pub(crate) use imp::{focus_from_delivery, focus_ready_from, headless_denied};
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "focus_tests.rs"]
