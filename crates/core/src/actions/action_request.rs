@@ -1,5 +1,6 @@
 use crate::Point;
 use crate::actions::action::Action;
+use crate::actions::action_delivery::ActionDelivery;
 use crate::actions::interaction_policy::InteractionPolicy;
 use serde::{Deserialize, Serialize};
 
@@ -14,9 +15,7 @@ pub struct ActionRequest {
     #[serde(skip)]
     pub(crate) expected_process: Option<crate::ProcessIdentity>,
     #[serde(skip)]
-    pub(crate) scroll_by_viewport: bool,
-    #[serde(skip)]
-    pub(crate) focused_page_typing: bool,
+    pub(crate) delivery: ActionDelivery,
 }
 
 impl ActionRequest {
@@ -35,8 +34,7 @@ impl ActionRequest {
             timeout_ms: None,
             verified_point: None,
             expected_process: None,
-            scroll_by_viewport: false,
-            focused_page_typing: false,
+            delivery: ActionDelivery::default(),
         }
     }
 
@@ -47,8 +45,7 @@ impl ActionRequest {
             timeout_ms: None,
             verified_point: None,
             expected_process: None,
-            scroll_by_viewport: false,
-            focused_page_typing: false,
+            delivery: ActionDelivery::default(),
         }
     }
 
@@ -59,8 +56,7 @@ impl ActionRequest {
             timeout_ms: None,
             verified_point: None,
             expected_process: None,
-            scroll_by_viewport: false,
-            focused_page_typing: false,
+            delivery: ActionDelivery::default(),
         }
     }
 
@@ -80,11 +76,15 @@ impl ActionRequest {
     }
 
     pub fn focused_page_typing(&self) -> bool {
-        self.focused_page_typing
+        self.delivery.focused_page_typing
     }
 
     pub fn scroll_by_viewport(&self) -> bool {
-        self.scroll_by_viewport
+        self.delivery.scroll_by_viewport
+    }
+
+    pub fn human(&self) -> Option<crate::HumanInput> {
+        self.delivery.human
     }
 
     pub fn verified_point(&self) -> Option<&Point> {

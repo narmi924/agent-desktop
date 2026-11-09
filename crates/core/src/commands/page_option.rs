@@ -39,7 +39,7 @@ pub fn execute(
     };
     let by_viewport = matches!(action, Action::Scroll(_, _));
     let mut request = context.request_base(action);
-    request.scroll_by_viewport = by_viewport;
+    request.delivery.scroll_by_viewport = by_viewport;
     execute_ref_action_dispatching(args, adapter, request, context, |target, request, lease| {
         crate::ref_action::dispatch_resolved_landing(
             target,

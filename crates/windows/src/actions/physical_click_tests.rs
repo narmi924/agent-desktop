@@ -49,6 +49,7 @@ fn lost_foreground_fails_not_delivered_with_zero_injection() {
         ClickSpec {
             button: MouseButton::Left,
             count: 2,
+            human: None,
         },
         deadline(5_000),
     )
@@ -75,6 +76,7 @@ fn double_click_issues_left_button_down_up_pairs() {
         ClickSpec {
             button: MouseButton::Left,
             count: 2,
+            human: None,
         },
         deadline(5_000),
     )
@@ -117,6 +119,7 @@ fn triple_click_issues_three_left_button_cycles() {
         ClickSpec {
             button: MouseButton::Left,
             count: 3,
+            human: None,
         },
         deadline(5_000),
     )
@@ -142,6 +145,7 @@ fn right_click_issues_right_button_flags() {
         ClickSpec {
             button: MouseButton::Right,
             count: 1,
+            human: None,
         },
         deadline(5_000),
     )

@@ -54,6 +54,49 @@ pub trait InputOps: Send + Sync {
         ))
     }
 
+    /// Milliseconds since the person last used the keyboard or mouse.
+    fn user_idle_ms(&self) -> Result<u64, AdapterError> {
+        Err(AdapterError::not_supported("user idle time"))
+    }
+
+    /// Whether the person has pressed the stop key since this was last asked.
+    fn stop_requested(&self) -> bool {
+        false
+    }
+
+    fn cursor_position(&self) -> Result<crate::Point, AdapterError> {
+        Err(AdapterError::not_supported("cursor position"))
+    }
+
+    /// Moves the real cursor along `path`. With `window`, stops unless that
+    /// window stays in front and under the cursor.
+    fn pointer_path(
+        &self,
+        _path: &[crate::PathSample],
+        _window: Option<&str>,
+        _lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        Err(AdapterError::not_supported("pointer path"))
+    }
+
+    fn mouse_click_held(
+        &self,
+        event: MouseEvent,
+        _hold_ms: u64,
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        self.mouse_event(event, lease)
+    }
+
+    fn drag_along(
+        &self,
+        params: DragParams,
+        _path: &[crate::PathSample],
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        self.drag(params, lease)
+    }
+
     fn key_event(
         &self,
         _combo: &KeyCombo,

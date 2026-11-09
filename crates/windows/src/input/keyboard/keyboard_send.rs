@@ -36,6 +36,10 @@ pub(crate) fn key_is_down(vk: u16) -> bool {
     imp::key_is_down(vk)
 }
 
+pub(crate) fn key_was_pressed(vk: u16) -> bool {
+    imp::key_was_pressed(vk)
+}
+
 #[cfg(target_os = "windows")]
 mod imp {
     use super::KeyboardInputEvent;
@@ -48,6 +52,17 @@ mod imp {
         #[cfg(not(test))]
         {
             native::send(events);
+        }
+    }
+
+    pub(super) fn key_was_pressed(vk: u16) -> bool {
+        #[cfg(test)]
+        {
+            super::key_state_fake_sink::is_down(vk)
+        }
+        #[cfg(not(test))]
+        {
+            native::key_was_pressed(vk)
         }
     }
 
@@ -88,6 +103,11 @@ mod imp {
             (state as u16 & 0x8000) != 0
         }
 
+        pub(super) fn key_was_pressed(vk: u16) -> bool {
+            let state = unsafe { GetAsyncKeyState(i32::from(vk)) };
+            (state as u16 & 0x8001) != 0
+        }
+
         fn to_raw(event: KeyboardInputEvent) -> INPUT {
             INPUT {
                 r#type: INPUT_KEYBOARD,
@@ -112,6 +132,10 @@ mod imp {
     pub(super) fn post_keyboard_inputs(_events: &[KeyboardInputEvent]) {}
 
     pub(super) fn key_is_down(_vk: u16) -> bool {
+        false
+    }
+
+    pub(super) fn key_was_pressed(_vk: u16) -> bool {
         false
     }
 }

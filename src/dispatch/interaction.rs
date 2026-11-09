@@ -110,9 +110,11 @@ pub(super) fn type_text(
             Some(PageEntryMode::Replace | PageEntryMode::ReplaceMultiline)
         ),
     };
-    let timeout_ms = match args.interval_ms {
-        Some(_) => args.timeout_ms,
-        None => helpers::normalize_action_timeout_ms(args.effective_timeout_ms()),
+    let paced = args.interval_ms.is_some() || context.human().is_some();
+    let timeout_ms = if paced {
+        args.timeout_ms
+    } else {
+        helpers::normalize_action_timeout_ms(args.effective_timeout_ms())
     };
     let text = args
         .text

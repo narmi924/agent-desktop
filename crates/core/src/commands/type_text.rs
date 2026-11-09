@@ -60,6 +60,41 @@ pub struct PageTypingMode {
     pub replace: bool,
 }
 
+/// Physical typing needs keyboard focus on the target, so a headed run focuses
+/// a field that was not focused when it was captured.
+fn focus_when_unfocused(
+    ref_id: &str,
+    tab: Option<&crate::RefEntry>,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<(), AppError> {
+    if !context.is_headed() {
+        return Ok(());
+    }
+    let entry = super::helpers::load_ref_entry(ref_id, context)?;
+    let capabilities = &entry.capabilities;
+    let already_focused = capabilities.states.iter().any(|state| state == "focused");
+    let can_focus = capabilities
+        .available_actions
+        .iter()
+        .any(|action| action == "SetFocus");
+    if already_focused || !can_focus {
+        return Ok(());
+    }
+    let target = RefArgs {
+        ref_id: ref_id.to_owned(),
+        timeout_ms: None,
+    };
+    let request = context.request_base(Action::SetFocus);
+    match tab {
+        Some(tab) => {
+            super::helpers::selected_tab::dispatch_in_tab(target, adapter, request, context, tab)?
+        }
+        None => execute_ref_action_with_context(target, adapter, request, context)?,
+    };
+    Ok(())
+}
+
 pub fn execute_with_tab(
     args: TypeArgs,
     binding: Option<(&str, PageTypingMode)>,
@@ -79,7 +114,8 @@ pub fn execute_with_tab(
         )));
     }
 
-    if let Some(interval_ms) = args.interval_ms {
+    let paced_ms = args.interval_ms.or(context.human().map(|_| 1));
+    if let Some(interval_ms) = paced_ms {
         if !(1..=MAX_INTERVAL_MS).contains(&interval_ms) {
             return Err(AppError::invalid_input(format!(
                 "interval_ms must be between 1 and {MAX_INTERVAL_MS}"
@@ -99,24 +135,7 @@ pub fn execute_with_tab(
                 .map(|(id, _)| id)
                 .map(|id| super::helpers::selected_tab::load_tab(&args.ref_id, id, context))
                 .transpose()?;
-            if let Some(tab) = &tab
-                && !super::helpers::load_ref_entry(&args.ref_id, context)?
-                    .capabilities
-                    .states
-                    .iter()
-                    .any(|s| s == "focused")
-            {
-                super::helpers::selected_tab::dispatch_in_tab(
-                    RefArgs {
-                        ref_id: args.ref_id.clone(),
-                        timeout_ms: None,
-                    },
-                    adapter,
-                    context.request_base(Action::SetFocus),
-                    context,
-                    tab,
-                )?;
-            }
+            focus_when_unfocused(&args.ref_id, tab.as_ref(), adapter, context)?;
             return super::type_text_interval::execute(
                 args,
                 interval_ms,
@@ -125,6 +144,9 @@ pub fn execute_with_tab(
                 tab.as_ref().map(|tab| (tab, mode)),
             );
         }
+    }
+    if !args.text.is_empty() {
+        focus_when_unfocused(&args.ref_id, None, adapter, context)?;
     }
     let request = context.request_base(Action::TypeText(args.text));
     execute_ref_action_with_context(

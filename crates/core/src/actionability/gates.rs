@@ -12,7 +12,7 @@ pub(super) fn focused_editor(
     evidence: &ActionabilityEvidence,
     request: &ActionRequest,
 ) -> Option<ActionabilityCheck> {
-    if request.focused_page_typing
+    if request.focused_page_typing()
         && matches!(request.action, Action::TypeText(_))
         && matches!(evidence.state.role.as_str(), "textfield" | "textarea")
         && evidence.states_complete

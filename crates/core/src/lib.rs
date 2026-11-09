@@ -58,6 +58,11 @@ pub use input::direction::Direction;
 pub use input::drag_params::{
     DragParams, MAX_DRAG_DROP_DELAY_MS, MAX_DRAG_DURATION_MS, MAX_DRAG_STEPS,
 };
+pub use input::human_input::HumanInput;
+pub use input::human_pace::HumanPace;
+pub use input::human_path::{PathSample, PressTiming, plan_pointer_path, plan_press};
+pub use input::human_rng::HumanRng;
+pub use input::human_typing::{TypingStep, plan_typing};
 pub use input::key_combo::KeyCombo;
 pub use input::modifier::Modifier;
 pub use input::mouse_button::MouseButton;

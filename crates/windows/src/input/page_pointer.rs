@@ -5,7 +5,7 @@ use agent_desktop_core::{
 };
 use windows_sys::Win32::{Foundation::POINT, UI::WindowsAndMessaging::GetCursorPos};
 
-fn refused(reason: &str, moved: bool) -> AdapterError {
+pub(super) fn refused(reason: &str, moved: bool) -> AdapterError {
     AdapterError::stale_ref_because(reason).with_disposition(if moved {
         DeliverySemantics::delivered_unverified()
     } else {
@@ -13,7 +13,7 @@ fn refused(reason: &str, moved: bool) -> AdapterError {
     })
 }
 
-fn position() -> Option<Point> {
+pub(crate) fn position() -> Option<Point> {
     let mut point = POINT::default();
     (unsafe { GetCursorPos(&mut point) } != 0).then_some(Point {
         x: f64::from(point.x),
@@ -21,7 +21,7 @@ fn position() -> Option<Point> {
     })
 }
 
-fn near(a: &Point, b: &Point) -> bool {
+pub(super) fn near(a: &Point, b: &Point) -> bool {
     (a.x - b.x).abs() <= 2.0 && (a.y - b.y).abs() <= 2.0
 }
 

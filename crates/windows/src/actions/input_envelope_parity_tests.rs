@@ -107,6 +107,7 @@ fn physical_click_step_wire_uses_physical_synthetic_and_unverified() {
         ClickSpec {
             button: MouseButton::Left,
             count: 2,
+            human: None,
         },
         deadline(5_000),
     )

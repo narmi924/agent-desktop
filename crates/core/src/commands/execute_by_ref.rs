@@ -49,8 +49,7 @@ pub fn execute_with_timeout(
         timeout_ms,
         verified_point: None,
         expected_process: None,
-        scroll_by_viewport: false,
-        focused_page_typing: false,
+        delivery: Default::default(),
     };
     execute_ref_action_with_context(
         RefArgs {

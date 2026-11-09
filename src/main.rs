@@ -186,6 +186,7 @@ fn execute_with_deadline(
             let context = CommandContext::new(session_id, cli.trace, cli.trace_strict)
                 .map_err(pre_dispatch_error)?
                 .with_headed(cli.interaction.headed)
+                .with_human(cli.interaction.human_input())
                 .with_wait_selector(wait_selector.clone());
             let agent_id = cli
                 .identity

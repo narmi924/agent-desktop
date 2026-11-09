@@ -12,7 +12,7 @@
 //! a `--wait-for` condition is waited on once, after the last keystroke.
 
 use std::cell::Cell;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -25,7 +25,12 @@ use crate::{
     context::CommandContext,
 };
 
+mod clock;
+mod human;
 mod replace;
+
+use clock::Clock;
+use human::PersonGuard;
 
 pub(crate) fn execute(
     args: TypeArgs,
@@ -37,6 +42,7 @@ pub(crate) fn execute(
     crate::commands::helpers::validate_post_action_wait(context)?;
     let per_keystroke = context.clone().with_wait_selector(None);
     let units = keystroke_units(&args.text);
+    let steps = human::key_steps(&units, &args.ref_id, context)?;
     let mut clock = Clock {
         interval: Duration::from_millis(interval_ms),
         due: None,
@@ -48,7 +54,15 @@ pub(crate) fn execute(
             .unwrap_or_else(|| default_timeout_ms(unit))
     };
     let mut last = Value::Null;
+    let mut person = PersonGuard::new(adapter, context);
     let replacing = binding.is_some_and(|(_, mode)| mode.replace);
+    let partial = |error: AppError, typed: usize| {
+        if replacing {
+            replace::partial(error, typed, steps.len())
+        } else {
+            after_partial_delivery(error, typed, steps.len())
+        }
+    };
     let mut burst = if let Some((tab, mode)) = binding
         && mode.replace
     {
@@ -56,27 +70,37 @@ pub(crate) fn execute(
     } else {
         None
     };
-    for (index, unit) in units.iter().enumerate() {
+    for (index, step) in steps.iter().enumerate() {
+        let unit = step.unit.as_str();
         let slot = clock.wait();
-        let newline = binding.is_some_and(|(_, mode)| mode.multiline)
-            && matches!(unit.as_str(), "\r" | "\n" | "\r\n");
+        person
+            .before_key()
+            .map_err(|error| partial(error.into(), index))?;
+        let newline =
+            binding.is_some_and(|(_, mode)| mode.multiline) && matches!(unit, "\r" | "\n" | "\r\n");
         if replacing
             && newline
             && let Some(burst) = &burst
         {
             replace::discard_tail(burst, adapter, context)
-                .map_err(|e| replace::partial(e, index, units.len()))?;
+                .map_err(|e| replace::partial(e, index, steps.len()))?;
         }
-        let action = if newline {
+        let action = if step.backspace || newline {
             Action::PressKey(crate::KeyCombo {
-                key: "return".into(),
+                key: if step.backspace {
+                    "backspace"
+                } else {
+                    "return"
+                }
+                .into(),
                 modifiers: Vec::new(),
             })
         } else {
-            Action::TypeText(unit.clone())
+            Action::TypeText(unit.to_owned())
         };
         let mut request = context.request_base(action);
-        request.focused_page_typing = binding.is_some();
+        request.delivery.focused_page_typing =
+            binding.is_some() || request.delivery.human.is_some();
         let mut landed = None;
         let delivered = match &burst {
             Some(burst) => deliver(adapter, burst, request, budget(unit)).map(|result| {
@@ -100,22 +124,20 @@ pub(crate) fn execute(
                 landed = Some(handle);
             }),
         };
-        delivered.map_err(|error| {
-            if replacing {
-                replace::partial(error, index, units.len())
-            } else {
-                after_partial_delivery(error, index, units.len())
-            }
-        })?;
+        delivered.map_err(|error| partial(error, index))?;
+        person.key_sent();
         if replacing
             && newline
             && let Some(burst) = &burst
         {
             replace::start_line(burst, adapter, context)
-                .map_err(|e| replace::partial(e, index + 1, units.len()))?;
+                .map_err(|e| replace::partial(e, index + 1, steps.len()))?;
+        }
+        if let Some(delay) = steps.get(index + 1).and_then(|next| next.delay) {
+            clock.interval = delay;
         }
         clock.delivered(slot);
-        if let Some(handle) = landed.filter(|_| index + 1 < units.len()) {
+        if let Some(handle) = landed.filter(|_| index + 1 < steps.len()) {
             burst = Some(
                 burst_around(
                     handle,
@@ -124,7 +146,7 @@ pub(crate) fn execute(
                     adapter,
                     binding.map(|(tab, _)| tab),
                 )
-                .map_err(|error| after_partial_delivery(error, index + 1, units.len()))?,
+                .map_err(|error| after_partial_delivery(error, index + 1, steps.len()))?,
             );
         }
     }
@@ -160,40 +182,6 @@ fn expected_final_value(first: &Value, units: &[String]) -> Option<String> {
     after_first
         .ends_with(units.first()?.as_str())
         .then(|| format!("{after_first}{}", units[1..].concat()))
-}
-
-/// Spaces keystrokes an interval apart. The grid slides rather than catching
-/// up: a keystroke that is slow to land, or waits for the interaction lease,
-/// pushes the rest back instead of letting them go out in a rush.
-struct Clock {
-    interval: Duration,
-    due: Option<Instant>,
-}
-
-impl Clock {
-    /// Waits until the next keystroke is due, and returns the slot it goes
-    /// out in. The first keystroke goes at once.
-    fn wait(&mut self) -> Instant {
-        let Some(due) = self.due else {
-            return Instant::now();
-        };
-        if let Some(wait) = due.checked_duration_since(Instant::now()) {
-            std::thread::sleep(wait);
-        }
-        due
-    }
-
-    /// Schedules the next keystroke once the one sent in `slot` has landed.
-    fn delivered(&mut self, slot: Instant) {
-        self.due = Some(next_due(slot, Instant::now(), self.interval));
-    }
-}
-
-/// When the keystroke after the one sent in `slot` is due, given that it
-/// landed at `now`: an interval after its slot, or half an interval after it
-/// landed when it landed late, so two keystrokes never land a frame apart.
-fn next_due(slot: Instant, now: Instant, interval: Duration) -> Instant {
-    (slot + interval).max(now + interval / 2)
 }
 
 /// The saved ref, its resolved element and process instance, which every later

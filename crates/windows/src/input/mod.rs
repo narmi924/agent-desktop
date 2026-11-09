@@ -36,6 +36,8 @@ pub(crate) mod drag;
 pub(crate) mod drag_frame;
 mod drag_state;
 pub(crate) mod elevation;
+#[cfg(target_os = "windows")]
+pub(crate) mod human_pointer;
 pub(crate) mod keyboard;
 pub(crate) mod mouse;
 #[cfg(target_os = "windows")]

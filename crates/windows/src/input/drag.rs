@@ -11,7 +11,9 @@
 
 use std::time::Duration;
 
-use agent_desktop_core::{AdapterError, Deadline, DeliverySemantics, DragParams, ErrorCode, Point};
+use agent_desktop_core::{
+    AdapterError, Deadline, DeliverySemantics, DragParams, ErrorCode, PathSample, Point,
+};
 
 use crate::input::drag_state::DragReleaseGuard;
 use crate::input::mouse::mouse_coord::{self, NormalizedPoint};
@@ -45,7 +47,48 @@ pub(crate) fn synthesize_checked(
 ) -> Result<(), AdapterError> {
     validate_drag(&params)?;
     preflight_drag(&params, deadline)?;
-    drag_sequence(params, deadline, &mut check)
+    drag_sequence(params, None, deadline, &mut check)
+}
+
+/// A drag that follows a planned human-like path instead of a straight line.
+pub(crate) fn synthesize_along(
+    params: DragParams,
+    path: &[PathSample],
+    deadline: Deadline,
+) -> Result<(), AdapterError> {
+    validate_drag(&params)?;
+    preflight_drag(&params, deadline)?;
+    drag_sequence(params, Some(path), deadline, &mut || Ok(()))
+}
+
+fn waypoints(
+    params: &DragParams,
+    path: Option<&[PathSample]>,
+    steps: u64,
+    step_delay: Duration,
+) -> Vec<(Point, Duration)> {
+    if let Some(path) = path {
+        return path
+            .iter()
+            .enumerate()
+            .map(|(index, sample)| {
+                let next = path.get(index + 1).map_or(sample.at_ms, |next| next.at_ms);
+                (
+                    Point {
+                        x: sample.x,
+                        y: sample.y,
+                    },
+                    Duration::from_millis(next - sample.at_ms),
+                )
+            })
+            .collect();
+    }
+    (1..=steps)
+        .map(|index| {
+            let progress = index as f64 / steps as f64;
+            (interpolate(&params.from, &params.to, progress), step_delay)
+        })
+        .collect()
 }
 
 fn not_cancelled() -> Result<(), AdapterError> {
@@ -71,6 +114,7 @@ fn pause(deadline: Deadline, duration: Duration) -> Result<(), AdapterError> {
 
 fn drag_sequence(
     params: DragParams,
+    path: Option<&[PathSample]>,
     deadline: Deadline,
     check: &mut impl FnMut() -> Result<(), AdapterError>,
 ) -> Result<(), AdapterError> {
@@ -100,15 +144,13 @@ fn drag_sequence(
         pause(deadline, Duration::from_millis(PICKUP_DELAY_MS))?;
         check()?;
 
-        for index in 1..=steps {
-            let progress = index as f64 / steps as f64;
-            let point = interpolate(&params.from, &params.to, progress);
+        for (point, delay) in waypoints(&params, path, steps, step_delay) {
             deadline.ensure_remaining()?;
             check()?;
             not_cancelled()?;
             post_mouse_inputs(&[move_input(mouse_coord::normalize_point(&point))]);
             guard.mark_delivered();
-            pause(deadline, step_delay)?;
+            pause(deadline, delay)?;
         }
 
         check()?;

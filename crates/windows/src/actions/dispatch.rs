@@ -34,7 +34,7 @@ mod imp {
     use crate::actions::focus::focus_element;
     use crate::actions::mutation::{classify_success, classify_write};
     use crate::actions::physical_click::{
-        double_click_steps, right_click_steps, triple_click_steps,
+        ClickSpec, double_click_steps, physical_click_steps, right_click_steps, triple_click_steps,
     };
     use crate::actions::physical_keyboard::{
         press_key_element_steps, press_key_global, type_text_steps,
@@ -69,6 +69,20 @@ mod imp {
             crate::input::keyboard::require_free_typing_keys()?;
         }
         match &request.action {
+            Action::Click if request.human().is_some() => {
+                let steps = physical_click_steps(
+                    element,
+                    ClickSpec {
+                        button: agent_desktop_core::MouseButton::Left,
+                        count: 1,
+                        human: request.human(),
+                    },
+                    request.policy,
+                    deadline,
+                    request.verified_point(),
+                )?;
+                Ok(ActionResult::from_execution(&request.action, steps))
+            }
             Action::Click => execute_click(element, request.policy, deadline),
             Action::SetFocus => focus_element(element, &request, deadline),
             Action::ScrollTo => execute_scroll_to(handle, lease),
@@ -92,6 +106,7 @@ mod imp {
                     request.policy,
                     deadline,
                     request.verified_point().cloned(),
+                    request.human(),
                 )?;
                 Ok(ActionResult::from_execution(&request.action, steps))
             }
@@ -101,6 +116,7 @@ mod imp {
                     request.policy,
                     deadline,
                     request.verified_point().cloned(),
+                    request.human(),
                 )?;
                 Ok(ActionResult::from_execution(&request.action, steps))
             }
@@ -110,6 +126,7 @@ mod imp {
                     request.policy,
                     deadline,
                     request.verified_point().cloned(),
+                    request.human(),
                 )?;
                 Ok(ActionResult::from_execution(&request.action, steps))
             }

@@ -253,6 +253,65 @@ impl InputOps for WindowsAdapter {
         crate::input::page_pointer::dispatch(event, window, lease.deadline())
     }
 
+    fn stop_requested(&self) -> bool {
+        crate::input::keyboard::escape_pressed()
+    }
+
+    #[cfg(target_os = "windows")]
+    fn user_idle_ms(&self) -> Result<u64, AdapterError> {
+        use windows_sys::Win32::System::SystemInformation::GetTickCount;
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+        let mut info = LASTINPUTINFO {
+            cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+            dwTime: 0,
+        };
+        if unsafe { GetLastInputInfo(&mut info) } == 0 {
+            return Err(AdapterError::internal(
+                "the last input time could not be read",
+            ));
+        }
+        Ok(u64::from(
+            unsafe { GetTickCount() }.wrapping_sub(info.dwTime),
+        ))
+    }
+
+    fn cursor_position(&self) -> Result<agent_desktop_core::Point, AdapterError> {
+        crate::input::page_pointer::position()
+            .ok_or_else(|| AdapterError::internal("the cursor position could not be read"))
+    }
+
+    fn pointer_path(
+        &self,
+        path: &[agent_desktop_core::PathSample],
+        window: Option<&str>,
+        lease: &InteractionLease,
+    ) -> Result<(), AdapterError> {
+        crate::input::human_pointer::follow(path, window, lease.deadline())
+    }
+
+    fn mouse_click_held(
+        &self,
+        event: MouseEvent,
+        hold_ms: u64,
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        let report = OperationReport::pointer_dispatched(&event, false);
+        crate::input::mouse::synthesize_click_held(event, hold_ms, lease.deadline())?;
+        Ok(report)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn drag_along(
+        &self,
+        params: DragParams,
+        path: &[agent_desktop_core::PathSample],
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        let report = OperationReport::drag_dispatched(&params);
+        crate::input::drag::synthesize_along(params, path, lease.deadline())?;
+        Ok(report)
+    }
+
     /// A standalone key edge has no daemon to own the hold across a request
     /// boundary, so it rejects the same way macOS's `key_event` does -
     /// the atomic `press`/`type` composers live in the

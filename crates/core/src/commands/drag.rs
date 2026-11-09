@@ -149,7 +149,14 @@ pub fn execute(
         to.point.clone(),
         &lease,
     );
-    let result = adapter.drag(params, &lease);
+    let result = match context.human() {
+        Some(human) => {
+            let path =
+                crate::plan_pointer_path(&params.from, &params.to, human.pace, &mut human.rng());
+            adapter.drag_along(params, &path, &lease)
+        }
+        None => adapter.drag(params, &lease),
+    };
     let delivered = result
         .as_ref()
         .is_ok_and(|report| crate::cursor_overlay::confirms_delivery(report.disposition()));

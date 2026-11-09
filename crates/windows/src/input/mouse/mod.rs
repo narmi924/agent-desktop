@@ -47,12 +47,27 @@ pub(crate) fn synthesize_mouse(event: MouseEvent, deadline: Deadline) -> Result<
         MouseEventKind::Move => dispatch_move(&event),
         MouseEventKind::Click { count } => {
             validate_mouse_click_count(count)?;
-            dispatch_click(&event, count, deadline)
+            dispatch_click(&event, count, CLICK_HOLD_DELAY, deadline)
         }
         MouseEventKind::Wheel { delta_x, delta_y } => {
             dispatch_wheel(&event, delta_x, delta_y, deadline)
         }
     }
+}
+
+/// A click whose press lasts `hold_ms`, for human-like input.
+pub(crate) fn synthesize_click_held(
+    event: MouseEvent,
+    hold_ms: u64,
+    deadline: Deadline,
+) -> Result<(), AdapterError> {
+    deadline.ensure_remaining()?;
+    event.point.validate()?;
+    let MouseEventKind::Click { count } = event.kind else {
+        return synthesize_mouse(event, deadline);
+    };
+    validate_mouse_click_count(count)?;
+    dispatch_click(&event, count, Duration::from_millis(hold_ms), deadline)
 }
 
 pub(crate) fn standalone_state_error() -> AdapterError {
@@ -76,11 +91,16 @@ fn dispatch_move(event: &MouseEvent) -> Result<(), AdapterError> {
     Ok(())
 }
 
-fn dispatch_click(event: &MouseEvent, count: u32, deadline: Deadline) -> Result<(), AdapterError> {
+fn dispatch_click(
+    event: &MouseEvent,
+    count: u32,
+    hold: Duration,
+    deadline: Deadline,
+) -> Result<(), AdapterError> {
     deadline.ensure_remaining()?;
     let normalized = mouse_coord::normalize_point(&event.point);
     let mut modifiers = press_modifiers(&event.modifiers);
-    let result = post_click_sequence(&event.button, normalized, count, deadline);
+    let result = post_click_sequence(&event.button, normalized, (count, hold), deadline);
     modifiers.release();
     result
 }
@@ -93,18 +113,19 @@ fn dispatch_click(event: &MouseEvent, count: u32, deadline: Deadline) -> Result<
 fn post_click_sequence(
     button: &MouseButton,
     normalized: NormalizedPoint,
-    count: u32,
+    (count, hold): (u32, Duration),
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     post_mouse_inputs(&[move_input(normalized)]);
-    let (down_flag, up_flag) = button_flags(button);
+    let flags = button_flags(button);
+    let up_flag = flags.1;
     let mut sequence = ReleaseState::default();
     for click_index in 0..count {
         if let Err(error) = deadline.ensure_remaining() {
             return Err(sequence.enrich_error(error, CLICK_SUGGESTION));
         }
         let mut guard = ClickReleaseGuard::new(up_flag);
-        let outcome = click_once(down_flag, up_flag, &mut guard, &mut sequence, deadline);
+        let outcome = click_once(flags, hold, &mut guard, &mut sequence, deadline);
         if let Err(error) = outcome {
             return Err(sequence.enrich_error(error, CLICK_SUGGESTION));
         }
@@ -118,8 +139,8 @@ fn post_click_sequence(
 }
 
 fn click_once(
-    down_flag: u32,
-    up_flag: u32,
+    (down_flag, up_flag): (u32, u32),
+    hold: Duration,
     guard: &mut ClickReleaseGuard,
     sequence: &mut ReleaseState,
     deadline: Deadline,
@@ -128,7 +149,7 @@ fn click_once(
     sequence.arm();
     post_mouse_inputs(&[button_input(down_flag)]);
     sequence.mark_delivered();
-    sleep_bounded(deadline, CLICK_HOLD_DELAY)?;
+    sleep_bounded(deadline, hold)?;
     post_mouse_inputs(&[button_input(up_flag)]);
     sequence.mark_delivered();
     guard.disarm();

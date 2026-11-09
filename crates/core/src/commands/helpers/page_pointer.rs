@@ -108,7 +108,11 @@ pub fn execute(
         }
         receiver_handle = Some(handle);
     }
-    if !matches!(event.kind, MouseEventKind::Move) {
+    if let Some(human) = context.human() {
+        let press =
+            crate::input::human_glide::glide(adapter, &event.point, human, Some(window), &lease)?;
+        std::thread::sleep(std::time::Duration::from_millis(press.settle_ms));
+    } else if !matches!(event.kind, MouseEventKind::Move) {
         adapter.pointer_in_window(
             MouseEvent {
                 kind: MouseEventKind::Move,
@@ -117,6 +121,8 @@ pub fn execute(
             window,
             &lease,
         )?;
+    }
+    if !matches!(event.kind, MouseEventKind::Move) {
         page_bounds(&event.point)?;
         if let Some(handle) = receiver_handle {
             let hit = adapter.hit_test(&handle, event.point.clone(), deadline)?;

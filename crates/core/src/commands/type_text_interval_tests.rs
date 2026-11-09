@@ -41,11 +41,14 @@ fn the_next_keystroke_is_due_an_interval_after_its_slot_or_half_one_after_a_late
     let interval = Duration::from_millis(100);
 
     assert_eq!(
-        super::next_due(slot, slot + Duration::from_millis(10), interval),
+        super::clock::next_due(slot, slot + Duration::from_millis(10), interval),
         slot + interval
     );
     let late = slot + Duration::from_millis(350);
-    assert_eq!(super::next_due(slot, late, interval), late + interval / 2);
+    assert_eq!(
+        super::clock::next_due(slot, late, interval),
+        late + interval / 2
+    );
 }
 
 #[path = "type_text_interval_clock_tests.rs"]

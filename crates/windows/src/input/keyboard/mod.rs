@@ -64,6 +64,11 @@ pub(crate) fn escape_held() -> bool {
     keyboard_send::key_is_down(keyboard_map::VK_ESCAPE)
 }
 
+/// Whether Escape is down or was tapped since this was last asked.
+pub(crate) fn escape_pressed() -> bool {
+    keyboard_send::key_was_pressed(keyboard_map::VK_ESCAPE)
+}
+
 pub(super) mod keyboard_event;
 pub(super) mod keyboard_map;
 pub(super) mod keyboard_send;

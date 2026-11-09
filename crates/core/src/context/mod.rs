@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 mod cursor;
+mod input_style;
 mod options;
 mod session_scope;
 mod wait_selector;
@@ -219,8 +220,10 @@ impl CommandContext {
             timeout_ms: None,
             verified_point: None,
             expected_process: None,
-            scroll_by_viewport: false,
-            focused_page_typing: false,
+            delivery: crate::actions::action_delivery::ActionDelivery {
+                human: self.options.human,
+                ..Default::default()
+            },
         }
     }
 

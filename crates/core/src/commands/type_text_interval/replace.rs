@@ -17,7 +17,7 @@ fn press(
     action: Action,
 ) -> Result<(), AppError> {
     let mut request = context.request_base(action);
-    request.focused_page_typing = true;
+    request.delivery.focused_page_typing = true;
     deliver(adapter, burst, request, crate::DEFAULT_OPERATION_TIMEOUT_MS).map(|_| ())
 }
 
@@ -42,7 +42,7 @@ pub(super) fn start(
         ));
     }
     let mut select_all = context.request_base(key("a", vec![Modifier::Ctrl]));
-    select_all.focused_page_typing = true;
+    select_all.delivery.focused_page_typing = true;
     let (_, handle) = execute_landing(
         RefArgs {
             ref_id: args.ref_id.clone(),

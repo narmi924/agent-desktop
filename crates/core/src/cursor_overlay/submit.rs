@@ -1,7 +1,7 @@
 use super::CursorPhase;
 use crate::{
     AdapterError, CommandContext, DeliveryDisposition, DeliverySemantics, MouseEvent,
-    OperationReport, PlatformAdapter, Point, Rect,
+    MouseEventKind, OperationReport, PlatformAdapter, Point, Rect,
 };
 
 const DISPATCH_RESERVE_MS: u64 = 100;
@@ -253,7 +253,24 @@ pub(crate) fn dispatch_mouse_event_with_cursor(
 ) -> Result<OperationReport, AdapterError> {
     let point = event.point.clone();
     crate::cursor_overlay::submit_travel(adapter, context, point.clone(), lease, click);
-    let result = adapter.mouse_event(event, lease);
+    let human = context.human().filter(|_| {
+        matches!(
+            event.kind,
+            MouseEventKind::Move | MouseEventKind::Click { .. }
+        )
+    });
+    let result = match human {
+        Some(human) => {
+            let press = crate::input::human_glide::glide(adapter, &point, human, None, lease)?;
+            if matches!(event.kind, MouseEventKind::Click { .. }) {
+                std::thread::sleep(std::time::Duration::from_millis(press.settle_ms));
+                adapter.mouse_click_held(event, press.hold_ms, lease)
+            } else {
+                adapter.mouse_event(event, lease)
+            }
+        }
+        None => adapter.mouse_event(event, lease),
+    };
     if crate::cursor_overlay::input_was_delivered(&result) {
         crate::cursor_overlay::submit(
             adapter,
