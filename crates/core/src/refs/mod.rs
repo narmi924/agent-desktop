@@ -373,6 +373,7 @@ pub(crate) mod ref_geometry;
 pub mod ref_identity;
 pub(crate) mod ref_identity_match;
 pub(crate) mod ref_live_predicate;
+mod ref_map_entries;
 pub(crate) mod ref_process;
 pub(crate) mod ref_resolve_deadline;
 pub(crate) mod ref_root_read;
@@ -392,9 +393,8 @@ pub mod resolve_saved_ref;
 #[path = "refs_serde_tests.rs"]
 mod serde_tests;
 #[cfg(test)]
-#[path = "refs_tests.rs"]
-mod tests;
-
-#[cfg(test)]
 #[path = "refs_size_tests.rs"]
 mod size_tests;
+#[cfg(test)]
+#[path = "refs_tests.rs"]
+mod tests;

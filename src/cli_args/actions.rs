@@ -342,6 +342,10 @@ pub(crate) struct MouseClickArgs {
     #[arg(long, value_name = "IMAGE.png", conflicts_with = "page_refs")]
     #[serde(default)]
     pub frame: Option<std::path::PathBuf>,
+    /// Windows: keep the button down this long, for a long press (1 to 10000; one click)
+    #[arg(long, value_name = "MS", conflicts_with_all = ["page_refs", "frame"])]
+    #[serde(default)]
+    pub hold_ms: Option<u64>,
 }
 
 #[derive(Parser, Debug, Deserialize)]

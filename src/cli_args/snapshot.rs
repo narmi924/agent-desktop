@@ -34,4 +34,11 @@ pub(crate) struct SnapshotArgs {
     )]
     #[serde(default)]
     pub force_electron_a11y: bool,
+    #[arg(
+        long,
+        value_name = "SNAPSHOT_ID",
+        help = "Also report which controls appeared, disappeared or changed since this snapshot"
+    )]
+    #[serde(default)]
+    pub since: Option<String>,
 }

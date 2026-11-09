@@ -187,6 +187,7 @@ fn execute_with_deadline(
                 .map_err(pre_dispatch_error)?
                 .with_headed(cli.interaction.headed)
                 .with_human(cli.interaction.human_input())
+                .with_guards(cli.interaction.guards())
                 .with_wait_selector(wait_selector.clone());
             let agent_id = cli
                 .identity

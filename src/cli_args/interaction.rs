@@ -32,9 +32,40 @@ pub(crate) struct InteractionArgs {
         help = "Reproduce one human-like motion and typing plan"
     )]
     pub seed: Option<u64>,
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        help = "After a mutating command, report in data.receipt whether this file was created or changed"
+    )]
+    pub expect_file: Option<std::path::PathBuf>,
+    #[arg(
+        long,
+        global = true,
+        value_name = "MS",
+        default_value_t = 3000,
+        requires = "expect_file",
+        help = "How long to wait for --expect-file to change"
+    )]
+    pub expect_within: u64,
+    #[arg(
+        long,
+        global = true,
+        value_name = "MS",
+        help = "With --headed, wait until the keyboard and mouse have been idle this long before sending input"
+    )]
+    pub when_idle: Option<u64>,
 }
 
 impl InteractionArgs {
+    pub(crate) fn guards(&self) -> agent_desktop_core::context::action_guards::ActionGuards {
+        agent_desktop_core::context::action_guards::ActionGuards {
+            expect_file: self.expect_file.clone(),
+            expect_within_ms: self.expect_within,
+            when_idle_ms: self.when_idle,
+        }
+    }
+
     pub(crate) fn human_input(&self) -> Option<HumanInput> {
         self.human.map(|pace| HumanInput {
             pace: match pace {

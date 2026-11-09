@@ -1,3 +1,4 @@
+pub mod action_guard;
 pub mod batch;
 pub mod check;
 pub mod clear;
@@ -68,6 +69,7 @@ pub mod session;
 pub mod set_value;
 pub mod skills;
 pub mod snapshot;
+pub mod snapshot_changes;
 pub mod status;
 pub(crate) mod surface_scope;
 pub mod toggle;

@@ -78,6 +78,11 @@ pub trait InputOps: Send + Sync {
         Err(AdapterError::not_supported("user idle time"))
     }
 
+    /// Whether `mouse_click_held` really keeps the button down.
+    fn supports_held_click(&self) -> bool {
+        false
+    }
+
     /// Whether the person has pressed the stop key since this was last asked.
     fn stop_requested(&self) -> bool {
         false

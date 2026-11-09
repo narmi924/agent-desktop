@@ -4,10 +4,12 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 const NON_COMMAND_MODULES: &[&str] = &[
+    "action_guard",
     "combo",
     "execute_by_ref",
     "find_live",
     "frame_pointer",
+    "snapshot_changes",
     "helpers",
     "helpers_test_support",
     "input_hold_policy",

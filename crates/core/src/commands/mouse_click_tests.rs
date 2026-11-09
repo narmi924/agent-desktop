@@ -31,6 +31,76 @@ impl SystemOps for ModifierCaptureAdapter {
     }
 }
 
+struct HoldCapture(Mutex<Option<u64>>);
+
+impl ObservationOps for HoldCapture {}
+impl ActionOps for HoldCapture {}
+impl SystemOps for HoldCapture {
+    crate::adapter::guarded_interaction_lease!();
+}
+
+impl InputOps for HoldCapture {
+    fn mouse_click_held(
+        &self,
+        _event: MouseEvent,
+        hold_ms: u64,
+        _lease: &crate::InteractionLease,
+    ) -> Result<crate::OperationReport, AdapterError> {
+        *self.0.lock().unwrap() = Some(hold_ms);
+        Ok(crate::adapter::test_report())
+    }
+
+    fn supports_held_click(&self) -> bool {
+        true
+    }
+}
+
+fn long_press(hold_ms: u64, count: u32) -> MouseClickArgs {
+    MouseClickArgs {
+        x: 10.0,
+        y: 20.0,
+        button: MouseButton::Left,
+        count,
+        modifiers: Vec::new(),
+        hold_ms: Some(hold_ms),
+    }
+}
+
+#[test]
+fn a_long_press_keeps_the_button_down_for_the_requested_time() {
+    let adapter = HoldCapture(Mutex::new(None));
+    execute(
+        long_press(750, 1),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap();
+    assert_eq!(*adapter.0.lock().unwrap(), Some(750));
+}
+
+#[test]
+fn a_long_press_outside_its_limits_is_refused() {
+    let adapter = HoldCapture(Mutex::new(None));
+    let context = CommandContext::default().with_headed(true);
+    assert!(execute(long_press(0, 1), &adapter, &context).is_err());
+    assert!(execute(long_press(10_001, 1), &adapter, &context).is_err());
+    assert!(execute(long_press(500, 2), &adapter, &context).is_err());
+    assert_eq!(*adapter.0.lock().unwrap(), None);
+}
+
+#[test]
+fn a_platform_without_a_held_click_refuses_rather_than_pressing_briefly() {
+    let adapter = ModifierCaptureAdapter::new();
+    let error = execute(
+        long_press(500, 1),
+        &adapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("hold-ms"));
+    assert!(adapter.captured.lock().unwrap().is_none());
+}
+
 impl InputOps for ModifierCaptureAdapter {
     fn mouse_event(
         &self,
@@ -57,6 +127,7 @@ fn requested_modifiers_reach_the_dispatched_mouse_event() {
             button: MouseButton::Left,
             count: 1,
             modifiers: vec![Modifier::Meta, Modifier::Shift],
+            hold_ms: None,
         },
         &adapter,
         &CommandContext::default().with_headed(true),
@@ -81,6 +152,7 @@ fn no_modifiers_requested_dispatches_empty_modifiers() {
             button: MouseButton::Left,
             count: 1,
             modifiers: Vec::new(),
+            hold_ms: None,
         },
         &adapter,
         &CommandContext::default().with_headed(true),
@@ -113,6 +185,7 @@ fn headed_mouse_click_presents_agent_cursor_after_delivery() {
             button: MouseButton::Left,
             count: 1,
             modifiers: Vec::new(),
+            hold_ms: None,
         },
         &adapter,
         &context,
@@ -140,6 +213,7 @@ fn zero_clicks_fail_before_dispatch() {
             button: MouseButton::Left,
             count: 0,
             modifiers: Vec::new(),
+            hold_ms: None,
         },
         &adapter,
         &CommandContext::default().with_headed(true),
@@ -161,6 +235,7 @@ fn excessive_click_count_fails_before_dispatch() {
             button: MouseButton::Left,
             count: crate::MAX_MOUSE_CLICK_COUNT + 1,
             modifiers: Vec::new(),
+            hold_ms: None,
         },
         &adapter,
         &CommandContext::default().with_headed(true),

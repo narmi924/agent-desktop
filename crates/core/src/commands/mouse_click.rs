@@ -1,5 +1,5 @@
 use crate::{
-    AppError, Modifier, MouseButton, MouseEvent, MouseEventKind, Point,
+    AdapterError, AppError, Modifier, MouseButton, MouseEvent, MouseEventKind, Point,
     adapter::PlatformAdapter,
     commands::{
         operation_response::operation_response,
@@ -15,6 +15,28 @@ pub struct MouseClickArgs {
     pub button: MouseButton,
     pub count: u32,
     pub modifiers: Vec<Modifier>,
+    pub hold_ms: Option<u64>,
+}
+
+const MAX_HOLD_MS: u64 = 10_000;
+
+fn validate_hold(
+    hold_ms: Option<u64>,
+    count: u32,
+    adapter: &dyn PlatformAdapter,
+) -> Result<(), AppError> {
+    let Some(hold_ms) = hold_ms else {
+        return Ok(());
+    };
+    if !(1..=MAX_HOLD_MS).contains(&hold_ms) || count != 1 {
+        return Err(AppError::invalid_input(
+            "--hold-ms must be between 1 and 10000 and needs a single click",
+        ));
+    }
+    if !adapter.supports_held_click() {
+        return Err(AdapterError::not_supported("mouse-click --hold-ms").into());
+    }
+    Ok(())
 }
 
 pub fn execute(
@@ -25,6 +47,7 @@ pub fn execute(
     require_cursor_policy(context, "mouse-click")?;
     require_pointer_capability(adapter)?;
     crate::validate_mouse_click_count(args.count)?;
+    validate_hold(args.hold_ms, args.count, adapter)?;
     let _cursor = crate::cursor_overlay::hold_cursor(context, crate::Deadline::standard()?);
     let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
     let point = Point {
@@ -32,16 +55,19 @@ pub fn execute(
         y: args.y,
     };
     point.validate()?;
-    let result = crate::cursor_overlay::dispatch_mouse_event_with_cursor(
+    let result = crate::cursor_overlay::dispatch_press_with_cursor(
         adapter,
         context,
-        MouseEvent {
-            kind: MouseEventKind::Click { count: args.count },
-            point,
-            button: args.button,
-            modifiers: args.modifiers,
+        crate::cursor_overlay::PointerPress {
+            event: MouseEvent {
+                kind: MouseEventKind::Click { count: args.count },
+                point,
+                button: args.button,
+                modifiers: args.modifiers,
+            },
+            click: true,
+            hold_ms: args.hold_ms,
         },
-        true,
         &lease,
     );
     operation_response(

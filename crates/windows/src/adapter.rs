@@ -278,6 +278,10 @@ impl InputOps for WindowsAdapter {
         crate::input::keyboard::escape_pressed()
     }
 
+    fn supports_held_click(&self) -> bool {
+        true
+    }
+
     #[cfg(target_os = "windows")]
     fn user_idle_ms(&self) -> Result<u64, AdapterError> {
         use windows_sys::Win32::System::SystemInformation::GetTickCount;

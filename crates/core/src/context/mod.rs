@@ -8,6 +8,7 @@ use std::cell::Cell;
 use std::path::PathBuf;
 use std::time::Instant;
 
+pub mod action_guards;
 mod cursor;
 mod input_style;
 mod options;

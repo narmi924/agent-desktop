@@ -37,8 +37,14 @@ pub(crate) fn dispatch(
 ) -> Result<Value, AppError> {
     let read_only = !cmd.is_mutating();
     let stdin = crate::cli_args::stdin::input(&mut cmd).is_some();
+    let mark = if read_only {
+        None
+    } else {
+        commands::action_guard::before_mutation(adapter, context)?
+    };
     let result = dispatch_command(cmd, adapter, permission_report, context)
-        .map_err(|error| disposition::settle_unknown_delivery(error, read_only));
+        .map_err(|error| disposition::settle_unknown_delivery(error, read_only))
+        .map(|value| commands::action_guard::after_mutation(value, mark, context));
     crate::cli_args::stdin::redact_result(result, stdin)
 }
 

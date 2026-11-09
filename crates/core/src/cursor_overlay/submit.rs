@@ -244,6 +244,14 @@ fn update(adapter: &dyn PlatformAdapter, control: &super::CursorOverlayControl) 
     true
 }
 
+/// A pointer event with the cursor presentation it asks for. `hold_ms` keeps
+/// the button down that long instead of a normal press.
+pub(crate) struct PointerPress {
+    pub(crate) event: MouseEvent,
+    pub(crate) click: bool,
+    pub(crate) hold_ms: Option<u64>,
+}
+
 pub(crate) fn dispatch_mouse_event_with_cursor(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
@@ -251,6 +259,29 @@ pub(crate) fn dispatch_mouse_event_with_cursor(
     click: bool,
     lease: &crate::InteractionLease,
 ) -> Result<OperationReport, AdapterError> {
+    dispatch_press_with_cursor(
+        adapter,
+        context,
+        PointerPress {
+            event,
+            click,
+            hold_ms: None,
+        },
+        lease,
+    )
+}
+
+pub(crate) fn dispatch_press_with_cursor(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+    press: PointerPress,
+    lease: &crate::InteractionLease,
+) -> Result<OperationReport, AdapterError> {
+    let PointerPress {
+        event,
+        click,
+        hold_ms,
+    } = press;
     let point = event.point.clone();
     crate::cursor_overlay::submit_travel(adapter, context, point.clone(), lease, click);
     let human = context.human().filter(|_| {
@@ -259,17 +290,18 @@ pub(crate) fn dispatch_mouse_event_with_cursor(
             MouseEventKind::Move | MouseEventKind::Click { .. }
         )
     });
-    let result = match human {
-        Some(human) => {
+    let result = match (human, hold_ms) {
+        (Some(human), _) => {
             let press = crate::input::human_glide::glide(adapter, &point, human, None, lease)?;
             if matches!(event.kind, MouseEventKind::Click { .. }) {
                 std::thread::sleep(std::time::Duration::from_millis(press.settle_ms));
-                adapter.mouse_click_held(event, press.hold_ms, lease)
+                adapter.mouse_click_held(event, hold_ms.unwrap_or(press.hold_ms), lease)
             } else {
                 adapter.mouse_event(event, lease)
             }
         }
-        None => adapter.mouse_event(event, lease),
+        (None, Some(hold_ms)) => adapter.mouse_click_held(event, hold_ms, lease),
+        (None, None) => adapter.mouse_event(event, lease),
     };
     if crate::cursor_overlay::input_was_delivered(&result) {
         crate::cursor_overlay::submit(

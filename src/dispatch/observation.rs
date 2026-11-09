@@ -2,7 +2,7 @@ use agent_desktop_core::{
     AppError, PlatformAdapter,
     commands::{
         find as find_command, get as get_command, is_check as is_command, ocr as ocr_command,
-        screenshot as screenshot_command, snapshot as snapshot_command,
+        screenshot as screenshot_command, snapshot as snapshot_command, snapshot_changes,
     },
     context::CommandContext,
 };
@@ -16,7 +16,8 @@ pub(super) fn snapshot(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    snapshot_command::execute(
+    let since = args.since.clone();
+    let value = snapshot_command::execute(
         snapshot_command::SnapshotArgs {
             app: args.scope.app,
             window_id: args.scope.window_id,
@@ -32,7 +33,11 @@ pub(super) fn snapshot(
         },
         adapter,
         context,
-    )
+    )?;
+    match since {
+        Some(since) => snapshot_changes::attach(value, &since, context),
+        None => Ok(value),
+    }
 }
 
 pub(super) fn ocr(

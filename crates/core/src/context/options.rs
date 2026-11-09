@@ -10,6 +10,7 @@ pub(super) struct CommandOptions {
     pub cursor_overlay: CursorOverlayConfig,
     pub agent_id: Option<String>,
     pub human: Option<crate::HumanInput>,
+    pub guards: super::action_guards::ActionGuards,
 }
 
 impl CommandOptions {
@@ -21,6 +22,7 @@ impl CommandOptions {
             cursor_overlay,
             agent_id: self.agent_id.clone(),
             human: self.human,
+            guards: self.guards.clone(),
         }
     }
 }
