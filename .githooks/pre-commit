@@ -15,6 +15,12 @@ if [ -n "${SKIP_PRECOMMIT:-}" ]; then
     exit 0
 fi
 
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*)
+        . "$(git rev-parse --show-toplevel)/scripts/windows-toolchain-env.sh"
+        ;;
+esac
+
 if ! command -v cargo >/dev/null 2>&1; then
     echo "pre-commit: cargo not found in PATH, skipping (install Rust to enable)"
     exit 0

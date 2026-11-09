@@ -187,12 +187,13 @@ mod imp {
     /// present on both build 17763 and the Server 2025 CI image. A client
     /// whose calls cannot be bounded is one this crate should refuse, not one
     /// it should quietly accept.
+    ///
+    /// Automatic focus is off so explicit focus actions own activation. UIA
+    /// otherwise sets focus implicitly before invoking many control patterns.
     fn create_bounded_client() -> Result<UIAutomation, AdapterError> {
         let client: IUIAutomation2 = unsafe { CoCreateInstance(&CUIAutomation8, None, CLSCTX_ALL) }
             .map_err(|error| unbounded_client_error(error.code().0))?;
         unsafe {
-            // Let explicit focus actions own activation. UIA otherwise sets
-            // focus implicitly before invoking many control patterns.
             client.SetAutoSetFocus(false).map_err(|error| {
                 uia_failure_error(
                     UiaFailure::Hresult(error.code().0),

@@ -12,6 +12,8 @@ pub struct PagePointer<'a> {
     pub receiver: Option<&'a str>,
 }
 
+/// Re-reads the captured page after the hover, because a hover can open a popup
+/// or replace the document before the button or wheel fires.
 pub fn execute(
     page: PagePointer<'_>,
     mut event: MouseEvent,
@@ -115,7 +117,6 @@ pub fn execute(
             window,
             &lease,
         )?;
-        // A hover can open a popup or replace the document before the button or wheel fires.
         page_bounds(&event.point)?;
         if let Some(handle) = receiver_handle {
             let hit = adapter.hit_test(&handle, event.point.clone(), deadline)?;

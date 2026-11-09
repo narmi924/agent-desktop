@@ -27,6 +27,11 @@ module.exports = function linkWindowsBin(directory, binaryName) {
         if (existsSync(powershell) && matches(readFileSync(powershell, 'utf8').replace(/\\/g, '/'))) {
           writeFileSync(powershell, `& '${binary.replace(/'/g, "''")}' @args\r\nexit $LASTEXITCODE\r\n`);
         }
+        const posix = join(destination, 'agent-desktop');
+        if (existsSync(posix) && matches(readFileSync(posix, 'utf8').replace(/\\/g, '/'))) {
+          const toBinary = relative(destination, binary).replace(/\\/g, '/');
+          writeFileSync(posix, `#!/bin/sh\ncase "$0" in */*) basedir=\${0%/*} ;; *) basedir=. ;; esac\nexec "$basedir/${toBinary}" "$@"\n`);
+        }
         linked = true;
       } catch (error) {
         if (error.code !== 'ENOENT') process.stderr.write(`agent-desktop: Native command optimization skipped: ${error.message}\n`);

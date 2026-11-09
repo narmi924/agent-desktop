@@ -13,6 +13,9 @@ fn reject(message: &str) -> AdapterError {
         .with_disposition(agent_desktop_core::DeliverySemantics::not_delivered())
 }
 
+/// Finds the window rectangle the captured image covers. `PrintWindow` uses the
+/// outer rectangle and Windows Graphics Capture can omit the invisible resize
+/// borders, so the origin comes from whichever matches the captured size.
 fn frame_origin(frame: &WindowFrame, deadline: Deadline) -> Result<Rect, AdapterError> {
     use windows_sys::Win32::Foundation::RECT;
     use windows_sys::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
@@ -39,8 +42,6 @@ fn frame_origin(frame: &WindowFrame, deadline: Deadline) -> Result<Rect, Adapter
         return Err(reject("Window display scale changed; capture a new frame"));
     }
     let fits = |r: Rect| r.width == f64::from(frame.width) && r.height == f64::from(frame.height);
-    // PrintWindow uses the outer HWND rectangle; Windows Graphics Capture
-    // can omit the invisible resize borders. Match actual captured dimensions.
     let mut dwm = RECT::default();
     let ok = unsafe {
         DwmGetWindowAttribute(

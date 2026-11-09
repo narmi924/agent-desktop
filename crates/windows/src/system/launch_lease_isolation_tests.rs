@@ -84,8 +84,9 @@ fn a_launched_process_never_inherits_the_lease_handoff_key() {
             "cmd.exe must finish writing its environment dump before it is read"
         );
 
-        let contents = std::fs::read_to_string(&output_path)
+        let dump = std::fs::read(&output_path)
             .expect("the child process should have written its environment dump");
+        let contents = String::from_utf8_lossy(&dump);
         let _ = std::fs::remove_file(&output_path);
         assert!(
             contents.to_ascii_uppercase().contains("SYSTEMROOT="),

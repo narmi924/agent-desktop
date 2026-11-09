@@ -1,1 +1,3 @@
 apps/docs/pnpm-lock.yaml linguist-generated=true
+*.sh text eol=lf
+.githooks/* text eol=lf

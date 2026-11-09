@@ -35,6 +35,8 @@ pub(super) fn check(
     Ok(())
 }
 
+/// Matches the tab by its native instance alone: a browser history restore can
+/// change its title or description while the same instance stays selected.
 pub(crate) fn observe(
     tab: &RefEntry,
     target: &RefActionContext<'_>,
@@ -76,7 +78,6 @@ pub(crate) fn observe(
     if !tree.is_exhaustive() {
         return Err(refused("Cannot establish all tabs in the captured window"));
     }
-    // Browser history restores can change a tab's title or description while its native instance stays selected.
     let mut matches = tree
         .nodes
         .iter()
