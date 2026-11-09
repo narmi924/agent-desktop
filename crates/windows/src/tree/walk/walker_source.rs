@@ -10,7 +10,10 @@ mod imp {
     use crate::tree::name_evidence::read_label;
     use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::{read_cached, read_live, read_one, rect_has_area};
-    use crate::tree::walk::cache::{build_walk_cache_request, policy_for_root};
+    use crate::tree::walk::cache::{
+        build_children_cache_request, build_walk_cache_request, policy_for_root,
+    };
+    use crate::tree::walk::child_batch::ChildBatch;
     use crate::tree::walk::walker::{DEFAULT_MAX_RAW_DEPTH, NodeKey, TreeSource, walk_vocabulary};
     use agent_desktop_core::{AdapterError, Deadline, LocatorField, Rect};
     use uiautomation::UIAutomation;
@@ -157,6 +160,7 @@ mod imp {
         client: UIAutomation,
         walker: UITreeWalker,
         cache: Option<UICacheRequest>,
+        children: Option<ChildBatch>,
         /// Whether the root is Chromium/Electron provenance (the provenance
         /// gate): the transparent-wrapper depth skip must only fire under
         /// detected Chromium/WebView2 provenance, because the identical
@@ -171,15 +175,19 @@ mod imp {
             let walker = client
                 .get_raw_view_walker()
                 .map_err(|error| uia_error(&error, "open the raw view tree walker"))?;
-            let cache = if policy_for_root(root).batches() {
-                Some(build_walk_cache_request(&client)?)
+            let (cache, children) = if policy_for_root(root).batches() {
+                (
+                    Some(build_walk_cache_request(&client)?),
+                    Some(ChildBatch::new(build_children_cache_request(&client)?)),
+                )
             } else {
-                None
+                (None, None)
             };
             Ok(Self {
                 client,
                 walker,
                 cache,
+                children,
                 chromium_provenance: crate::tree::chromium::is_chromium_root(root),
             })
         }
@@ -214,6 +222,13 @@ mod imp {
         type Node = UIAElement;
 
         fn first_child(&self, node: &UIAElement) -> Result<UIAElement, UiaFailure> {
+            if let Some(batched) = self
+                .children
+                .as_ref()
+                .and_then(|batch| batch.first_child(node))
+            {
+                return batched;
+            }
             match &self.cache {
                 Some(request) => self.walker.get_first_child_build_cache(&node.0, request),
                 None => self.walker.get_first_child(&node.0),
@@ -223,6 +238,13 @@ mod imp {
         }
 
         fn next_sibling(&self, node: &UIAElement) -> Result<UIAElement, UiaFailure> {
+            if let Some(batched) = self
+                .children
+                .as_ref()
+                .and_then(|batch| batch.next_sibling(node))
+            {
+                return batched;
+            }
             match &self.cache {
                 Some(request) => self.walker.get_next_sibling_build_cache(&node.0, request),
                 None => self.walker.get_next_sibling(&node.0),
