@@ -55,6 +55,9 @@ mod imp {
         SM_YVIRTUALSCREEN,
     };
 
+    const REACH_CONFIRMATIONS: u32 = 2;
+    const REACH_CONFIRM_PAUSE: std::time::Duration = std::time::Duration::from_millis(20);
+
     /// Hit-tests `point` via bounded `ElementFromPoint`, then classifies the
     /// frontmost result against `target`. Every probe failure, guard trip, and
     /// ancestor landing is `Unknown`; `Err` is reserved for invalid handles,
@@ -92,18 +95,44 @@ mod imp {
         if let Some(unknown) = pre_probe_guard(&bounds, &point, target_root) {
             return Ok(unknown);
         }
-        deadline.ensure_remaining()?;
-        judge_probe(probe_element_from_point(client, &point), |hit| {
-            let context = corroborate::InterceptionContext {
-                target,
-                target_root,
-                hit: &hit,
-                point,
-                walker: &walker,
-                deadline,
-            };
-            judge_hit(&context, &bounds, client)
-        })
+        confirm_reach(
+            || {
+                deadline.ensure_remaining()?;
+                judge_probe(probe_element_from_point(client, &point), |hit| {
+                    let context = corroborate::InterceptionContext {
+                        target,
+                        target_root,
+                        hit: &hit,
+                        point: point.clone(),
+                        walker: &walker,
+                        deadline,
+                    };
+                    judge_hit(&context, &bounds, client)
+                })
+            },
+            || std::thread::sleep(REACH_CONFIRM_PAUSE),
+        )
+    }
+
+    /// Chromium answers `ElementFromPoint` from the box of its previous hit and
+    /// refreshes that box in the background with a precise hit test of the
+    /// point just asked about. A "reaches the target" answer can therefore
+    /// describe a different point inside the same box, including a covered one,
+    /// so only the answer given after the refresh had time to land authorizes a
+    /// click. Answers that block the click need no second opinion.
+    pub(super) fn confirm_reach(
+        mut probe: impl FnMut() -> Result<HitTestResult, AdapterError>,
+        mut pause: impl FnMut(),
+    ) -> Result<HitTestResult, AdapterError> {
+        let mut answer = probe()?;
+        for _ in 0..REACH_CONFIRMATIONS {
+            if answer != HitTestResult::ReachesTarget {
+                break;
+            }
+            pause();
+            answer = probe()?;
+        }
+        Ok(answer)
     }
 
     fn judge_hit(
@@ -312,6 +341,10 @@ pub(crate) use imp::virtual_screen_metrics;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "hit_test_tests.rs"]
 mod tests;
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "hit_test_confirm_tests.rs"]
+mod confirm_tests;
 
 #[cfg(all(test, target_os = "windows"))]
 #[path = "hit_test_guard_tests.rs"]
