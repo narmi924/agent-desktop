@@ -36,12 +36,15 @@ function parseControls(snapshot) {
 
 /**
  * Finds text in a full page read, also when it sits in a frame or spans several
- * text nodes. Returns the text node that holds it, or the text itself.
+ * text nodes. Returns the text that holds it, or the text itself. Plain text
+ * wins over a control's name, so a wait for "Save" after saving returns the
+ * status line "Saved at 10:42" and not the Save button.
  */
 function shows(snapshot, text) {
+  const lines = parseControls(snapshot).filter(line => line.name.includes(text));
+  const holder = lines.find(line => !line.ref) ?? lines[0];
+  if (holder) return holder.name.trim();
   const quoted = Array.from(snapshot.matchAll(/"((?:[^"\\]|\\.)*)"/g), m => unquote(m[1]));
-  const holder = quoted.find(q => q.includes(text));
-  if (holder) return holder.trim();
   const squeeze = value => value.replace(/\s+/g, '');
   return squeeze(quoted.join('')).includes(squeeze(text)) || snapshot.includes(text) ? text : undefined;
 }
@@ -217,6 +220,7 @@ function createWeb({ call, step, warn, flags = [], fetchPage }) {
       return (await ab(['eval', '--stdin'], { input: String(source) })).result;
     }),
     fetch: url => step('web.fetch', url, () => fetchPage(String(url))),
+    sleep: ms => delay(ms),
     url: () => step('web.url', '', async () => (await ab(['get', 'url'])).url),
     title: () => step('web.title', '', async () => (await ab(['get', 'title'])).title),
     cmd: (...args) => step('web.cmd', args[0], async () => {

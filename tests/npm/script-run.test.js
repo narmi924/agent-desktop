@@ -93,6 +93,7 @@ test('text is found inside a frame line and across split text nodes', () => {
   assert.equal(shows(page, '留言已发布'), '留言已发布，楼层 #75');
   assert.equal(shows(page, '合计 128 元'), '合计 128 元');
   assert.equal(shows(page, '失败'), undefined);
+  assert.equal(shows('- button "保存" [ref=e1]\n- StaticText "已保存：古丽"', '保存'), '已保存：古丽', 'plain text wins over a control name');
 });
 
 test('a script fills and clicks by name in one run and reports every step', async () => {

@@ -11,8 +11,9 @@ const PATIENCE_MS = 4000;
 
 function flatten(node, depth, lines, controls, texts, level = 0) {
   const shown = node.name || node.value || node.ref_id;
-  if (node.name) texts.push(node.name);
-  if (node.value && node.value !== node.name) texts.push(node.value);
+  const kept = node.ref_id ? texts.controls : texts.plain;
+  if (node.name) kept.push(node.name);
+  if (node.value && node.value !== node.name) kept.push(node.value);
   controls.push({ role: node.role, name: node.name ?? '', near: node.description ?? '', ref: node.ref_id, value: node.value, depth: level,
     checked: (node.states ?? []).includes('checked') });
   if (shown) {
@@ -26,8 +27,9 @@ function flatten(node, depth, lines, controls, texts, level = 0) {
 
 /** Renders a window tree as one line per named node, in the style of a page read. */
 function renderTree(snapshot) {
-  const lines = [], controls = [], texts = [];
-  flatten(snapshot.tree, 0, lines, controls, texts);
+  const lines = [], controls = [], found = { plain: [], controls: [] };
+  flatten(snapshot.tree, 0, lines, controls, found);
+  const texts = [...found.plain, ...found.controls];
   if (snapshot.complete === false) lines.push('… (the window was not read completely)');
   return { text: lines.join('\n'), controls, texts };
 }
@@ -149,6 +151,7 @@ function createDesktop({ call, step, warn }) {
         await delay(200);
       }
     }),
+    sleep: ms => delay(ms),
     cmd: (...args) => step('desktop.cmd', args[0], () => {
       views.clear();
       found.clear();
