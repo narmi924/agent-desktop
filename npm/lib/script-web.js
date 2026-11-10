@@ -3,7 +3,7 @@
 const { setTimeout: delay } = require('node:timers/promises');
 const { pick } = require('./script-match');
 
-const LINE = /^\s*- (\S+?)(?: "((?:[^"\\]|\\.)*)")?(?: \[(.*)\])?(?:: (.*))?$/;
+const LINE = /^(\s*)- (\S+?)(?: "((?:[^"\\]|\\.)*)")?(?: \[(.*)\])?(?:: (.*))?$/;
 const WRITABLE = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider'];
 const CHOICES = ['combobox', 'listbox'];
 const TICKS = ['checkbox', 'radio', 'switch', 'menuitemcheckbox', 'menuitemradio'];
@@ -25,11 +25,11 @@ function parseControls(snapshot) {
   for (const line of String(snapshot ?? '').split('\n')) {
     const match = LINE.exec(line);
     if (!match) continue;
-    const [, role, name, attributes = '', value] = match;
+    const [, indent, role, name, attributes = '', value] = match;
     const ref = /(?:^|, )ref=(e\d+)/.exec(attributes)?.[1];
     const near = /near="((?:[^"\\]|\\.)*)"/.exec(attributes)?.[1];
     const disabled = /(?:^|, )disabled(?:,|$)/.test(attributes);
-    controls.push({ role, name: unquote(name), near: unquote(near), ref: ref && '@' + ref, value, ...(disabled ? { disabled } : {}) });
+    controls.push({ role, name: unquote(name), near: unquote(near), ref: ref && '@' + ref, value, depth: indent.length, ...(disabled ? { disabled } : {}) });
   }
   return controls;
 }
@@ -66,6 +66,7 @@ function createWeb({ call, step, warn, flags = [], fetchPage }) {
     if (typeof target !== 'string' || !target) throw Object.assign(new Error('Name the control: its visible name, a ref such as @e5, or css:SELECTOR.'), { code: 'INVALID_ARGS' });
     if (/^@e\d+$/.test(target)) return target;
     if (target.startsWith('css:')) return target.slice(4);
+    if (options?.near !== undefined) return pick(parseControls((await ab(['snapshot', '-c'])).snapshot), target, options)?.ref;
     const cached = Boolean(known);
     return (pick(await controls(), target, options) ?? (cached ? pick(await controls(true), target, options) : undefined))?.ref;
   }
@@ -99,8 +100,9 @@ function createWeb({ call, step, warn, flags = [], fetchPage }) {
   async function attempt(target, options, run, fallback) {
     let at = await locate(target, options);
     if (!at) {
-      const missing = Object.assign(new Error('No visible control is named "' + target + '" on this page.'), { code: 'ELEMENT_NOT_FOUND' });
-      if (!fallback) throw missing;
+      const beside = options?.near === undefined ? '' : ' beside "' + options.near + '"';
+      const missing = Object.assign(new Error('No visible control is named "' + target + '"' + beside + ' on this page.'), { code: 'ELEMENT_NOT_FOUND' });
+      if (!fallback || options?.near !== undefined || options?.nth !== undefined) throw missing;
       try { return await fallback(); } catch (err) { throw MISS.test(err.message) || HIDDEN.test(err.message) ? missing : err; }
     }
     try { return await run(at); } catch (err) {

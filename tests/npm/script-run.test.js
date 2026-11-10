@@ -31,9 +31,10 @@ function fakeTools(answers) {
 
 test('a page read becomes controls with a role, a name, a ref and nearby text', () => {
   const controls = parseControls(FORM);
-  assert.deepEqual(controls[1], { role: 'textbox', name: '姓名', near: '', ref: '@e2', value: undefined });
+  assert.deepEqual(controls[1], { role: 'textbox', name: '姓名', near: '', ref: '@e2', value: undefined, depth: 0 });
   assert.equal(parseControls('- button "加载更多" [disabled, ref=e7]')[0].disabled, true);
-  assert.deepEqual(controls[2], { role: 'textbox', name: '', near: '邮箱：', ref: '@e3', value: undefined });
+  assert.deepEqual(controls[2], { role: 'textbox', name: '', near: '邮箱：', ref: '@e3', value: undefined, depth: 0 });
+  assert.equal(controls[4].depth, 2);
   assert.equal(controls[3].value, '请选择');
 });
 
@@ -52,6 +53,39 @@ test('a repeated name is refused until nth or role settles it, and buttons win o
   assert.throws(() => pick(controls, '删除'), { code: 'AMBIGUOUS_TARGET' });
   assert.equal(pick(controls, '删除', { nth: 2 }).ref, '@e4');
   assert.throws(() => pick(controls, '删除', { nth: 3 }), { code: 'INVALID_ARGS' });
+});
+
+const SHOP = [
+  '- table',
+  '  - rowgroup',
+  '    - row',
+  '      - cell "天山雪菊茶 250g" [ref=e1]',
+  '      - cell "279.0" [ref=e2]',
+  '      - cell',
+  '        - button "加入购物车" [ref=e3]',
+  '    - row',
+  '      - cell "和田大枣 500g" [ref=e4]',
+  '      - cell "86.5" [ref=e5]',
+  '      - cell',
+  '        - button "加入购物车" [ref=e6]',
+  '- button "加入购物车" [ref=e7]',
+].join('\n');
+
+test('near picks the control that shares a row or card with a piece of visible text', () => {
+  const lines = parseControls(SHOP);
+  assert.throws(() => pick(lines, '加入购物车'), { code: 'AMBIGUOUS_TARGET' });
+  assert.equal(pick(lines, '加入购物车', { near: '和田大枣' }).ref, '@e6');
+  assert.equal(pick(lines, '加入购物车', { near: '天山雪菊茶 250g' }).ref, '@e3');
+  assert.equal(pick(lines, '加入购物车', { near: '不存在的商品' }), undefined);
+});
+
+test('a script resolves near from a full read of the page', async () => {
+  const tools = fakeTools({
+    'browser snapshot': words => ({ snapshot: words[1] === '-c' ? SHOP : '- button "加入购物车" [ref=e3]\n- button "加入购物车" [ref=e6]' }),
+    'browser click': { receipt: { verified: true } },
+  });
+  await tools.run(`await web.click('加入购物车', { near: '和田大枣 500g' });`);
+  assert.equal(tools.calls.at(-1).words.join(' '), 'click @e6');
 });
 
 test('text is found inside a frame line and across split text nodes', () => {
