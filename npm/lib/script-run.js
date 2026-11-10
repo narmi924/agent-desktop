@@ -19,10 +19,11 @@ const api = [
   '{near: "text in the same row or card"}, {nth: 2} or {role: "button"}.',
   'Steps wait up to 4 s for a control that is not there yet, is disabled or is covered; {timeout: ms} changes that.',
   'Names reach into frames and shadow DOM. css: selectors and web.text()/web.table() see the top document only.',
+  'read() lists controls, not messages. To see what an action produced, use waitText(), which returns the text.',
   '',
   'web (background browser, or your Chrome with --chrome):',
   '  await web.open(url)                     -> {url, title}',
-  '  await web.read()                        -> controls with names and refs; web.read({all:true}) adds page text',
+  '  await web.read()                        -> controls only, with names and refs; web.read({all:true}) adds the page text',
   '  await web.fill(target, value)           await web.type(target, text)   (type sends real keys)',
   '  await web.click(target, {role, nth})    await web.press("Enter")',
   '  await web.select(target, option)        await web.check(target)        await web.uncheck(target)',
@@ -36,8 +37,9 @@ const api = [
   '',
   'desktop (windows are ids from desktop.windows(), or part of an app name or title):',
   '  await desktop.windows(filter?)          -> [{id, app, title, minimized, focused}]',
-  '  await desktop.read(window)              -> controls with names and refs; {all:true} adds text',
+  '  await desktop.read(window)              -> controls only, with names and refs; {all:true} adds labels and status text',
   '  await desktop.click(window, target)     await desktop.fill(window, target, value)',
+  '  await desktop.check(window, target)     await desktop.uncheck(window, target)',
   '  await desktop.value(window, target)     await desktop.has(window, target)   await desktop.waitFor(window, target, {timeout})',
   '  await desktop.waitText(window, text, ms = 10000)  -> the line that shows the text',
   '  await desktop.cmd("press", "ctrl+s", "--app", "notepad")  -> any agent-desktop command, returns its data',
@@ -53,6 +55,16 @@ const api = [
   '  await web.waitText("验证码已发送");',
   '  return await web.read();',
 ].join('\n');
+
+/** A misspelled helper answers with the helpers that exist, so the next script can be right. */
+function named(name, helpers) {
+  return new Proxy(helpers, {
+    get(target, key) {
+      if (typeof key !== 'string' || key in target || key === 'then') return target[key];
+      throw Object.assign(new Error(name + '.' + key + ' is not a helper. ' + name + ' has: ' + Object.keys(target).sort().join(', ') + '.'), { code: 'INVALID_ARGS' });
+    },
+  });
+}
 
 function brief(subject) {
   const text = typeof subject === 'string' ? subject : subject === undefined ? '' : JSON.stringify(subject);
@@ -89,8 +101,8 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
   });
   const desk = createDesktop({ call: need(native, 'agent-desktop'), step, warn: text => warnings.push(text) });
   const helpers = {
-    web: page.web,
-    desktop: desk.desktop,
+    web: named('web', page.web),
+    desktop: named('desktop', desk.desktop),
     flow: (command, options = {}) => step('flow.' + command, '', () => {
       if (!flow || command === 'run') throw new Error('flow() cannot run "' + command + '".');
       return flow(String(command), options);

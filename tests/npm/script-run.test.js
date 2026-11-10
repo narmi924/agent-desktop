@@ -246,6 +246,17 @@ test('desktop steps find the window by name and the control by name, and text go
   assert.equal((await tools.run(`return await desktop.waitText('notepad', '共 3');`)).result, '共 3 行');
 });
 
+test('desktop.check clicks a box only when it is not ticked yet and confirms the new state', async () => {
+  let ticked = false, clicks = 0;
+  const tools = fakeTools({
+    'desktop snapshot': () => ({ complete: true, tree: { role: 'window', name: '登记', children: [{ role: 'checkbox', name: '已核对', ref_id: '@s1:e1', states: ticked ? ['checked'] : [] }] } }),
+    'desktop click': () => { clicks++; ticked = !ticked; return {}; },
+  });
+  const data = await tools.run(`return [await desktop.check('w-1', '已核对'), await desktop.check('w-1', '已核对'), await desktop.uncheck('w-1', '已核对')];`);
+  assert.deepEqual(data.result, [true, true, true]);
+  assert.equal(clicks, 2, 'the second check finds the box ticked and leaves it alone');
+});
+
 test('near works in a window too: the button in the list row that shows a file name', async () => {
   const row = (name, ref) => ({ role: 'listitem', children: [{ role: 'statictext', name }, { role: 'button', name: '删除', ref_id: ref }] });
   const tools = fakeTools({
@@ -276,6 +287,14 @@ test('a script that does not parse, does not finish or fails an expectation is r
   await assert.rejects(tools.run(`log('a', { b: 1 }); expect(1 === 2, '数量不对');`), err => {
     assert.equal(err.code, 'EXPECTATION_FAILED');
     assert.deepEqual(err.report.logs, ['a {"b":1}']);
+    return true;
+  });
+});
+
+test('a helper that does not exist names the ones that do', async () => {
+  await assert.rejects(fakeTools({}).run(`await desktop.tick('w-1', '已核对');`), err => {
+    assert.equal(err.code, 'INVALID_ARGS');
+    assert.match(err.message, /desktop\.tick is not a helper\. desktop has: check, click, cmd, fill,/);
     return true;
   });
 });

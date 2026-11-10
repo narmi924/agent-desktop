@@ -4,6 +4,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { pick } = require('./script-match');
 
 const WRITABLE = ['textfield', 'combobox', 'incrementor', 'slider'];
+const TICKS = ['checkbox', 'radiobutton', 'switch'];
 const VALUE_LIMIT = 200;
 const VIEW_LIMIT = 6000;
 const PATIENCE_MS = 4000;
@@ -12,7 +13,8 @@ function flatten(node, depth, lines, controls, texts, level = 0) {
   const shown = node.name || node.value || node.ref_id;
   if (node.name) texts.push(node.name);
   if (node.value && node.value !== node.name) texts.push(node.value);
-  controls.push({ role: node.role, name: node.name ?? '', near: node.description ?? '', ref: node.ref_id, value: node.value, depth: level });
+  controls.push({ role: node.role, name: node.name ?? '', near: node.description ?? '', ref: node.ref_id, value: node.value, depth: level,
+    checked: (node.states ?? []).includes('checked') });
   if (shown) {
     const states = (node.states ?? []).filter(s => ['disabled', 'selected', 'checked', 'expanded', 'focused'].includes(s));
     const value = node.value && node.value !== node.name ? ': ' + (node.value.length > VALUE_LIMIT ? node.value.slice(0, VALUE_LIMIT) + '…' : node.value) : '';
@@ -98,7 +100,22 @@ function createDesktop({ call, step, warn }) {
     return delivery !== 'delivered_unverified';
   }
 
+  /** Ticks or clears a box only when it is not already in that state, then reads the state back. */
+  const tick = wanted => (window, target, options) => step(wanted ? 'desktop.check' : 'desktop.uncheck', target, async () => {
+    const kind = { roles: TICKS, ...options };
+    views.clear();
+    await act(window, target, kind, async ref => {
+      const box = views.get(await resolve(window))?.find(control => control.ref === ref);
+      if (!box || box.checked !== wanted) await ad(['click', ref]);
+    });
+    const after = pick((await view(window)).controls, target, kind);
+    if (after?.checked !== wanted) warn((wanted ? 'desktop.check' : 'desktop.uncheck') + ' "' + target + '" was sent, but the box did not change.');
+    return after?.checked === wanted;
+  });
+
   const desktop = {
+    check: tick(true),
+    uncheck: tick(false),
     windows: filter => step('desktop.windows', filter ?? '', () => windows(filter)),
     read: (window, { all = false } = {}) => step('desktop.read', window, async () => (await view(window, all)).text),
     click: (window, target, options) => step('desktop.click', target, async () => {
