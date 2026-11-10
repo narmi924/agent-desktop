@@ -15,7 +15,7 @@ const { choosePage } = require('../lib/page-choice');
 const { typePage } = require('../lib/page-input');
 const { wheelPage, pointerPage, physicalPointer } = require('../lib/page-pointer');
 const { recordStep, readSteps } = require('../lib/flow-record');
-const { connect, disconnect, webPerform, withRoute } = require('../lib/web-page');
+const { connect, disconnect, webPerform, withRoute, chromeFlags } = require('../lib/web-page');
 const { runScript, api } = require('../lib/script-run');
 const { space, spaceFlags } = require('../lib/space');
 const { readPage } = require('../lib/page-read');
@@ -307,7 +307,7 @@ function script({ file, session, chrome, space: own, 'timeout-ms': wait = '12000
   const source = readFileSync(file ?? 0, 'utf8').replace(/^\uFEFF/, '');
   return runScript(source, {
     browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform,
-    flags: own ? spaceFlags() : ['--session', session ?? 'work', ...(chrome ? ['--auto-connect'] : [])],
+    flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? 'work'],
     env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env,
   });
 }

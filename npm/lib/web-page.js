@@ -191,4 +191,14 @@ async function webPerform(binary, command, values) {
   }
 }
 
-module.exports = { connect, disconnect, webPerform, withRoute, usable };
+/**
+ * Flags for page commands that work in the user's running Chrome. They reuse
+ * the connection `connect` opened, so Chrome asks for approval once, not once
+ * per command family.
+ */
+function chromeFlags() {
+  const route = savedRoute();
+  return route ? ['--session', route.session, ...route.flags] : ['--session', SESSION, '--auto-connect'];
+}
+
+module.exports = { connect, disconnect, webPerform, withRoute, usable, chromeFlags };
