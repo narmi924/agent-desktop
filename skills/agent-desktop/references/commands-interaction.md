@@ -260,6 +260,64 @@ node npm/bin/workflow.js replay --file flow.jsonl --window w-1234 --speed 2
 
 `replay` runs the steps with the same checks as the original commands and stops at the first failure. Page steps are aimed at the current page of `--window`.
 
+## Many steps in one call (Windows fork)
+
+```powershell
+@'
+await web.open("https://the-internet.herokuapp.com/login");
+await web.fill("Username", "tomsmith");
+await web.fill("Password", "SuperSecretPassword!");
+await web.click("Login");
+return await web.waitText("You logged into");
+'@ | node npm/bin/workflow.js run
+```
+
+```json
+{ "ok": true, "data": { "result": "You logged into a secure area!",
+  "steps": ["web.open https://the-internet.herokuapp.com/login 2709ms", "web.fill Username 114ms", "web.fill Password 71ms",
+            "web.click Login 93ms", "web.waitText You logged into 519ms"], "elapsed_ms": 3507 } }
+```
+
+`run` takes the body of an async JavaScript function on stdin, or from `--file SCRIPT.js`, and runs it against page helpers (`web`) and desktop helpers (`desktop`). One call does the whole sequence, so write the script from one read of the page or window instead of sending one command per step. `run --api` prints every helper.
+
+A script can carry a value from a page into a desktop app:
+
+```js
+const order = (await web.waitText("Order number")).match(/D\d+/)[0];
+await desktop.fill("Customer records", "Order number", order);
+await desktop.click("Customer records", "Save");
+return await desktop.waitText("Customer records", "Saved");
+```
+
+- A target is the name `web.read()` or `desktop.read(window)` shows in quotes, a ref, or `css:SELECTOR`. Names reach into frames and shadow DOM. Pass `{role}` or `{nth}` when a name repeats; a repeated name fails with `AMBIGUOUS_TARGET` instead of picking one.
+- A step waits up to 4 s for a control that is missing, disabled or covered, and for a `select` option that has not loaded. `{timeout: ms}` changes that for one step.
+- `web.waitText(text)` and `desktop.waitText(window, text)` return the text they found, so a confirmation number can be read in the same step that waits for it.
+- A window is an id from `desktop.windows()` or part of an app name or title. Desktop steps use `click` and `set-value`, which do not take the foreground or the cursor. `desktop.cmd(...)` runs any other command, including `--headed` ones that do.
+- Success prints `{ "ok": true, "data": { "result", "steps", "elapsed_ms" } }`. `result` is what the script returned. `warnings` lists fills that the page or app did not confirm.
+- A failing step stops the script. The reply names it in `step` and carries `scene`, a full read of the page or window taken after the failure, so the next script can continue from there. Steps before it stay done.
+- Pages open in the background session `work`. `--session NAME` picks another, `--space` uses the agent's own browser profile, and `--chrome` uses your running Chrome over the connection `connect` set up.
+- The script is not sandboxed. It runs with the same rights as the command.
+
+## Read a web page as text (Windows fork)
+
+```powershell
+node npm/bin/workflow.js read --url https://react.dev/learn
+```
+
+`read` sends a plain request and renders the address in a background browser tab at the same time, and returns `{ "url", "via", "text" }` from the first one that yields a full page. `via` is `request` or `browser`. A script-built page is empty to a plain request, and some sites turn a background browser away, so each way reads pages the other cannot. When both answers are short, the longer one comes back with `"thin": true`. In a script, `await web.fetch(url)` does the same without leaving the current page.
+
+## The agent's own browser profile (Windows fork)
+
+```powershell
+node npm/bin/workflow.js space --login https://example.com/login
+node npm/bin/workflow.js space --close
+node npm/bin/workflow.js run --space --file orders.js
+```
+
+`space --login URL` opens a browser window on a profile that belongs to the agent, so the user can sign in to a site once. The profile is separate from the user's Chrome: it shows no permission prompt, and it cannot see or change the user's tabs. `run --space` works on that window while it is open. After `space --close`, `run --space` starts the same profile in the background with the sign-in kept. `space` with no option reports whether it is running.
+
+The profile is the folder beside the state root, `~/.agent-desktop-space` by default. It holds the sign-ins made in it, so treat it like a browser profile. It uses the installed Chrome when there is one; set `AGENT_DESKTOP_SPACE_CHROME` to choose another. Use the same profile from agent-browser with `--session space --profile <folder>`. A site that refuses a background browser keeps working while the window from `--login` stays open.
+
 ## Scroll
 
 ```bash

@@ -2,7 +2,7 @@
 'use strict';
 
 const { execFileSync } = require('node:child_process');
-const { existsSync, statSync } = require('node:fs');
+const { existsSync, readFileSync, statSync } = require('node:fs');
 const { basename, delimiter, isAbsolute, join } = require('node:path');
 const { parseArgs } = require('node:util');
 const { setTimeout: delay } = require('node:timers/promises');
@@ -16,6 +16,9 @@ const { typePage } = require('../lib/page-input');
 const { wheelPage, pointerPage, physicalPointer } = require('../lib/page-pointer');
 const { recordStep, readSteps } = require('../lib/flow-record');
 const { connect, disconnect, webPerform, withRoute } = require('../lib/web-page');
+const { runScript, api } = require('../lib/script-run');
+const { space, spaceFlags } = require('../lib/space');
+const { readPage } = require('../lib/page-read');
 
 const usage = [
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
@@ -38,6 +41,9 @@ const usage = [
   'agent-desktop-workflow browser-move --session NAME [--tab TAB] --surface CSS --from X,Y --to X,Y [--object CSS] [--after IMAGE.png]',
   'agent-desktop-workflow drop-file --session NAME [--tab TAB] --input DROP_ZONE_CSS --file ABSOLUTE_PATH',
   'agent-desktop-workflow replay --file FLOW.jsonl [--window ID] [--speed N]   (record a flow by setting AGENT_DESKTOP_RECORD=FLOW.jsonl)',
+  'agent-desktop-workflow run [--file SCRIPT.js] [--session NAME | --space | --chrome] [--timeout-ms MS]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers)',
+  'agent-desktop-workflow read --url URL   (the text of a web page: a plain request and a background browser run together and the first full answer is returned)',
+  'agent-desktop-workflow space [--login URL | --close]   (the agent\'s own browser profile: --login shows its window so the user signs in once; later runs with --space keep that sign-in in the background)',
 ].join('\n');
 
 function one(items, description) {
@@ -248,13 +254,23 @@ async function main() {
     replay: ['file', 'window', 'speed'],
     'browser-move': ['session', 'tab', 'surface', 'from', 'to', 'object', 'after'],
     'drop-file': ['session', 'tab', 'input', 'file'],
+    run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api'],
+    space: ['login', 'close'],
+    read: ['url'],
   };
   if (!Object.hasOwn(commands, command)) throw new Error(usage);
   const names = commands[command];
-  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups'].includes(key) ? 'boolean' : 'string' }]));
+  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close'].includes(key) ? 'boolean' : 'string' }]));
   const { values } = parseArgs({ args, options });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
-  const data = command === 'replay' ? await replay(values) : await perform(command, values);
+  if (command === 'run' && values.api) { console.log(api); return; }
+  const own = {
+    replay: () => replay(values),
+    run: () => script(values),
+    space: () => space(browserBinary(), values),
+    read: () => readPage(browserBinary(), values.url ?? ''),
+  };
+  const data = await (own[command] ?? (() => perform(command, values)))();
   if (process.env.AGENT_DESKTOP_RECORD) recordStep(process.env.AGENT_DESKTOP_RECORD, command, values);
   console.log(JSON.stringify({ ok: true, data }));
 }
@@ -282,6 +298,18 @@ async function replay({ file, window, speed = '1' }) {
     }
   }
   return { steps: report.length, report };
+}
+
+function script({ file, session, chrome, space: own, 'timeout-ms': wait = '120000' }) {
+  const timeout = Number(wait);
+  if (!(timeout > 0) || (!file && process.stdin.isTTY)) throw new Error('Pipe a script to run, or pass --file SCRIPT.js. --timeout-ms takes a positive number.');
+  if ([session, chrome, own].filter(Boolean).length > 1) throw new Error('Choose one of --session NAME, --space and --chrome.');
+  const source = readFileSync(file ?? 0, 'utf8').replace(/^\uFEFF/, '');
+  return runScript(source, {
+    browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform,
+    flags: own ? spaceFlags() : ['--session', session ?? 'work', ...(chrome ? ['--auto-connect'] : [])],
+    env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env,
+  });
 }
 
 async function perform(command, values) {
@@ -328,6 +356,7 @@ async function perform(command, values) {
 main().catch(err => {
   const partial=err.details?.typed_keystrokes;
   console.error(JSON.stringify({ok:false,error:err.message,...(err.disposition ? {code:err.code,disposition:err.disposition} : {}),
-    ...(Number.isInteger(partial) ? {typed_keystrokes:partial,keystrokes:err.details.keystrokes} : {})}));
+    ...(Number.isInteger(partial) ? {typed_keystrokes:partial,keystrokes:err.details.keystrokes} : {}),
+    ...(err.report ? {...(err.code && !err.disposition ? {code:err.code} : {}),...err.report} : {})}));
   process.exitCode=1;
 });
