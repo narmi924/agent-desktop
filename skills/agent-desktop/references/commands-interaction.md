@@ -289,7 +289,7 @@ await desktop.click("Customer records", "Save");
 return await desktop.waitText("Customer records", "Saved");
 ```
 
-- A target is the name `web.read()` or `desktop.read(window)` shows in quotes, a ref, or `css:SELECTOR`. Names reach into frames and shadow DOM. A repeated name fails with `AMBIGUOUS_TARGET` instead of picking one. On a page, pass `{near: "text in the same row or card"}` to take the control that shares the most page structure with that text, for example `web.click("Add to cart", {near: "Green tea 250g"})`. `{nth}` and `{role}` work on pages and windows.
+- A target is the name `web.read()` or `desktop.read(window)` shows in quotes, a ref, or `css:SELECTOR`. Names reach into frames and shadow DOM. A repeated name fails with `AMBIGUOUS_TARGET` instead of picking one. Pass `{near: "text in the same row or card"}` to take the control that shares the most structure with that text, for example `web.click("Add to cart", {near: "Green tea 250g"})`, or `{nth}` or `{role}`.
 - A step waits up to 4 s for a control that is missing, disabled or covered, and for a `select` option that has not loaded. `{timeout: ms}` changes that for one step.
 - `web.waitText(text)` and `desktop.waitText(window, text)` return the text they found, so a confirmation number can be read in the same step that waits for it.
 - A window is an id from `desktop.windows()` or part of an app name or title. Desktop steps use `click` and `set-value`, which do not take the foreground or the cursor. `desktop.cmd(...)` runs any other command, including `--headed` ones that do.

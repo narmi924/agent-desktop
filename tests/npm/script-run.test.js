@@ -218,7 +218,7 @@ const WINDOW = {
 test('a window tree renders one line per named node and skips unnamed wrappers', () => {
   const { text, controls } = renderTree(WINDOW);
   assert.equal(text, ['- window "记事本"', '  - textfield "文件名" [@s1:e1]: a.txt', '  - button "保存" [disabled, @s1:e2]', '  - statictext "共 3 行"'].join('\n'));
-  assert.deepEqual(controls.map(c => c.ref), ['@s1:e1', '@s1:e2']);
+  assert.deepEqual(controls.filter(c => c.ref).map(c => [c.ref, c.depth]), [["@s1:e1", 2], ["@s1:e2", 2]]);
 });
 
 test('desktop steps find the window by name and the control by name, and text goes through stdin', async () => {
@@ -246,6 +246,17 @@ test('desktop steps find the window by name and the control by name, and text go
   assert.equal((await tools.run(`return await desktop.waitText('notepad', '共 3');`)).result, '共 3 行');
 });
 
+test('near works in a window too: the button in the list row that shows a file name', async () => {
+  const row = (name, ref) => ({ role: 'listitem', children: [{ role: 'statictext', name }, { role: 'button', name: '删除', ref_id: ref }] });
+  const tools = fakeTools({
+    'desktop snapshot': { complete: true, tree: { role: 'window', name: '文件', children: [row('报告.txt', '@s1:e1'), row('草稿.txt', '@s1:e2')] } },
+    'desktop click': {},
+  });
+  await tools.run(`await desktop.click('w-9', '删除', { near: '草稿.txt' });`);
+  assert.equal(tools.calls.at(-1).words.join(' '), 'click @s1:e2');
+  await assert.rejects(tools.run(`await desktop.click('w-9', '删除', { timeout: 0 });`), { code: 'AMBIGUOUS_TARGET' });
+});
+
 test('a script can mix page and desktop steps and pass values between them', async () => {
   const tools = fakeTools({
     'desktop list-windows': [{ id: 'w-1', app_name: 'notepad.exe', title: '记事本' }],
@@ -271,4 +282,15 @@ test('a script that does not parse, does not finish or fails an expectation is r
 
 test('helpers report a missing tool instead of failing to spawn', async () => {
   await assert.rejects(runScript(`await web.open('http://x/');`, { native: 'desktop', call: async () => ({}) }), /agent-browser is not installed/);
+});
+
+test('flow() hands any other workflow command its options and refuses to nest a script', async () => {
+  const seen = [];
+  const tools = fakeTools({});
+  const data = await tools.run(`return await flow('view', { window: 'w-1', output: 'a.png' });`, {
+    flow: async (command, options) => { seen.push([command, options]); return { saved: options.output }; },
+  });
+  assert.deepEqual(data.result, { saved: 'a.png' });
+  assert.deepEqual(seen, [['view', { window: 'w-1', output: 'a.png' }]]);
+  await assert.rejects(tools.run(`await flow('run', {});`, { flow: async () => ({}) }), /cannot run "run"/);
 });

@@ -8,18 +8,18 @@ const VALUE_LIMIT = 200;
 const VIEW_LIMIT = 6000;
 const PATIENCE_MS = 4000;
 
-function flatten(node, depth, lines, controls, texts) {
+function flatten(node, depth, lines, controls, texts, level = 0) {
   const shown = node.name || node.value || node.ref_id;
   if (node.name) texts.push(node.name);
   if (node.value && node.value !== node.name) texts.push(node.value);
+  controls.push({ role: node.role, name: node.name ?? '', near: node.description ?? '', ref: node.ref_id, value: node.value, depth: level });
   if (shown) {
     const states = (node.states ?? []).filter(s => ['disabled', 'selected', 'checked', 'expanded', 'focused'].includes(s));
     const value = node.value && node.value !== node.name ? ': ' + (node.value.length > VALUE_LIMIT ? node.value.slice(0, VALUE_LIMIT) + '…' : node.value) : '';
     lines.push('  '.repeat(depth) + '- ' + node.role + (node.name ? ' "' + node.name + '"' : '') +
       (node.ref_id || states.length ? ' [' + [...states, node.ref_id].filter(Boolean).join(', ') + ']' : '') + value);
-    if (node.ref_id) controls.push({ role: node.role, name: node.name ?? '', near: node.description ?? '', ref: node.ref_id, value: node.value });
   }
-  for (const child of node.children ?? []) flatten(child, depth + (shown ? 1 : 0), lines, controls, texts);
+  for (const child of node.children ?? []) flatten(child, depth + (shown ? 1 : 0), lines, controls, texts, level + 1);
 }
 
 /** Renders a window tree as one line per named node, in the style of a page read. */
@@ -71,8 +71,11 @@ function createDesktop({ call, step, warn }) {
     if (/^@\w+:e\d+$/.test(target)) return target;
     const id = await resolve(window);
     const cached = views.get(id);
-    const hit = (cached && pick(cached, target, options)) ?? pick((await view(id)).controls, target, options);
-    if (!hit) throw Object.assign(new Error('No control is named "' + target + '" in this window.'), { code: 'ELEMENT_NOT_FOUND' });
+    const hit = options?.near !== undefined
+      ? pick((await view(id, true)).controls, target, options)
+      : (cached && pick(cached, target, options)) ?? pick((await view(id)).controls, target, options);
+    const beside = options?.near === undefined ? '' : ' beside "' + options.near + '"';
+    if (!hit) throw Object.assign(new Error('No control is named "' + target + '"' + beside + ' in this window.'), { code: 'ELEMENT_NOT_FOUND' });
     return hit.ref;
   }
 
