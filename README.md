@@ -121,11 +121,11 @@ Retry a failed command only when `error.disposition.retry` is `safe`. See [JSON 
 { "mcpServers": { "agent-desktop": { "command": "agent-desktop", "args": ["mcp"] } } }
 ```
 
-Global flags given to `mcp`, such as `--session`, `--headed` or `--trace`, apply to every call.
+Global flags given to `mcp`, such as `--session`, `--headed` or `--trace`, apply to every call except `sandbox exec`, whose guest command takes its own flags.
 
 ## Commands
 
-agent-desktop has 63 command names, 59 operational commands on Windows. The other four (`key-down`, `key-up`, `mouse-down`, `mouse-up`) refuse to run until a daemon can release a held key or button. The Windows-only `page-option` command backs the local [choose-by-label workflow](skills/agent-desktop/references/commands-interaction.md).
+agent-desktop has 64 command names, 60 operational commands on Windows. The other four (`key-down`, `key-up`, `mouse-down`, `mouse-up`) refuse to run until a daemon can release a held key or button. The Windows-only `page-option` command backs the local [choose-by-label workflow](skills/agent-desktop/references/commands-interaction.md).
 
 | Group | Commands |
 |---|---|
@@ -137,6 +137,7 @@ agent-desktop has 63 command names, 59 operational commands on Windows. The othe
 | Clipboard | `clipboard-get`, `clipboard-set`, `clipboard-clear` |
 | Wait | `wait` |
 | Sessions | `session`, `trace`, `cursor-overlay` |
+| Sandboxes | `sandbox` |
 | System | `status`, `permissions`, `version`, `batch`, `skills` |
 
 ## Platform support

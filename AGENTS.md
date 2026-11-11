@@ -197,7 +197,8 @@ remain the transitive check.
   its delivery disposition.
 - Codes: `PERM_DENIED`, `ELEMENT_NOT_FOUND`, `APP_NOT_FOUND`, `ACTION_FAILED`, `ACTION_NOT_SUPPORTED`, `STALE_REF`,
   `AMBIGUOUS_TARGET`, `WINDOW_NOT_FOUND`, `PLATFORM_NOT_SUPPORTED`, `TIMEOUT`, `INVALID_ARGS`,
-  `NOTIFICATION_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `POLICY_DENIED`, `APP_UNRESPONSIVE`, `INTERNAL`.
+  `NOTIFICATION_NOT_FOUND`, `SNAPSHOT_NOT_FOUND`, `SANDBOX_NOT_FOUND`, `POLICY_DENIED`, `APP_UNRESPONSIVE`,
+  `INTERNAL`.
 - Exit codes: `0` success, `1` structured error, `2` argument or parse error.
 
 ## Output contract
@@ -269,8 +270,8 @@ Every command prints one envelope. `docs/json-output.md` holds the full contract
 
 ## Command surface
 
-63 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard, Mouse, Notifications, Clipboard, Wait,
-System (including `session`, `trace`, `skills`) and Batch. 59 of the 63 command names are operational on Windows.
+64 commands spanning App/Window, Observation, Interaction, Scroll, Keyboard, Mouse, Notifications, Clipboard, Wait,
+System (including `session`, `trace`, `skills`), Sandboxes (`sandbox`) and Batch. 60 of the 64 command names are operational on Windows.
 `page-option` requires Windows; the four held-input names (`key-down`, `key-up`, `mouse-down`, `mouse-up`) fail closed. macOS and Linux expose the same
 command names. Each platform's limits are in its skill (`skills/agent-desktop-macos/`, `skills/agent-desktop-windows/`,
 `skills/agent-desktop-linux/`).

@@ -15,6 +15,7 @@ pub(crate) mod interaction;
 pub(crate) mod mouse_wheel;
 pub(crate) mod notifications;
 pub(crate) mod ocr;
+pub(crate) mod sandbox;
 pub(crate) mod session;
 pub(crate) mod skills;
 mod snapshot;
