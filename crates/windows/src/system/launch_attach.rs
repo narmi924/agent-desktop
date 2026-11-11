@@ -42,6 +42,9 @@ pub(super) fn prepare(
         }
     }
     if exact_matches.len() > 1 {
+        exact_matches = keep_window_owners(exact_matches, deadline)?;
+    }
+    if exact_matches.len() > 1 {
         let rows = exact_matches
             .iter()
             .map(|(row, _, _)| row.clone())
@@ -56,6 +59,39 @@ pub(super) fn prepare(
         ));
     }
     Ok((executable, None))
+}
+
+/// A multi-process application (a browser, an Electron app) runs several
+/// processes from one executable, and only the one that owns a visible window
+/// is the instance a person sees. When exactly one does, that is the one to
+/// attach to; otherwise every candidate stays and the attach is ambiguous.
+fn keep_window_owners<T>(
+    matches: Vec<(ProcessRow, String, T)>,
+    deadline: Deadline,
+) -> Result<Vec<(ProcessRow, String, T)>, AdapterError> {
+    let windows = super::super::window::window_ops::list_windows_live(
+        &agent_desktop_core::WindowFilter {
+            focused_only: false,
+            app: None,
+        },
+        deadline,
+    )?;
+    let owns_window = |pid: ProcessId| {
+        windows
+            .iter()
+            .any(|window| window.pid == pid && window.state.visible != Some(false))
+    };
+    let owners = matches
+        .iter()
+        .filter(|(row, _, _)| owns_window(row.pid))
+        .count();
+    if owners != 1 {
+        return Ok(matches);
+    }
+    Ok(matches
+        .into_iter()
+        .filter(|(row, _, _)| owns_window(row.pid))
+        .collect())
 }
 
 pub(super) fn matching_processes(image: &str) -> Result<Vec<ProcessRow>, AdapterError> {

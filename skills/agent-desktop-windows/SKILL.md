@@ -73,9 +73,17 @@ observation, actions and capture there fail or return nothing.
   targeting. A headless press to a non-frontmost app fails closed. A
   non-interactive caller (service, scheduled task, CI job) gets
   `delivered_unverified`.
-- **`launch` takes an absolute path or a bare name** under System32 or the
-  Windows directory, with or without `.exe` (`notepad` or `notepad.exe`), not
-  a display name. Use `list-apps` to find a running app.
+- **`launch` takes an absolute path, a bare name under System32 or the
+  Windows directory** (`notepad` or `notepad.exe`), **or an installed app's
+  name or id** from `list-apps --installed` (`计算器`, `Google Chrome`,
+  `Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`). The executable's file name
+  also works when one entry starts it (`chrome`). A name that fits several
+  entries returns `AMBIGUOUS_TARGET` with the candidates; launch by the id. A
+  packaged app is activated the way the Start menu does it and takes no
+  `--env` or `--cwd`. A shortcut's own arguments are passed first, and such a
+  shortcut always starts a new process. A program starts in its own folder
+  unless `--cwd` says otherwise. When several processes run the same
+  executable, attaching picks the one that owns a window.
 - **Notifications:** `list-notifications` with the Action Center closed needs
   `--headed`. Single-item `dismiss-notification` and `notification-action` need
   `--headed` and `--expected-app` or `--expected-title` for the entry at INDEX.

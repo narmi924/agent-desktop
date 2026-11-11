@@ -64,6 +64,7 @@ pub(super) fn list_apps(
         list_apps_command::ListAppsArgs {
             app: args.app,
             timeout_ms: args.timeout_ms,
+            installed: args.installed,
         },
         adapter,
     )

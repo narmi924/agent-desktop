@@ -96,6 +96,12 @@ pub(crate) struct ListAppsArgs {
     pub app: Option<String>,
     #[arg(
         long,
+        help = "List the applications installed for this user, running or not, with the name or id launch accepts (Windows)"
+    )]
+    #[serde(default)]
+    pub installed: bool,
+    #[arg(
+        long,
         value_name = "MS",
         help = "Inventory deadline in milliseconds (default 5000)"
     )]

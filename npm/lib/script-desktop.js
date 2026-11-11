@@ -8,6 +8,7 @@ const TICKS = ['checkbox', 'radiobutton', 'switch'];
 const VALUE_LIMIT = 200;
 const VIEW_LIMIT = 6000;
 const PATIENCE_MS = 4000;
+const SELECTION_FIELDS = 5;
 
 function flatten(node, depth, lines, controls, texts, level = 0) {
   const shown = node.name || node.value || node.ref_id;
@@ -15,7 +16,7 @@ function flatten(node, depth, lines, controls, texts, level = 0) {
   if (node.name) kept.push(node.name);
   if (node.value && node.value !== node.name) kept.push(node.value);
   controls.push({ role: node.role, name: node.name ?? '', near: node.description ?? '', ref: node.ref_id, value: node.value, depth: level,
-    checked: (node.states ?? []).includes('checked') });
+    checked: (node.states ?? []).includes('checked'), focused: (node.states ?? []).includes('focused') });
   if (shown) {
     const states = (node.states ?? []).filter(s => ['disabled', 'selected', 'checked', 'expanded', 'focused'].includes(s));
     const value = node.value && node.value !== node.name ? ': ' + (node.value.length > VALUE_LIMIT ? node.value.slice(0, VALUE_LIMIT) + '…' : node.value) : '';
@@ -119,6 +120,31 @@ function createDesktop({ call, step, warn }) {
     check: tick(true),
     uncheck: tick(false),
     windows: filter => step('desktop.windows', filter ?? '', () => windows(filter)),
+    apps: filter => step('desktop.apps', filter ?? '', async () =>
+      (await ad(['list-apps', '--installed', ...(filter ? ['--app', filter] : [])], { timeout: 30000 })).installed_apps),
+    launch: (app, { args = [] } = {}) => step('desktop.launch', app, async () => {
+      const launched = await ad(['launch', app, ...args.map(arg => '--arg=' + arg)], { timeout: 60000 });
+      found.clear();
+      views.clear();
+      if (launched.window?.id) last = launched.window.id;
+      return { app: launched.app, pid: launched.pid, window: launched.window?.id ?? null, title: launched.window?.title ?? null };
+    }),
+    focused: window => step('desktop.focused', window, async () => {
+      const hit = (await view(window, true)).controls.find(control => control.focused);
+      return hit ? { role: hit.role, name: hit.name, ref: hit.ref ?? null } : null;
+    }),
+    selection: (window, target, options) => step('desktop.selection', target ?? window, async () => {
+      const selected = async ref => (await ad(['get', ref, '--property', 'selection'])).value ?? null;
+      if (target !== undefined) return act(window, target, options, selected);
+      const controls = (await view(window)).controls.filter(control => control.ref);
+      const focused = controls.find(control => control.focused);
+      if (focused) return selected(focused.ref);
+      for (const field of controls.filter(control => WRITABLE.includes(control.role)).slice(0, SELECTION_FIELDS)) {
+        const text = await selected(field.ref);
+        if (text) return text;
+      }
+      return null;
+    }),
     read: (window, { all = false } = {}) => step('desktop.read', window, async () => (await view(window, all)).text),
     click: (window, target, options) => step('desktop.click', target, async () => {
       await act(window, target, options, ref => ad(['click', ref]));

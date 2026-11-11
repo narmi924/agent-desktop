@@ -49,6 +49,26 @@ function shows(snapshot, text) {
   return squeeze(quoted.join('')).includes(squeeze(text)) || snapshot.includes(text) ? text : undefined;
 }
 
+/** The text selected on the page: in the focused field, or in the document, looking into open shadow roots and same-origin frames. */
+function selectedText() {
+  const inField = element => {
+    if (!element || typeof element.selectionStart !== 'number' || element.selectionStart === element.selectionEnd) return '';
+    return String(element.value ?? '').slice(element.selectionStart, element.selectionEnd);
+  };
+  const read = doc => {
+    let active = doc.activeElement;
+    while (active && active.shadowRoot && active.shadowRoot.activeElement) active = active.shadowRoot.activeElement;
+    if (active && active.tagName === 'IFRAME') {
+      try { if (active.contentDocument) return read(active.contentDocument); } catch { return ''; }
+    }
+    const field = inField(active);
+    if (field) return field;
+    const selection = (active && active.getRootNode && active.getRootNode().getSelection) ? active.getRootNode().getSelection() : doc.getSelection();
+    return selection ? String(selection) : '';
+  };
+  return read(document) || null;
+}
+
 function extractTable(selector) {
   const tables = document.querySelectorAll(selector || 'table');
   if (tables.length !== 1) throw new Error('Expected one table, found ' + tables.length);
@@ -220,6 +240,8 @@ function createWeb({ call, step, warn, flags = [], fetchPage }) {
       return (await ab(['eval', '--stdin'], { input: String(source) })).result;
     }),
     fetch: url => step('web.fetch', url, () => fetchPage(String(url))),
+    selection: () => step('web.selection', '', async () =>
+      (await ab(['eval', '--stdin'], { input: '(' + selectedText + ')()' })).result ?? null),
     sleep: ms => delay(ms),
     url: () => step('web.url', '', async () => (await ab(['get', 'url'])).url),
     title: () => step('web.title', '', async () => (await ab(['get', 'title'])).title),

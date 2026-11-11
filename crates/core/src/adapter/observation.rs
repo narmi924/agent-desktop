@@ -71,6 +71,16 @@ pub trait ObservationOps: Send + Sync {
         Err(AdapterError::not_supported("list_apps"))
     }
 
+    /// Applications installed for the current user, from the system's app
+    /// list, whether or not they run now. `launch_app` accepts each one's
+    /// name or id.
+    fn list_installed_apps(
+        &self,
+        _deadline: Deadline,
+    ) -> Result<Vec<crate::InstalledApp>, AdapterError> {
+        Err(AdapterError::not_supported("list_installed_apps"))
+    }
+
     fn list_apps_inventory(&self, deadline: Deadline) -> Result<crate::AppInventory, AdapterError> {
         Ok(crate::AppInventory {
             apps: self.list_apps(deadline)?,
@@ -214,6 +224,16 @@ pub trait ObservationOps: Send + Sync {
         _deadline: Deadline,
     ) -> Result<Option<std::ops::Range<usize>>, AdapterError> {
         Err(AdapterError::not_supported("get_text_selection"))
+    }
+
+    /// The text selected inside the element, read from the platform's own
+    /// selection when it reports one. `None` means no selection.
+    fn get_selected_text(
+        &self,
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<Option<String>, AdapterError> {
+        Err(AdapterError::not_supported("get_selected_text"))
     }
 
     fn get_live_state(

@@ -130,6 +130,8 @@ pub use system::app_inventory_query::AppInventoryQuery;
 pub use system::display_info::DisplayInfo;
 pub use system::image_buffer::{ImageBuffer, MAX_PNG_INPUT_BYTES, parse_png_dimensions};
 pub use system::image_format::ImageFormat;
+pub use system::installed_app::InstalledApp;
+pub use system::installed_app_kind::InstalledAppKind;
 pub use system::ocr_line::OcrLine;
 pub use system::ocr_word::OcrWord;
 pub use system::operation_report::OperationReport;

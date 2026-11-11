@@ -75,6 +75,28 @@ mod imp {
         };
         Ok(Some(utf16_range(&prefix_text, &selection_text)))
     }
+
+    /// The selected text itself, every selected range joined by a line break.
+    /// No Text pattern, no selection and an empty one are all `Ok(None)`.
+    pub(crate) fn get_selected_text(
+        handle: &NativeHandle,
+        deadline: Deadline,
+    ) -> Result<Option<String>, AdapterError> {
+        deadline.ensure_remaining()?;
+        let element = uia_element(handle)?;
+        let Ok(pattern) = element.0.get_pattern::<UITextPattern>() else {
+            return Ok(None);
+        };
+        let Ok(selections) = pattern.get_selection() else {
+            return Ok(None);
+        };
+        let parts: Vec<String> = selections
+            .iter()
+            .filter_map(|range| range.get_text(-1).ok())
+            .filter(|text| !text.is_empty())
+            .collect();
+        Ok(Some(parts.join("\n")).filter(|text| !text.is_empty()))
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -90,9 +112,16 @@ mod imp {
     ) -> Result<Option<Range<usize>>, AdapterError> {
         Ok(None)
     }
+
+    pub(crate) fn get_selected_text(
+        _handle: &NativeHandle,
+        _deadline: Deadline,
+    ) -> Result<Option<String>, AdapterError> {
+        Ok(None)
+    }
 }
 
-pub(crate) use imp::get_text_selection;
+pub(crate) use imp::{get_selected_text, get_text_selection};
 
 #[cfg(test)]
 #[path = "text_selection_tests.rs"]

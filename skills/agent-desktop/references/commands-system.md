@@ -68,6 +68,12 @@ Success is reported only after the process is seen gone: `{ "method": "graceful"
 
 Lists running GUI apps as `{ name, pid, bundle_id, presentation }`. `--app` filters by name substring. `presentation` is `foreground` (ordinary windows), `background` (no Dock entry, such as menu-bar items and hotkey overlays), or omitted (helper processes). Apps with no UI are excluded.
 
+```bash
+agent-desktop list-apps --installed --app 计算
+```
+
+`--installed` (Windows) lists the applications installed for this user, running or not, from the Start menu's app list: `{ "installed_apps": [{ "name": "计算器", "id": "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App", "kind": "packaged", "window_open": false }] }`. `kind` is `packaged` (started by its app id) or `program` (an executable, with its `path`). `window_open` says whether one of its processes has a window open; it is absent when several entries start one shared program, such as command prompts that all run `cmd.exe`. Entries that open a document, folder, script or web address are left out. `launch` accepts each entry's `name` or `id`. Other platforms return `PLATFORM_NOT_SUPPORTED`.
+
 ## Windows (OS windows)
 
 ```bash

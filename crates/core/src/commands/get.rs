@@ -18,6 +18,7 @@ pub enum GetProperty {
     Bounds,
     Role,
     States,
+    Selection,
 }
 
 pub fn execute(
@@ -56,6 +57,11 @@ pub fn execute(
                 Some(bounds_live),
             )
         }
+        GetProperty::Selection => (
+            "selection",
+            json!(selected_text(adapter, &handle, deadline)?),
+            None,
+        ),
         GetProperty::States => {
             let live = optional_live_read(adapter.get_live_state(&handle, deadline))?;
             (
@@ -71,6 +77,33 @@ pub fn execute(
         response["live"] = json!(live);
     }
     Ok(response)
+}
+
+/// The selected text, from the platform's own selection read when it has
+/// one, otherwise cut from the live value by the selection's UTF-16 offsets.
+/// An empty selection is no selection.
+fn selected_text(
+    adapter: &dyn PlatformAdapter,
+    handle: &crate::NativeHandle,
+    deadline: crate::Deadline,
+) -> Result<Option<String>, AppError> {
+    if let Some(direct) = optional_live_read(adapter.get_selected_text(handle, deadline))? {
+        return Ok(Some(direct).filter(|text| !text.is_empty()));
+    }
+    let Some(range) = optional_live_read(adapter.get_text_selection(handle, deadline))? else {
+        return Ok(None);
+    };
+    if range.is_empty() {
+        return Ok(None);
+    }
+    let Some(value) = optional_live_read(adapter.get_live_value(handle, deadline))? else {
+        return Ok(None);
+    };
+    let units: Vec<u16> = value.encode_utf16().collect();
+    Ok(units
+        .get(range)
+        .map(String::from_utf16_lossy)
+        .filter(|text| !text.is_empty()))
 }
 
 #[cfg(test)]

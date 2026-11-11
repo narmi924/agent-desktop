@@ -40,7 +40,9 @@ pub(crate) enum Commands {
     Screenshot(ScreenshotArgs),
     #[command(about = "Read visible text from a window or saved image and locate it")]
     Ocr(crate::cli_args::ocr::OcrArgs),
-    #[command(about = "Read an element property (text, value, title, bounds, role, states)")]
+    #[command(
+        about = "Read an element property (text, value, title, bounds, role, states, selection)"
+    )]
     Get(GetArgs),
     #[command(
         about = "Check element state (visible, enabled, checked, focused, expanded, selected)"

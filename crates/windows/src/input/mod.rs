@@ -28,6 +28,7 @@ macro_rules! define_input_fake_sink {
 }
 pub(crate) use define_input_fake_sink;
 
+mod adapter;
 pub(crate) mod blocked_combo;
 #[cfg(target_os = "windows")]
 pub(crate) mod clipboard;

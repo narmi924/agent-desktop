@@ -46,6 +46,7 @@ fn filtered_inventory_serves_listing_lookup_and_mutation_without_global_discover
         crate::commands::list_apps::ListAppsArgs {
             app: Some("Example".into()),
             timeout_ms: None,
+            installed: false,
         },
         &FilteredInventory,
     )

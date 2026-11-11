@@ -295,7 +295,7 @@ test('a script that does not parse, does not finish or fails an expectation is r
 test('a helper that does not exist names the ones that do', async () => {
   await assert.rejects(fakeTools({}).run(`await desktop.tick('w-1', '已核对');`), err => {
     assert.equal(err.code, 'INVALID_ARGS');
-    assert.match(err.message, /desktop\.tick is not a helper\. desktop has: check, click, cmd, fill,/);
+    assert.match(err.message, /desktop\.tick is not a helper\. desktop has: apps, check, click, cmd, fill,/);
     return true;
   });
 });
@@ -313,4 +313,40 @@ test('flow() hands any other workflow command its options and refuses to nest a 
   assert.deepEqual(data.result, { saved: 'a.png' });
   assert.deepEqual(seen, [['view', { window: 'w-1', output: 'a.png' }]]);
   await assert.rejects(tools.run(`await flow('run', {});`, { flow: async () => ({}) }), /cannot run "run"/);
+});
+
+test('desktop.apps lists installed apps and desktop.launch opens one and reports its window', async () => {
+  const tools = fakeTools({
+    'desktop list-apps': { installed_apps: [{ name: '计算器', id: 'Microsoft.WindowsCalculator_8wekyb3d8bbwe!App', kind: 'packaged' }] },
+    'desktop launch': { app: 'CalculatorApp.exe', pid: 14720, window: { id: 'w-7', title: '计算器' } },
+  });
+  const data = await tools.run(`return [await desktop.apps('计算'), await desktop.launch('计算器', { args: ['-x'] })];`);
+  assert.equal(data.result[0][0].kind, 'packaged');
+  assert.deepEqual(data.result[1], { app: 'CalculatorApp.exe', pid: 14720, window: 'w-7', title: '计算器' });
+  assert.deepEqual(tools.calls.map(c => c.words.join(' ')), ['list-apps --installed --app 计算', 'launch 计算器 --arg=-x']);
+});
+
+test('desktop.selection reads the selection of the focused control and is null without one', async () => {
+  const focusedTree = {
+    complete: true,
+    tree: { role: 'window', name: '记事本', children: [{ role: 'textfield', name: '正文', ref_id: '@s1:e1', states: ['focused'] }] },
+  };
+  const tools = fakeTools({
+    'desktop snapshot': focusedTree,
+    'desktop get': words => ({ property: words[3], value: '选中的一段' }),
+  });
+  const data = await tools.run(`return [await desktop.focused('w-1'), await desktop.selection('w-1')];`);
+  assert.deepEqual(data.result, [{ role: 'textfield', name: '正文', ref: '@s1:e1' }, '选中的一段']);
+  assert.equal(tools.calls.at(-1).words.join(' '), 'get @s1:e1 --property selection');
+
+  const unfocused = fakeTools({ 'desktop snapshot': WINDOW, 'desktop get': words => ({ value: words[1] === '@s1:e1' ? 'a.t' : null }) });
+  assert.equal((await unfocused.run(`return await desktop.selection('w-1');`)).result, 'a.t', 'a background window reports no focus, so its text fields are asked');
+  const nothing = fakeTools({ 'desktop snapshot': WINDOW, 'desktop get': { value: null } });
+  assert.equal((await nothing.run(`return await desktop.selection('w-1');`)).result, null);
+});
+
+test('web.selection runs one page read and returns null for nothing selected', async () => {
+  const tools = fakeTools({ 'browser eval': (words, options) => ({ result: options.input.includes('getSelection') ? null : 'x' }) });
+  assert.equal((await tools.run(`return await web.selection();`)).result, null);
+  assert.equal(tools.calls.length, 1);
 });

@@ -24,7 +24,6 @@ pub(crate) fn launch_app_impl(
     options: &LaunchOptions,
     parent_deadline: Deadline,
 ) -> Result<LaunchResult, AdapterError> {
-    let id = &launch_identifier(id).map_err(before_launch)?;
     validate_launch_options(options).map_err(before_launch)?;
     let deadline = if options.timeout_ms == 0 {
         parent_deadline
@@ -32,6 +31,20 @@ pub(crate) fn launch_app_impl(
         parent_deadline.capped(Duration::from_millis(options.timeout_ms))
     };
     deadline.ensure_remaining().map_err(before_launch)?;
+    if let Some(launched) = launch_catalog::launch_installed(id, options, deadline)? {
+        return Ok(launched);
+    }
+    launch_path_target(id, options, deadline)
+}
+
+/// Starts or attaches to the executable an absolute path or a bare system
+/// program name points at.
+fn launch_path_target(
+    id: &str,
+    options: &LaunchOptions,
+    deadline: Deadline,
+) -> Result<LaunchResult, AdapterError> {
+    let id = &launch_identifier(id).map_err(before_launch)?;
     let (executable, attached) = prepare(id, options, deadline).map_err(before_launch)?;
     if let Some(attached) = attached {
         return Ok(attached);
@@ -377,3 +390,9 @@ mod launch_lease_isolation_tests;
 
 #[path = "launch_attach.rs"]
 pub(crate) mod launch_attach;
+
+#[path = "launch_catalog.rs"]
+mod launch_catalog;
+
+#[path = "launch_packaged.rs"]
+mod launch_packaged;

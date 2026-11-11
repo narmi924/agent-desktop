@@ -74,6 +74,7 @@ fn app_filter_matches_by_name_case_insensitively() {
         ListAppsArgs {
             app: Some("text".into()),
             timeout_ms: None,
+            installed: false,
         },
         &AppsAdapter,
     )
@@ -93,6 +94,7 @@ fn listing_timeout_reaches_both_adapter_deadlines() {
             ListAppsArgs {
                 app: None,
                 timeout_ms,
+                installed: false,
             },
             &adapter,
         )
@@ -133,6 +135,7 @@ fn list_apps_marks_skipped_records_even_when_filtered_to_no_matches() {
             ListAppsArgs {
                 app,
                 timeout_ms: None,
+                installed: false,
             },
             &IncompleteAdapter,
         )
@@ -147,6 +150,7 @@ fn list_apps_marks_skipped_records_even_when_filtered_to_no_matches() {
         ListAppsArgs {
             app: None,
             timeout_ms: None,
+            installed: false,
         },
         &AppsAdapter,
     )
@@ -181,6 +185,7 @@ fn app_filter_accepts_the_adapter_alias_for_a_listed_app() {
         ListAppsArgs {
             app: Some("org.example.Files".into()),
             timeout_ms: None,
+            installed: false,
         },
         &AliasAdapter,
     )
@@ -213,6 +218,7 @@ fn filtered_args() -> ListAppsArgs {
     ListAppsArgs {
         app: Some("text".into()),
         timeout_ms: None,
+        installed: false,
     }
 }
 
@@ -235,4 +241,90 @@ fn app_filter_ignores_a_scoped_listing_that_is_not_supported() {
     let value = execute(filtered_args(), &adapter).unwrap();
 
     assert_eq!(value["apps"].as_array().unwrap().len(), 1);
+}
+
+struct InstalledAdapter;
+
+impl ObservationOps for InstalledAdapter {
+    fn list_installed_apps(
+        &self,
+        _deadline: crate::Deadline,
+    ) -> Result<Vec<crate::InstalledApp>, AdapterError> {
+        let app = |name: &str, id: &str, kind, path: Option<&str>| crate::InstalledApp {
+            name: name.into(),
+            id: id.into(),
+            kind,
+            path: path.map(Into::into),
+            window_open: Some(false),
+        };
+        Ok(vec![
+            app(
+                "记事本",
+                "Microsoft.WindowsNotepad_8wekyb3d8bbwe!App",
+                crate::InstalledAppKind::Packaged,
+                None,
+            ),
+            app(
+                "Google Chrome",
+                "Chrome",
+                crate::InstalledAppKind::Program,
+                Some(r"C:\Program Files\Google\Chrome\Application\chrome.exe"),
+            ),
+            app(
+                "计算器",
+                "Microsoft.WindowsCalculator_8wekyb3d8bbwe!App",
+                crate::InstalledAppKind::Packaged,
+                None,
+            ),
+        ])
+    }
+}
+impl ActionOps for InstalledAdapter {}
+impl InputOps for InstalledAdapter {}
+impl SystemOps for InstalledAdapter {}
+
+fn installed_args(app: Option<&str>) -> ListAppsArgs {
+    ListAppsArgs {
+        app: app.map(Into::into),
+        timeout_ms: None,
+        installed: true,
+    }
+}
+
+#[test]
+fn installed_apps_are_listed_by_name_with_their_kind_and_path() {
+    let value = execute(installed_args(None), &InstalledAdapter).unwrap();
+
+    let apps = value["installed_apps"].as_array().unwrap();
+    let names: Vec<_> = apps
+        .iter()
+        .map(|app| app["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["Google Chrome", "计算器", "记事本"]);
+    assert_eq!(apps[0]["kind"], "program");
+    assert_eq!(
+        apps[0]["path"],
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe"
+    );
+    assert_eq!(apps[1]["kind"], "packaged");
+    assert!(apps[1].get("path").is_none());
+    assert!(value.get("apps").is_none());
+}
+
+#[test]
+fn installed_apps_filter_by_name_or_id_ignoring_case() {
+    let by_name = execute(installed_args(Some("计算")), &InstalledAdapter).unwrap();
+    assert_eq!(by_name["installed_apps"][0]["name"], "计算器");
+    assert_eq!(by_name["installed_apps"].as_array().unwrap().len(), 1);
+
+    let by_id = execute(installed_args(Some("NOTEPAD")), &InstalledAdapter).unwrap();
+    assert_eq!(by_id["installed_apps"][0]["name"], "记事本");
+    assert_eq!(by_id["installed_apps"].as_array().unwrap().len(), 1);
+}
+
+#[test]
+fn installed_apps_are_refused_where_the_platform_has_no_app_list() {
+    let error = execute(installed_args(None), &AppsAdapter).unwrap_err();
+
+    assert_eq!(error.code(), "PLATFORM_NOT_SUPPORTED");
 }
