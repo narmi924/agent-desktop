@@ -42,12 +42,17 @@ const api = [
   '  await desktop.launch(nameOrId)          -> {app, pid, window, title}: opens an installed app by its name, id or program name',
   '  await desktop.focused(window)           -> {role, name, ref} of the focused control, or null',
   '  await desktop.selection(window, target?) -> the text selected in that control, else in the focused one or the first text field that has a selection, or null',
-  '  await desktop.read(window)              -> controls only, with names and refs; {all:true} adds labels and status text',
+  '  await desktop.read(window)              -> controls only, with names and refs; {all:true} adds labels and status text; {picture:true} adds the text on screen',
   '  await desktop.click(window, target)     await desktop.fill(window, target, value)',
   '  await desktop.check(window, target)     await desktop.uncheck(window, target)',
   '  await desktop.value(window, target)     await desktop.has(window, target)   await desktop.waitFor(window, target, {timeout})',
   '  await desktop.waitText(window, text, ms = 10000)  -> the line that shows the text',
   '  await desktop.cmd("press", "ctrl+s", "--app", "notepad")  -> any agent-desktop command, returns its data',
+  'A name no control has is looked for in the window\'s picture right away, and a window with no control outside its',
+  'title bar is read from its picture; read() then lists that text as [picture x,y]. Acting by picture brings the window',
+  'to the front and uses the real mouse and keyboard: click returns {via: "picture", text, x, y}, fill clicks the text,',
+  'types, and returns false when the typed text cannot be seen afterwards. The same text in several places needs',
+  '{near} or {nth}. {picture: false} keeps a step to controls; waitText takes it as a fourth argument.',
   '',
   'other:',
   '  await sleep(ms)   await waitFor(async () => condition, {timeout, interval})   log(...values)   expect(condition, message)',
@@ -71,27 +76,39 @@ function named(name, helpers) {
   });
 }
 
+/**
+ * Commands started by a script keep the agent pointer on screen from the
+ * first real input to the end of the script, not just for their own run.
+ */
+function holding(env) {
+  return env.AGENT_DESKTOP_POINTER_HOLDER ? env : { ...env, AGENT_DESKTOP_POINTER_HOLDER: String(process.pid) };
+}
+
 function brief(subject) {
   const text = typeof subject === 'string' ? subject : subject === undefined ? '' : JSON.stringify(subject);
   return text.length > SUBJECT_LIMIT ? text.slice(0, SUBJECT_LIMIT) + '…' : text;
 }
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
-async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke } = {}) {
+async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture } = {}) {
   const started = Date.now();
+  env = holding(env ?? process.env);
   const steps = [], logs = [], warnings = [], children = new Set();
   let surface;
 
+  let notes = [];
   const step = async (name, subject, run) => {
     const at = Date.now();
     surface = name.split('.')[0];
     const label = name + (brief(subject) ? ' ' + brief(subject) : '');
+    notes = [];
+    const how = () => (notes.length ? ' (' + notes.join(', ') + ')' : '');
     try {
       const value = await run();
-      steps.push(label + ' ' + (Date.now() - at) + 'ms');
+      steps.push(label + how() + ' ' + (Date.now() - at) + 'ms');
       return value;
     } catch (err) {
-      steps.push(label + ' ' + (Date.now() - at) + 'ms FAILED');
+      steps.push(label + how() + ' ' + (Date.now() - at) + 'ms FAILED');
       if (err && typeof err === 'object' && !err.step) err.step = label;
       throw err;
     }
@@ -104,7 +121,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     call: need(browser, 'agent-browser'), step, warn: text => warnings.push(text), flags,
     fetchPage: url => readPage(browser, url, (binary, args, options) => need(binary, 'agent-browser')(args, options)),
   });
-  const desk = createDesktop({ call: need(native, 'agent-desktop'), step, warn: text => warnings.push(text) });
+  const desk = createDesktop({ call: need(native, 'agent-desktop'), step, warn: text => warnings.push(text), note: text => notes.push(text), picture });
   const helpers = {
     web: named('web', page.web),
     desktop: named('desktop', desk.desktop),

@@ -107,6 +107,7 @@ mod imp {
             if events.is_empty() {
                 return;
             }
+            crate::system::agent_pointer::before_input();
             let raw: Vec<INPUT> = events.iter().copied().map(to_raw).collect();
             unsafe {
                 SendInput(

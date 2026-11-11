@@ -182,6 +182,21 @@ impl ObservationOps for WindowsAdapter {
         crate::tree::hit_test::hit_test_impl(handle, point, deadline)
     }
 
+    #[cfg(target_os = "windows")]
+    fn recognition_languages(&self, _deadline: Deadline) -> Result<Vec<String>, AdapterError> {
+        crate::system::capture::ocr::languages()
+    }
+
+    #[cfg(target_os = "windows")]
+    fn recognize_text(
+        &self,
+        png: &[u8],
+        passes: &[agent_desktop_core::OcrPass],
+        deadline: Deadline,
+    ) -> Result<Vec<agent_desktop_core::OcrReading>, AdapterError> {
+        crate::system::capture::ocr::recognize(png, passes, deadline)
+    }
+
     fn list_windows(
         &self,
         filter: &WindowFilter,

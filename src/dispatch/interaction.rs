@@ -89,12 +89,36 @@ pub(super) fn right_click(
     right_click_command::execute(ref_args(args), adapter, context)
 }
 
+/// With `--window-id` there is no ref, so a lone positional is the text.
+fn window_text(args: &mut TypeArgs) -> Result<Option<(String, String)>, AppError> {
+    let Some(window_id) = args.window_id.clone() else {
+        return Ok(None);
+    };
+    let text = match (args.ref_id.take(), args.text.take()) {
+        (Some(text), None) | (None, Some(text)) => text,
+        (Some(_), Some(_)) => {
+            return Err(AppError::invalid_input(
+                "Pass either a ref or --window-id, not both",
+            ));
+        }
+        (None, None) => return Err(AppError::invalid_input("type text is missing")),
+    };
+    Ok(Some((window_id, text)))
+}
+
 pub(super) fn type_text(
-    args: TypeArgs,
+    mut args: TypeArgs,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
     use crate::cli_args::actions::PageEntryMode;
+    if let Some((window_id, text)) = window_text(&mut args)? {
+        return agent_desktop_core::commands::type_text_window::execute(
+            agent_desktop_core::commands::type_text_window::WindowTypeArgs { window_id, text },
+            adapter,
+            context,
+        );
+    }
     if args.entry_mode.is_some() && args.selected_tab.is_none() {
         return Err(AppError::invalid_input(
             "--entry-mode requires --selected-tab",
@@ -121,7 +145,7 @@ pub(super) fn type_text(
         .ok_or_else(|| AppError::invalid_input("type text is missing"))?;
     type_text_command::execute_with_tab(
         type_text_command::TypeArgs {
-            ref_id: args.ref_id,
+            ref_id: args.ref_id.unwrap_or_default(),
             text,
             timeout_ms,
             interval_ms: args.interval_ms,

@@ -27,6 +27,7 @@ const NON_COMMAND_MODULES: &[&str] = &[
     "surface_scope",
     "type_text_interval",
     "type_text_interval_verify",
+    "type_text_window",
     "stale_retry_test_support",
     "wait_element",
     "wait_latest_ref_cache",
@@ -112,6 +113,7 @@ const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "press",
     "resize-window",
     "restore",
+    "restore-cursor",
     "ocr",
     "screenshot",
 ];
@@ -163,7 +165,7 @@ fn macos_capability_count_includes_restored_notifications() {
     let commands = cli_command_names();
     assert_eq!(
         commands.len(),
-        62,
+        63,
         "the published CLI command count changed; update capability documentation"
     );
 }

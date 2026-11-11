@@ -152,6 +152,10 @@ pub(crate) enum Commands {
     ClipboardSet(ClipboardSetArgs),
     #[command(about = "Clear the clipboard")]
     ClipboardClear,
+    #[command(
+        about = "Put your own mouse pointer back if a run that was cut short left the agent pointer on screen"
+    )]
+    RestoreCursor,
     #[command(about = "Wait for time (ms), element presence, text, or window appearance")]
     Wait(WaitArgs),
     #[command(about = "Show adapter health, platform info, and permission state")]
@@ -247,6 +251,7 @@ impl Commands {
             Self::ClipboardGet(_) => CommandMetadata::new("clipboard-get", false),
             Self::ClipboardSet(_) => CommandMetadata::new("clipboard-set", false),
             Self::ClipboardClear => CommandMetadata::new("clipboard-clear", false),
+            Self::RestoreCursor => CommandMetadata::new("restore-cursor", false),
             Self::Wait(_) => CommandMetadata::new("wait", false),
             Self::Status => CommandMetadata::new("status", false),
             Self::Permissions(_) => CommandMetadata::new("permissions", false),
@@ -334,6 +339,7 @@ impl Commands {
             | Self::Wait(_)
             | Self::Status
             | Self::Version
+            | Self::RestoreCursor
             | Self::Skills(_) => false,
         }
     }

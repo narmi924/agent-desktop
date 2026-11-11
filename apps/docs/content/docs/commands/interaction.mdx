@@ -159,6 +159,7 @@ Inserts text into a text target at its insertion point, then reads the field bac
 ```bash
 agent-desktop type <REF> <TEXT> [--timeout-ms MS] [--interval-ms MS]
 agent-desktop type <REF> --stdin [--timeout-ms MS] [--interval-ms MS]
+agent-desktop --headed type --window-id ID <TEXT>
 ```
 
 <table>
@@ -169,8 +170,11 @@ agent-desktop type <REF> --stdin [--timeout-ms MS] [--interval-ms MS]
     <tr><td><code>TEXT</code></td><td>required unless <code>--stdin</code></td><td>The text, up to 10,000 bytes. A value that starts with a hyphen is accepted.</td></tr>
     <tr><td><code>--timeout-ms MS</code></td><td><code>5000</code> plus <code>30</code> per character</td><td>Covers resolution, actionability, and delivery. An explicit value wins. With <code>--interval-ms</code>, it applies to each keystroke, and <code>0</code> makes each keystroke try once.</td></tr>
     <tr><td><code>--interval-ms MS</code></td><td>off</td><td>Types one keystroke every <code>MS</code> milliseconds, 1 to 2000, instead of inserting the text at once.</td></tr>
+    <tr><td><code>--window-id ID</code></td><td>none</td><td>Windows. Type into whatever has keyboard focus in this window instead of a ref. Needs <code>--headed</code>.</td></tr>
   </tbody>
 </table>
+
+`--window-id` serves windows that draw their own fields and expose no ref. The window is brought to the front and checked to be the active window, then the text goes in through the real keyboard as Unicode input, so the input method state does not change what is typed. Nothing reads the field back, so the result is always `delivered_unverified` and carries `window_id`; confirm with `ocr --find`. It does not take `--interval-ms` or `--human`.
 
 Use `--stdin` with `type` or `set-value` to read text from a pipe or redirected file. Terminal input is rejected. Replace the example ref with one from your snapshot:
 

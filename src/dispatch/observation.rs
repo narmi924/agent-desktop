@@ -52,6 +52,7 @@ pub(super) fn ocr(
             window_id: args.scope.window_id,
             find: args.find,
             language: args.lang,
+            scale: args.scale,
         },
         adapter,
         context,

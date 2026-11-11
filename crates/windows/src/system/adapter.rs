@@ -256,16 +256,6 @@ impl SystemOps for WindowsAdapter {
     }
 
     #[cfg(target_os = "windows")]
-    fn recognize_text(
-        &self,
-        png: &[u8],
-        language: Option<&str>,
-        _deadline: Deadline,
-    ) -> Result<Vec<agent_desktop_core::OcrLine>, AdapterError> {
-        crate::system::capture::ocr::recognize(png, language)
-    }
-
-    #[cfg(target_os = "windows")]
     fn screenshot_window_frame(
         &self,
         window: &WindowInfo,

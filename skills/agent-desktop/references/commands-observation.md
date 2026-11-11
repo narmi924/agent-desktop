@@ -125,10 +125,16 @@ Windows reads text in a window or a saved PNG with its built-in OCR. Use it wher
 
 ```powershell
 agent-desktop ocr --window-id w-1234
-agent-desktop ocr --image shot.png --find "Save" --lang en-US
+agent-desktop ocr --image shot.png --scale 1.5 --find "Save"
 ```
 
-`data` has `text`, `lines` (each with `words` and their `bounds`) and, with `--find`, `matches` of `{ text, bounds, center }`. Bounds are in image pixels. `--find` ignores spacing and case and treats `I` and `|` as `l`. `--lang` needs that Windows language pack, otherwise `INVALID_ARGS`; it defaults to the user's languages.
+One read looks at the image several times and merges what it saw by position. The first installed OCR language reads four copies: darkened at twice and at one and a half times the size the text would have at 100%, the capture as it is, and grey at one and a quarter. Every other installed language reads the capture once, so English inside Chinese text is read by the English recognizer. A read takes about 0.2 to 0.3 s on a 225% display.
+
+`data` has `text`, `passes`, and `lines`, one per place, each with `text`, `bounds`, `words`, and `also` when other passes read that place differently. Bounds are image pixels. Chinese lines come back without spaces between characters.
+
+With `--find`, `matches` lists `{ text, bounds, center, whole_line }`. A line that is exactly the text beats a longer line that contains it: `--find "Send"` returns the Send button, not the "Send file" link. Every place of the better kind is returned, top to bottom, and you choose. Matching ignores spacing, case, punctuation and full-width forms, treats `0` and `O`, and `I`, `l`, `1` and `|`, as the same letter, and reads 一 between two letters or digits as the hyphen a Chinese recognizer took it for. Text of three or more characters still matches when about one character in three was read as two halves (把 as 扌巴). Text of five or more also matches when about one character in five was misread or dropped, up to three, as long as its last character and its first one were read; from eight characters on, a lost first character is tolerated too. Shorter text must match exactly.
+
+`--scale` gives the display scale a saved image was captured at; the default is the primary display's. `--lang` reads with that one language only and needs its Windows language pack, otherwise `INVALID_ARGS`.
 
 ## list-displays
 

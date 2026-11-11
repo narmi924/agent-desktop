@@ -121,6 +121,33 @@ pub trait InputOps: Send + Sync {
         self.drag(params, lease)
     }
 
+    /// `Some` when this process was started as the helper that shows the
+    /// agent pointer while real input is taken; the caller then exits with
+    /// its result instead of parsing a command.
+    fn run_agent_pointer_child(&self) -> Option<Result<(), AdapterError>> {
+        None
+    }
+
+    /// Puts the person's own pointer back and stops the helper that shows
+    /// the agent pointer. Whether a running helper was asked to stop.
+    fn restore_agent_pointer(&self) -> Result<bool, AdapterError> {
+        Err(AdapterError::not_supported("agent pointer"))
+    }
+
+    /// Types text into whatever holds the keyboard in `process`. Core has
+    /// already brought the window forward and confirmed it is the active
+    /// one; the adapter verifies focus again and sends. Nothing reads the
+    /// text back, so success is `delivered_unverified`.
+    fn type_text_for_app(
+        &self,
+        _process: crate::ProcessIdentity,
+        _text: &str,
+        _policy: crate::InteractionPolicy,
+        _lease: &InteractionLease,
+    ) -> Result<crate::ActionResult, AdapterError> {
+        Err(AdapterError::not_supported("typing into a window"))
+    }
+
     fn key_event(
         &self,
         _combo: &KeyCombo,

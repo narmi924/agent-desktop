@@ -105,6 +105,7 @@ fn post_shell_keys(edges: &[ShellKeyEdge]) {
             },
         })
         .collect();
+    crate::system::agent_pointer::before_input();
     unsafe {
         SendInput(
             raw.len() as u32,

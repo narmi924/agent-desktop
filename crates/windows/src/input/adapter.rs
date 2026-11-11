@@ -16,6 +16,24 @@ impl InputOps for WindowsAdapter {
         Ok(report)
     }
 
+    fn run_agent_pointer_child(&self) -> Option<Result<(), AdapterError>> {
+        crate::system::agent_pointer::entry_from_env()
+    }
+
+    fn restore_agent_pointer(&self) -> Result<bool, AdapterError> {
+        crate::system::agent_pointer::restore_now()
+    }
+
+    fn type_text_for_app(
+        &self,
+        process: agent_desktop_core::ProcessIdentity,
+        text: &str,
+        policy: agent_desktop_core::InteractionPolicy,
+        lease: &InteractionLease,
+    ) -> Result<agent_desktop_core::ActionResult, AdapterError> {
+        crate::system::key_dispatch::type_for_app_impl(process, text, policy, lease.deadline())
+    }
+
     fn pointer_in_window(
         &self,
         event: MouseEvent,

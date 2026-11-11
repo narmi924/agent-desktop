@@ -350,3 +350,160 @@ test('web.selection runs one page read and returns null for nothing selected', a
   assert.equal((await tools.run(`return await web.selection();`)).result, null);
   assert.equal(tools.calls.length, 1);
 });
+
+const { choose } = require('../../npm/lib/script-picture');
+const { mkdtempSync } = require('node:fs');
+const { tmpdir } = require('node:os');
+const { join } = require('node:path');
+const { deflateSync, crc32 } = require('node:zlib');
+
+process.env.AGENT_DESKTOP_HOME = mkdtempSync(join(tmpdir(), 'ad-script-'));
+
+function tinyPng() {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(body.length + 8);
+    out.writeUInt32BE(data.length);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), out.length - 4);
+    return out;
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(1, 0); header.writeUInt32BE(1, 4); header[8] = 8; header[9] = 6;
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header),
+    chunk('IDAT', deflateSync(Buffer.from([0, 255, 255, 255, 255]))), chunk('IEND', Buffer.alloc(0))]);
+}
+
+const DRAWN = {
+  complete: true,
+  tree: { role: 'window', name: '自绘窗口示例', children: [
+    { role: 'group', ref_id: '@s9:e1', native_id: { kind: 'automation_id', value: 'TitleBar' }, children: [
+      { role: 'button', name: '关闭', ref_id: '@s9:e2' },
+    ] },
+  ] },
+};
+
+const SPOT = (text, x, y, whole = true) => ({ text, bounds: { x: x - 20, y: y - 10, width: 40, height: 20 }, center: { x, y }, whole_line: whole });
+
+/** A self-drawn window: its tree has only a title bar, and `places` says where its picture shows each text. */
+function drawnTools(places, { tree = DRAWN, typed } = {}) {
+  const shown = { ...places };
+  return fakeTools({
+    'desktop list-windows': [{ id: 'w-7', app_name: 'pwsh.exe', title: '自绘窗口示例', visible: true, process_instance: 'p-7', bounds: { width: 100, height: 80 } }],
+    'desktop snapshot': tree,
+    'desktop click': { disposition: { delivery: 'delivered_verified' } },
+    'desktop screenshot': { data: tinyPng().toString('base64'), width: 1, height: 1, scale_factor: 2.25 },
+    'desktop ocr': words => {
+      const find = words.indexOf('--find');
+      const lines = Object.entries(shown).map(([text, spots]) => ({ text, bounds: spots[0].bounds }));
+      return find < 0 ? { lines } : { lines, matches: shown[words[find + 1]] ?? [] };
+    },
+    'desktop --headed': (words, options) => {
+      if (words[1] === 'type') {
+        if (typed) shown[options.input] = [SPOT(options.input, 600, 600)];
+        return { disposition: { delivery: 'delivered_unverified' } };
+      }
+      return { disposition: { delivery: 'delivered_unverified' }, x: 1, y: 1 };
+    },
+  });
+}
+
+test('a window with nothing but a title bar is clicked by its picture, with the real mouse', async () => {
+  const tools = drawnTools({ 发送: [SPOT('发送', 1012, 716)] });
+  const data = await tools.run(`return await desktop.click('自绘', '发送');`);
+  assert.deepEqual(data.result, { via: 'picture', text: '发送', x: 1012, y: 716, delivery: 'delivered_unverified' });
+  const headed = tools.calls.filter(c => c.words[0] === '--headed').map(c => c.words.slice(1, 3).join(' '));
+  assert.deepEqual(headed, ['focus-window --window-id', '--when-idle 600'], 'the window comes forward before it is captured and clicked');
+  const click = tools.calls.find(c => c.words.includes('mouse-click'));
+  assert.equal(click.words[click.words.indexOf('--xy') + 1], '1012,716');
+  assert.match(click.words[click.words.indexOf('--frame') + 1], /scene-.*\.png$/);
+  const ocr = tools.calls.find(c => c.words[0] === 'ocr');
+  assert.equal(ocr.words[ocr.words.indexOf('--scale') + 1], '2.25', 'the picture is read at the scale it was captured at');
+  assert.match(data.steps[0], /^desktop\.click 发送 \(by picture at 1012,716\) \d+ms$/);
+});
+
+test('a name no control has is looked for in the picture at once, not after the wait', async () => {
+  const tools = drawnTools({ 发送: [SPOT('发送', 50, 60)] }, { tree: WINDOW });
+  const started = Date.now();
+  const data = await tools.run(`return await desktop.click('自绘', '发送');`);
+  assert.equal(data.result.via, 'picture');
+  assert.ok(Date.now() - started < 1000, 'no four-second wait before the picture');
+});
+
+test('a name a control has never touches the picture, and picture:false keeps a step to controls', async () => {
+  const tools = drawnTools({ 保存: [SPOT('保存', 50, 60)] }, { tree: WINDOW });
+  await tools.run(`await desktop.click('自绘', '文件名');`);
+  assert.deepEqual(tools.calls.map(c => c.words[0]), ['list-windows', 'snapshot', 'click']);
+  await assert.rejects(tools.run(`await desktop.click('自绘', '发送', { picture: false, timeout: 50 });`), { code: 'ELEMENT_NOT_FOUND' });
+  assert.ok(!tools.calls.some(c => c.words[0] === 'ocr'), 'the picture is captured for the failure scene only, never read');
+});
+
+test('the same text in several places is refused with the places, and nth or near picks one', () => {
+  const places = [SPOT('产品讨论组', 120, 220), SPOT('产品讨论组', 600, 40)];
+  assert.throws(() => choose(places, '产品讨论组'), err => err.code === 'AMBIGUOUS_TARGET' && /\(120,220\).*\(600,40\)/.test(err.message));
+  assert.equal(choose(places, '产品讨论组', { nth: 2 }).center.x, 600);
+  assert.throws(() => choose(places, '产品讨论组', { nth: 3 }), { code: 'INVALID_ARGS' });
+  assert.equal(choose(places, '产品讨论组', { near: '王磊' }, [SPOT('王磊: 明天', 130, 250)]).center.x, 120);
+  assert.equal(choose(places, '产品讨论组', { near: '不存在' }, []), undefined);
+  assert.throws(() => choose(places, 'x', { near: 'y' }, [SPOT('y', 360, 130)]), { code: 'AMBIGUOUS_TARGET' });
+});
+
+test('fill by picture clicks the text, types into the window and checks the text shows', async () => {
+  const tools = drawnTools({ 输入消息: [SPOT('输入消息', 330, 660)] }, { typed: true });
+  const data = await tools.run(`return await desktop.fill('自绘', '输入消息', '你好 Build 1482');`);
+  assert.equal(data.result, true);
+  const type = tools.calls.find(c => c.words[1] === 'type');
+  assert.deepEqual([type.words.join(' '), type.input], ['--headed type --window-id w-7 --stdin', '你好 Build 1482']);
+  const silent = drawnTools({ 输入消息: [SPOT('输入消息', 330, 660)] });
+  const unseen = await silent.run(`return await desktop.fill('自绘', '输入消息', '看不见');`);
+  assert.equal(unseen.result, false);
+  assert.match(unseen.warnings[0], /does not show it/);
+});
+
+test('reading a drawn window adds the picture text, marked as such', async () => {
+  const tools = drawnTools({ 产品讨论组: [SPOT('产品讨论组', 120, 220)], 'Build 1482 passed': [SPOT('Build 1482 passed', 120, 380)] });
+  const data = await tools.run(`return await desktop.read('自绘');`);
+  assert.match(data.result, /- picture \(text read from the screen, not from controls\):/);
+  assert.match(data.result, /- text "Build 1482 passed" \[picture 120,380\]/);
+  assert.match(data.steps[0], /\(with picture text\)/);
+  const controls = drawnTools({ 发送: [SPOT('发送', 1, 1)] }, { tree: WINDOW });
+  assert.doesNotMatch((await controls.run(`return await desktop.read('自绘');`)).result, /picture/, 'a window with controls reads as before');
+});
+
+test('has, waitFor and waitText see text that only the picture shows', async () => {
+  const tools = drawnTools({ '已发送 3 条': [SPOT('已发送 3 条', 400, 500)] });
+  const data = await tools.run(`
+    const has = await desktop.has('自绘', '已发送 3 条');
+    const missing = await desktop.has('自绘', '不存在', { picture: false });
+    const at = await desktop.waitFor('自绘', '已发送 3 条', { timeout: 100 });
+    const line = await desktop.waitText('自绘', '已发送 3 条', 100);
+    return { has, missing, at, line };`);
+  assert.deepEqual(data.result, { has: true, missing: false, at: { via: 'picture', text: '已发送 3 条', x: 400, y: 500 }, line: '已发送 3 条' });
+  assert.ok(data.steps.every(s => /in the picture|has 不存在/.test(s)));
+});
+
+test('a failed desktop step leaves a screenshot path in the scene', async () => {
+  const tools = drawnTools({});
+  const err = await tools.run(`await desktop.click('自绘', '不存在', { timeout: 50 });`).catch(e => e);
+  assert.equal(err.code, 'ELEMENT_NOT_FOUND');
+  assert.match(err.report.scene.screenshot, /scene-.*\.png$/);
+});
+
+test('every command a script starts holds the agent pointer for the whole script', async () => {
+  const seen = [];
+  const call = async (binary, args, options) => { seen.push(options.env?.AGENT_DESKTOP_POINTER_HOLDER); return []; };
+  await runScript(`await desktop.windows();`, { native: 'desktop', call, env: { PATH: 'x' } });
+  assert.deepEqual(seen, [String(process.pid)]);
+  await runScript(`await desktop.windows();`, { native: 'desktop', call, env: { AGENT_DESKTOP_POINTER_HOLDER: '77' } });
+  assert.equal(seen.at(-1), '77', 'an outer holder is kept');
+});
+
+test('a script that times out ends its process at once, so nothing it started keeps holding the pointer', () => {
+  const { spawnSync } = require('node:child_process');
+  const started = Date.now();
+  const run = spawnSync(process.execPath, [join(__dirname, '..', '..', 'npm', 'bin', 'workflow.js'), 'run', '--timeout-ms', '300'],
+    { input: 'await sleep(20000);', encoding: 'utf8', timeout: 15000 });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /did not finish within 300 ms/);
+  assert.ok(Date.now() - started < 5000, 'the process ended with the reply, not after the script\'s own timer');
+});

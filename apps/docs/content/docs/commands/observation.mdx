@@ -211,7 +211,7 @@ Platform limits: macOS needs Screen Recording permission, and Wayland asks for p
 Reads text from a window or a saved PNG with the OCR engine built into Windows. Use it where the accessibility tree has no text. Other platforms return `PLATFORM_NOT_SUPPORTED`.
 
 ```bash
-agent-desktop ocr [--app NAME] [--window-id ID] [--image PATH] [--find TEXT] [--lang TAG]
+agent-desktop ocr [--app NAME] [--window-id ID] [--image PATH [--scale FACTOR]] [--find TEXT] [--lang TAG]
 ```
 
 <table>
@@ -220,12 +220,17 @@ agent-desktop ocr [--app NAME] [--window-id ID] [--image PATH] [--find TEXT] [--
   </thead>
   <tbody>
     <tr><td><code>--image PATH</code></td><td>none</td><td>Read this PNG instead of capturing a window.</td></tr>
-    <tr><td><code>--find TEXT</code></td><td>none</td><td>Report each place this text appears. Spacing and case are ignored.</td></tr>
-    <tr><td><code>--lang TAG</code></td><td>user languages</td><td>A language such as <code>zh-Hans-CN</code>. Without its Windows language pack the command returns <code>INVALID_ARGS</code>.</td></tr>
+    <tr><td><code>--scale FACTOR</code></td><td>primary display</td><td>The display scale a saved image was captured at, such as <code>1.5</code>.</td></tr>
+    <tr><td><code>--find TEXT</code></td><td>none</td><td>Report where this text appears. Lines that are exactly the text win over lines that contain it.</td></tr>
+    <tr><td><code>--lang TAG</code></td><td>every installed OCR language</td><td>Read with this language only, such as <code>zh-Hans-CN</code>. Without its Windows language pack the command returns <code>INVALID_ARGS</code>.</td></tr>
   </tbody>
 </table>
 
-`data` has `text`, `lines` with `words` and their `bounds`, and with `--find`, `matches` of `{ text, bounds, center }`. Coordinates are image pixels.
+One read looks at the image several times and merges what it saw by position. The first installed OCR language reads four copies: darkened at twice and at one and a half times the size the text would have at 100%, the capture as it is, and grey at one and a quarter. Every other installed language reads the capture once. A read takes about 0.2 to 0.3 s on a 225% display.
+
+`data` has `text`, `passes`, and `lines`, one per place, each with `text`, `bounds`, `words`, and `also` when other passes read that place differently. Coordinates are image pixels.
+
+With `--find`, `matches` lists `{ text, bounds, center, whole_line }`. Only the better kind of place is returned: lines that are exactly the text, or, when there are none, lines that contain it. Matching ignores spacing, case, punctuation, and full-width forms, treats `0` and `O`, and `I`, `l`, `1`, and `|`, as the same letter, and reads 一 between two letters or digits as a hyphen. Text of three or more characters also matches when about one character in three was read as two halves, and text of five or more when about one character in five was misread or dropped, up to three, as long as its last character and its first one were read; from eight characters on, a lost first character is tolerated too. Shorter text must match exactly.
 
 ## list-displays
 

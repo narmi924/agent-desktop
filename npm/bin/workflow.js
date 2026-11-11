@@ -273,6 +273,7 @@ async function main() {
   const data = await (own[command] ?? (() => perform(command, values)))();
   if (process.env.AGENT_DESKTOP_RECORD) recordStep(process.env.AGENT_DESKTOP_RECORD, command, values);
   console.log(JSON.stringify({ ok: true, data }));
+  if (command === 'run') leave(0);
 }
 
 function nativeBinary() {
@@ -305,6 +306,7 @@ function script({ file, session, chrome, space: own, 'timeout-ms': wait = '12000
   if (!(timeout > 0) || (!file && process.stdin.isTTY)) throw new Error('Pipe a script to run, or pass --file SCRIPT.js. --timeout-ms takes a positive number.');
   if ([session, chrome, own].filter(Boolean).length > 1) throw new Error('Choose one of --session NAME, --space and --chrome.');
   const source = readFileSync(file ?? 0, 'utf8').replace(/^\uFEFF/, '');
+  process.env.AGENT_DESKTOP_POINTER_HOLDER ??= String(process.pid);
   return runScript(source, {
     browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform,
     flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? 'work'],
@@ -359,4 +361,13 @@ main().catch(err => {
     ...(Number.isInteger(partial) ? {typed_keystrokes:partial,keystrokes:err.details.keystrokes} : {}),
     ...(err.report ? {...(err.code && !err.disposition ? {code:err.code} : {}),...err.report} : {})}));
   process.exitCode=1;
+  if (err.report) leave(1);
 });
+
+/**
+ * A script that timed out or failed can still have timers of its own pending. The reply is already out, so the
+ * process ends now: the commands it started stop holding the agent pointer, and the caller gets its exit code.
+ */
+function leave(code) {
+  process.stdout.write('', () => process.stderr.write('', () => process.exit(code)));
+}

@@ -63,6 +63,7 @@ agent-desktop snapshot --app gnome-calculator -w "button:7"
     <tr><td><code>AGENT_DESKTOP_HOME</code></td><td>Relocates the <a href="#state-root">state root</a>. Must be an absolute path.</td></tr>
     <tr><td><code>AGENT_DESKTOP_SESSION</code></td><td>Session id used when <code>--session</code> is not passed. <code>session start</code> prints the line that sets it. An empty value is <code>INVALID_ARGS</code>.</td></tr>
     <tr><td><code>AGENT_DESKTOP_AGENT_ID</code></td><td>Subagent id used when <code>--agent-id</code> is not passed.</td></tr>
+    <tr><td><code>AGENT_DESKTOP_POINTER</code></td><td>Windows. The pointer shown while a command sends real input: <code>amber</code> (default), <code>red</code>, <code>green</code>, a path to a square PNG with the arrow tip at 32% of its width and height, or <code>off</code>.</td></tr>
     <tr><td><code>AGENT_DESKTOP_MACOS_HELPER_PATH</code></td><td>macOS only. Absolute path to the packaged <code>agent-desktop-macos-helper</code>. The npm launcher sets it.</td></tr>
     <tr><td><code>RUST_LOG</code></td><td>Log filter for stderr logs. A valid value replaces the default level.</td></tr>
   </tbody>

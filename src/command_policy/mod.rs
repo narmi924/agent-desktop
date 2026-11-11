@@ -23,6 +23,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         Commands::Status | Commands::Permissions(_) => None,
         Commands::ListWindows(_) | Commands::ListDisplays | Commands::ListApps(_) => None,
         Commands::ClipboardGet(_) | Commands::ClipboardSet(_) | Commands::ClipboardClear => None,
+        Commands::RestoreCursor => None,
         Commands::Batch(_) => None,
 
         Commands::Snapshot(_)
@@ -185,7 +186,9 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
             validate_ref_id(&args.ref_id)?;
         }
         Commands::Type(args) => {
-            validate_ref_id(&args.ref_id)?;
+            if args.window_id.is_none() {
+                validate_ref_id(args.ref_id.as_deref().unwrap_or_default())?;
+            }
             if let Some(tab) = &args.selected_tab {
                 validate_ref_id(tab)?;
             }
@@ -260,6 +263,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::ClipboardGet(_)
         | Commands::ClipboardSet(_)
         | Commands::ClipboardClear
+        | Commands::RestoreCursor
         | Commands::Status
         | Commands::Permissions(_)
         | Commands::Version

@@ -234,15 +234,6 @@ pub trait SystemOps: Send + Sync {
         Err(AdapterError::not_supported("crop_screenshot"))
     }
 
-    fn recognize_text(
-        &self,
-        _png: &[u8],
-        _language: Option<&str>,
-        _deadline: Deadline,
-    ) -> Result<Vec<crate::OcrLine>, AdapterError> {
-        Err(AdapterError::not_supported("text recognition"))
-    }
-
     fn screenshot_window_frame(
         &self,
         _window: &WindowInfo,

@@ -148,4 +148,4 @@ function move(ad, args) {
   return result;
 }
 
-module.exports = { view, move, edit, tap };
+module.exports = { view, move, edit, tap, storeImage };

@@ -43,6 +43,55 @@ pub(crate) fn press_for_app_impl(
     post_delivery_process_result(&process)
 }
 
+/// Types text into whatever holds the keyboard in a named process, under
+/// the same gates as `press_for_app_impl`, and re-checks between chunks
+/// that the process still owns the foreground. Nothing reads the text back,
+/// so a delivered run is reported unverified.
+pub(crate) fn type_for_app_impl(
+    process: ProcessIdentity,
+    text: &str,
+    policy: InteractionPolicy,
+    deadline: Deadline,
+) -> Result<ActionResult, AdapterError> {
+    deadline.ensure_remaining()?;
+    crate::input::keyboard::preflight_text(text, deadline)?;
+    require_process(&process)?;
+    ensure_injection_integrity(process.pid)?;
+    ensure_foreground_for_delivery(&process, policy)?;
+    require_process(&process)?;
+    require_keyboard_focus(process.pid, &process.instance, deadline)?;
+    let verify = |_: Deadline| {
+        if process_owns_foreground(process.pid, &process.instance)? {
+            Ok(())
+        } else {
+            Err(focus_lost_before_delivery(process.pid))
+        }
+    };
+    let (first, rest) = split_first_character(text);
+    crate::input::keyboard::synthesize_text(first, deadline, verify)?;
+    if !rest.is_empty() {
+        std::thread::sleep(deadline.remaining_slice(FIRST_CHARACTER_SETTLE)?);
+        crate::input::keyboard::synthesize_text(rest, deadline, verify)
+            .map_err(|error| error.with_disposition(DeliverySemantics::delivered_unverified()))?;
+    }
+    require_process(&process)
+        .map_err(|error| error.with_disposition(DeliverySemantics::delivered_unverified()))?;
+    Ok(ActionResult::delivered_unverified("type_text"))
+}
+
+/// An input method that sat idle wakes up on the first key it sees. Measured
+/// with Microsoft Pinyin on a window that takes input through IMM32: after a
+/// pause, the first character of a one-batch text came out as a later
+/// character of the same text in 17 of 20 runs. Sending the first character
+/// alone and letting it be read first gave 12 of 12 right.
+const FIRST_CHARACTER_SETTLE: Duration = Duration::from_millis(40);
+
+/// The first character, a surrogate pair kept whole, and the rest.
+fn split_first_character(text: &str) -> (&str, &str) {
+    let end = text.chars().next().map_or(0, char::len_utf8);
+    text.split_at(end)
+}
+
 fn ensure_injection_integrity(pid: ProcessId) -> Result<(), AdapterError> {
     #[cfg(all(test, target_os = "windows"))]
     if force_higher_integrity::is_active() {

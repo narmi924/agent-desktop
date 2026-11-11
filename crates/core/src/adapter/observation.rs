@@ -341,6 +341,22 @@ pub trait ObservationOps: Send + Sync {
         let _ = (handle, point, deadline);
         Ok(())
     }
+
+    /// Recognizer languages installed on this machine, the user's preferred
+    /// one first.
+    fn recognition_languages(&self, _deadline: Deadline) -> Result<Vec<String>, AdapterError> {
+        Err(AdapterError::not_supported("text recognition"))
+    }
+
+    /// Reads `png` once per pass, in pass order. Boxes are in `png`'s pixels.
+    fn recognize_text(
+        &self,
+        _png: &[u8],
+        _passes: &[crate::OcrPass],
+        _deadline: Deadline,
+    ) -> Result<Vec<crate::OcrReading>, AdapterError> {
+        Err(AdapterError::not_supported("text recognition"))
+    }
 }
 
 #[cfg(test)]

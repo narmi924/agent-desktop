@@ -74,6 +74,20 @@ Prints the version, CPU architecture, and OS. It takes no flags.
 
 The envelope's `version` is the JSON contract version; `data.version` is the release.
 
+## restore-cursor
+
+Windows. Puts your own mouse pointer back and stops the helper that shows the agent pointer. It takes no flags.
+
+```bash
+agent-desktop restore-cursor
+```
+
+```json
+{ "version": "2.6", "ok": true, "command": "restore-cursor", "data": { "helper_stopped": false, "restored": true } }
+```
+
+While a command sends real key or mouse input, every system pointer shape changes to an arrow with an amber glow, and your own pointer scheme comes back within a second of the last command. It is restored when a command ends, fails, times out, or is killed, and when the helper that holds it is killed. Run `restore-cursor` if a pointer is ever left behind. `AGENT_DESKTOP_POINTER` sets the look or turns it off; see [Configuration](/desktop/configuration#environment-variables). Other platforms return `PLATFORM_NOT_SUPPORTED`.
+
 ## skills
 
 Prints the guides compiled into the binary. Usage, names, and references are on [Skills](/desktop/skills).

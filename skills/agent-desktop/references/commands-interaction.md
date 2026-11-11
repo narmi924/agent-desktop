@@ -99,6 +99,7 @@ agent-desktop right-click @s8f3k2p9:e5
 ```bash
 agent-desktop type @s8f3k2p9:e2 "hello@example.com"
 agent-desktop type @s8f3k2p9:e2 "hello world" --interval-ms 60
+agent-desktop --headed type --window-id w-1234 "收到 Build 1482"
 agent-desktop set-value @s8f3k2p9:e2 "new value"
 printf '%s' 'hello' | agent-desktop set-value @s8f3k2p9:e2 --stdin
 agent-desktop clear @s8f3k2p9:e2
@@ -108,6 +109,7 @@ agent-desktop focus @s8f3k2p9:e2
 - `type` inserts text and checks the result when value and selection are readable. A readable mismatch returns `ACTION_FAILED`, and an unreadable result succeeds as `delivered_unverified`. Text sent as keystrokes reaches the field through the app's event queue, so the check re-reads the field while it changes, inside the `--timeout-ms` budget. If it settles on other text, or never settles, the result is `delivered_unverified` with `verification_reason: postcondition_mismatch`. Headed typing that focuses an inactive field can change the selection, and the result then stays unverified. Read the field with `get` before you write again.
 - The default `--timeout-ms` of `type` is 5000 plus 30 ms per character of the text. An explicit `--timeout-ms` wins.
 - `type --interval-ms N` (1 to 2000) types one keystroke every N ms inside one command; `--timeout-ms` then applies to each keystroke, and `0` makes each keystroke try once. A keystroke keeps combining marks, emoji sequences and CR LF together. The first keystroke is a full ref action (headed, it also focuses the window), and the rest go to the same element, taking the interaction lease one keystroke at a time. A headed keystroke is posted only while the target's process and focused element are unchanged; if focus moves, the burst stops with an error. The result adds `keystrokes` and `interval_ms`, and `post_state` is the field after the last keystroke. It stays `delivered_verified` only when that read shows the whole text; otherwise it is `delivered_unverified` with `verification_reason` `postcondition_mismatch`, `insufficient_evidence` (typed part way through the field) or `final_read_failed` (no `post_state`). `--wait-for` waits once, after the last keystroke. A failure part way through adds `details.typed_keystrokes` and `details.keystrokes` and is `delivered_unverified`: read the field before you type again.
+- `type --window-id ID TEXT` (Windows) types into whatever has keyboard focus in that window, for windows that draw their own fields and expose no ref. It needs `--headed`: the window is brought to the front, checked to be the active window, and the text goes in through the real keyboard as Unicode input, so the input method state (Chinese, English or another layout) does not change it. Nothing reads the field back, so success is always `delivered_unverified`; confirm with `ocr --find`. `--interval-ms` and `--human` need a ref.
 - `set-value` writes the value directly through the semantic value path. It is faster than `type`, but it may not fire every UI callback. Use it for text fields, text areas and sliders.
 - Use `--stdin` with `type` or `set-value` to read text from a pipe or redirected file. Terminal input is rejected. Provide either `--stdin` or a command-line value.
 - On Windows, capture an editor and its selected document tab together. Run `set-value EDITOR VALUE --selected-tab TAB` to check that the same tab instance is still selected immediately before the write. Missing or ambiguous tab evidence refuses delivery. This checks the application's UI at dispatch time; an independent user or provider can still change it during delivery.
@@ -292,10 +294,13 @@ return await desktop.waitText("Customer records", "Saved");
 - A target is the name `web.read()` or `desktop.read(window)` shows in quotes, a ref, or `css:SELECTOR`. Names reach into frames and shadow DOM. A repeated name fails with `AMBIGUOUS_TARGET` instead of picking one. Pass `{near: "text in the same row or card"}` to take the control that shares the most structure with that text, for example `web.click("Add to cart", {near: "Green tea 250g"})`, or `{nth}` or `{role}`.
 - A step waits up to 4 s for a control that is missing, disabled or covered, and for a `select` option that has not loaded. `{timeout: ms}` changes that for one step.
 - `read()` lists controls, not messages. `web.waitText(text)` and `desktop.waitText(window, text)` return the text they found, so a confirmation number can be read in the same step that waits for it. Plain text wins over a control's name.
-- A window is an id from `desktop.windows()` or part of an app name or title. Desktop steps use `click` and `set-value`, which do not take the foreground or the cursor. `desktop.check` and `desktop.uncheck` click a box only when it is not already in that state. `desktop.cmd(...)` runs any other command, including `--headed` ones that do.
+- A window is an id from `desktop.windows()` or part of an app name or title. Desktop steps use `click` and `set-value`, which do not take the foreground or the cursor, whenever a control has the name.
+- A name no control has is looked for in the window's picture at once, every round of the wait. A window whose only controls are its title bar is read from its picture from the start. `desktop.read(window)` then lists that text as `- text "..." [picture x,y]`; `{picture: true}` adds it for any window. A step done by picture says so in `steps`, for example `desktop.click 发送 (by picture at 1012,716) 2210ms`.
+- Acting by picture brings the window to the front and uses the real mouse and keyboard. `desktop.click` clicks the text with `mouse-click --frame`, which refuses when the window moved or the picture around the point changed, and returns `{via: "picture", text, x, y, delivery}`. `desktop.fill` clicks the text, types with `type --window-id`, and returns `true` only when the window then shows the typed text; otherwise it returns `false` with a warning. It does not clear text already in the field. `has`, `waitFor` and `waitText` also look in the picture.
+- The same text in several places of the picture fails with `AMBIGUOUS_TARGET` and lists each place. Pass `{nth: N}`, counted from the top, or `{near: "text beside it"}` for the place closest to that text. `{picture: false}` keeps a step to controls; `desktop.waitText` takes it as its fourth argument. `desktop.check` and `desktop.uncheck` click a box only when it is not already in that state. `desktop.cmd(...)` runs any other command, including `--headed` ones that do.
 - `desktop.launch(nameOrId)` opens an installed app by the name `desktop.apps(filter)` lists and returns its window id. `desktop.selection(window)` and `web.selection()` return the text the user has selected, or `null`.
 - Success prints `{ "ok": true, "data": { "result", "steps", "elapsed_ms" } }`. `result` is what the script returned. `warnings` lists fills that the page or app did not confirm.
-- A failing step stops the script. The reply names it in `step` and carries `scene`, a full read of the page or window taken after the failure, so the next script can continue from there. Steps before it stay done.
+- A failing step stops the script. The reply names it in `step` and carries `scene`, a full read of the page or window taken after the failure, so the next script can continue from there. A desktop `scene` adds `screenshot`, the path of a capture of the window at that moment. Steps before it stay done.
 - Pages open in the background session `work`. `--session NAME` picks another, `--space` uses the agent's own browser profile, and `--chrome` uses your running Chrome over the connection `connect` set up.
 - The script is not sandboxed. It runs with the same rights as the command.
 
@@ -421,6 +426,18 @@ agent-desktop --headed --human natural drag --from-xy 100,200 --to-xy 400,500
 | Move between fields | `press tab` | `focus @ref` |
 | Copy text out of a field | `get @ref --property value` | `press` the copy shortcut, then `clipboard-get` |
 | Find an off-screen item | `scroll @area`, then `find` | `scroll-to @ref` |
+
+## Agent pointer while input is taken (Windows)
+
+Before a command sends its first real key or mouse event, every system pointer shape changes to an arrow with an amber glow, so the person at the machine sees that the mouse and keyboard are in use and keeps their hands off. Their own pointer scheme comes back within a second of the last command. A `run` script keeps the agent pointer from its first real input to its end, without flickering between steps. Commands that only read, or act through accessibility without real input, never change the pointer.
+
+The pointer is restored when a command ends normally, fails, times out, or is killed, and when the helper process that holds it is killed. If it is ever left on screen, run:
+
+```powershell
+agent-desktop restore-cursor
+```
+
+`data` is `{ "restored": true, "helper_stopped": BOOL }`. Set `AGENT_DESKTOP_POINTER=off` to turn the agent pointer off, `red` or `green` for the other looks, or a path to a square PNG drawn on the same grid as the built-in look (arrow tip at 32% of the width and height). Screenshots, `ocr` and the picture check of `mouse-click --frame` never see the pointer. Other platforms return `PLATFORM_NOT_SUPPORTED` for `restore-cursor`.
 
 ## Agent cursor
 

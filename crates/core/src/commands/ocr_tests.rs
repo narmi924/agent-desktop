@@ -1,5 +1,6 @@
-use super::find_matches;
-use crate::{OcrLine, OcrWord, Rect};
+use super::{plan_passes, render};
+use crate::system::ocr_merge::merge;
+use crate::{OcrLine, OcrReading, OcrTone, OcrWord, Rect};
 
 fn word(text: &str, x: f64) -> OcrWord {
     OcrWord {
@@ -8,53 +9,91 @@ fn word(text: &str, x: f64) -> OcrWord {
             x,
             y: 10.0,
             width: 20.0,
-            height: 12.0,
+            height: 20.0,
         },
     }
 }
 
 fn line(words: &[(&str, f64)]) -> OcrLine {
     OcrLine {
-        text: words
-            .iter()
-            .map(|(text, _)| *text)
-            .collect::<Vec<_>>()
-            .join(" "),
+        text: words.iter().map(|(text, _)| *text).collect(),
         words: words.iter().map(|(text, x)| word(text, *x)).collect(),
     }
 }
 
 #[test]
-fn chinese_split_into_single_characters_still_matches() {
-    let lines = [line(&[
-        ("请", 0.0),
-        ("采", 20.0),
-        ("取", 40.0),
-        ("行", 60.0),
-        ("动", 80.0),
-    ])];
-    let matches = find_matches(&lines, "采取行动");
-    assert_eq!(matches.len(), 1);
-    assert_eq!(matches[0]["bounds"]["x"], 20.0);
-    assert_eq!(matches[0]["bounds"]["width"], 80.0);
-    assert_eq!(matches[0]["center"]["x"], 60.0);
+fn the_first_language_reads_four_copies_and_each_other_language_one() {
+    let languages = vec!["zh-Hans-CN".to_string(), "en-US".to_string()];
+    let passes = plan_passes(&languages, 2.25);
+    assert_eq!(passes.len(), 5);
+    assert!((passes[0].scale - 2.0 / 2.25).abs() < 1e-9);
+    assert_eq!(passes[0].tone, OcrTone::Dark);
+    assert!((passes[1].scale - 1.5 / 2.25).abs() < 1e-9);
+    assert_eq!(passes[1].tone, OcrTone::Dark);
+    assert_eq!(passes[2].scale, 1.0);
+    assert_eq!(passes[2].tone, OcrTone::Color);
+    assert!((passes[3].scale - 1.25 / 2.25).abs() < 1e-9);
+    assert_eq!(passes[3].tone, OcrTone::Gray);
+    assert_eq!(passes[4].language.as_deref(), Some("en-US"));
+    assert_eq!(passes[4].scale, 1.0);
+    assert!(
+        passes[..4]
+            .iter()
+            .all(|pass| pass.language.as_deref() == Some("zh-Hans-CN"))
+    );
 }
 
 #[test]
-fn a_capital_i_read_for_a_lowercase_l_still_matches() {
-    let lines = [line(&[("EngIish", 0.0), ("Mode", 20.0)])];
-    assert_eq!(find_matches(&lines, "english").len(), 1);
+fn small_text_on_a_100_percent_display_is_read_enlarged() {
+    let passes = plan_passes(&["en-US".to_string()], 1.0);
+    assert_eq!(passes.len(), 4);
+    assert_eq!(passes[0].scale, 2.0);
+    assert_eq!(passes[1].scale, 1.5);
 }
 
 #[test]
-fn text_that_is_absent_finds_nothing() {
-    let lines = [line(&[("Hello", 0.0)])];
-    assert!(find_matches(&lines, "world").is_empty());
-    assert!(find_matches(&lines, "   ").is_empty());
+fn an_unknown_display_scale_is_treated_as_100_percent() {
+    let passes = plan_passes(&["en-US".to_string()], f64::NAN);
+    assert_eq!(passes[0].scale, 2.0);
 }
 
 #[test]
-fn repeated_text_reports_every_place() {
-    let lines = [line(&[("OK", 0.0)]), line(&[("OK", 200.0)])];
-    assert_eq!(find_matches(&lines, "ok").len(), 2);
+fn the_reply_shows_one_text_per_place_lists_other_readings_and_finds_by_any() {
+    let spots = merge(&[
+        OcrReading {
+            language: "zh-Hans-CN".into(),
+            lines: vec![line(&[
+                ("输", 0.0),
+                ("入", 20.0),
+                ("氵", 40.0),
+                ("肖", 50.0),
+                ("息", 60.0),
+            ])],
+        },
+        OcrReading {
+            language: "zh-Hans-CN".into(),
+            lines: vec![line(&[
+                ("输", 0.0),
+                ("入", 20.0),
+                ("消", 40.0),
+                ("息", 60.0),
+            ])],
+        },
+        OcrReading {
+            language: "zh-Hans-CN".into(),
+            lines: vec![line(&[
+                ("输", 0.0),
+                ("入", 20.0),
+                ("消", 40.0),
+                ("息", 60.0),
+            ])],
+        },
+    ]);
+    let body = render(&spots, Some("输入消息"), 3);
+    assert_eq!(body["text"], "输入消息");
+    assert_eq!(body["lines"][0]["also"][0], "输入氵肖息");
+    assert_eq!(body["passes"], 3);
+    assert_eq!(body["matches"].as_array().map(Vec::len), Some(1));
+    assert_eq!(body["matches"][0]["whole_line"], true);
+    assert_eq!(body["matches"][0]["center"]["x"], 40.0);
 }

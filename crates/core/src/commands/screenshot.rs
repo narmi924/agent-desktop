@@ -61,13 +61,13 @@ pub fn execute_region(
     Ok(reply)
 }
 
-pub(crate) fn capture_png(
+pub(crate) fn capture_image(
     args: &ScreenshotArgs,
     adapter: &dyn PlatformAdapter,
     deadline: crate::Deadline,
-) -> Result<Vec<u8>, AppError> {
+) -> Result<crate::ImageBuffer, AppError> {
     let target = resolve_target(args, adapter, deadline)?;
-    Ok(adapter.screenshot(target, deadline)?.data)
+    Ok(adapter.screenshot(target, deadline)?)
 }
 
 fn resolve_target(

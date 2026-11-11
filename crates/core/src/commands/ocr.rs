@@ -1,11 +1,26 @@
 use crate::{
-    AppError, CommandContext, OcrLine, PlatformAdapter, Rect,
-    commands::screenshot::{ScreenshotArgs, capture_png},
+    AppError, CommandContext, OcrPass, OcrSpot, OcrTone, PlatformAdapter,
+    commands::screenshot::{ScreenshotArgs, capture_image},
+    system::{ocr_match, ocr_merge},
 };
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
 const MAX_IMAGE_BYTES: u64 = 96 * 1024 * 1024;
+
+/// The sizes, relative to a 100% display, at which the primary language
+/// reads the image, and how each copy is toned. Chosen by reading a
+/// self-drawn window at 100%, 150% and 225% at nine sizes and three tones:
+/// a darkened copy at twice and at one and a half times the design size
+/// reads small and pale text best, a grey copy at one and a quarter splits
+/// fewer wide characters, and the untouched capture keeps what a plain read
+/// found.
+const PRIMARY_PASSES: [(Option<f64>, OcrTone); 4] = [
+    (Some(2.0), OcrTone::Dark),
+    (Some(1.5), OcrTone::Dark),
+    (None, OcrTone::Color),
+    (Some(1.25), OcrTone::Gray),
+];
 
 pub struct OcrArgs {
     pub image: Option<PathBuf>,
@@ -13,6 +28,8 @@ pub struct OcrArgs {
     pub window_id: Option<String>,
     pub find: Option<String>,
     pub language: Option<String>,
+    /// The display scale a saved image was captured at.
+    pub scale: Option<f64>,
 }
 
 /// Reads visible text from a window or a saved image, for interfaces that
@@ -23,21 +40,77 @@ pub fn execute(
     _context: &CommandContext,
 ) -> Result<Value, AppError> {
     let deadline = crate::Deadline::standard()?;
-    let png = match &args.image {
-        Some(path) => read_image(path)?,
-        None => capture_png(
-            &ScreenshotArgs {
-                app: args.app.clone(),
-                window_id: args.window_id.clone(),
-                screen: None,
-                output_path: None,
-            },
-            adapter,
-            deadline,
-        )?,
+    let (png, scale) = match &args.image {
+        Some(path) => (
+            read_image(path)?,
+            args.scale
+                .unwrap_or_else(|| primary_display_scale(adapter, deadline)),
+        ),
+        None => {
+            let image = capture_image(
+                &ScreenshotArgs {
+                    app: args.app.clone(),
+                    window_id: args.window_id.clone(),
+                    screen: None,
+                    output_path: None,
+                },
+                adapter,
+                deadline,
+            )?;
+            let scale = image.scale_factor;
+            (image.data, scale)
+        }
     };
-    let lines = adapter.recognize_text(&png, args.language.as_deref(), deadline)?;
-    Ok(render(&lines, args.find.as_deref()))
+    let languages = match &args.language {
+        Some(tag) => vec![tag.clone()],
+        None => adapter.recognition_languages(deadline)?,
+    };
+    let passes = plan_passes(&languages, scale);
+    let readings = adapter.recognize_text(&png, &passes, deadline)?;
+    let spots = ocr_merge::merge(&readings);
+    Ok(render(&spots, args.find.as_deref(), passes.len()))
+}
+
+fn primary_display_scale(adapter: &dyn PlatformAdapter, deadline: crate::Deadline) -> f64 {
+    adapter
+        .list_displays(deadline)
+        .ok()
+        .and_then(|displays| {
+            displays
+                .iter()
+                .find(|display| display.is_primary)
+                .or(displays.first())
+                .map(|display| display.scale)
+        })
+        .unwrap_or(1.0)
+}
+
+/// Every pass to run: the first language four times at different sizes and
+/// tones, each further installed language once on the capture as it is, so
+/// English words inside Chinese text are read by an English recognizer.
+pub(crate) fn plan_passes(languages: &[String], display_scale: f64) -> Vec<OcrPass> {
+    let display_scale = if display_scale.is_finite() && display_scale > 0.0 {
+        display_scale
+    } else {
+        1.0
+    };
+    let mut passes = Vec::new();
+    let primary = languages.first().cloned();
+    for (size, tone) in PRIMARY_PASSES {
+        passes.push(OcrPass {
+            language: primary.clone(),
+            scale: size.map_or(1.0, |size| size / display_scale),
+            tone,
+        });
+    }
+    for language in languages.iter().skip(1) {
+        passes.push(OcrPass {
+            language: Some(language.clone()),
+            scale: 1.0,
+            tone: OcrTone::Color,
+        });
+    }
+    passes
 }
 
 fn read_image(path: &std::path::Path) -> Result<Vec<u8>, AppError> {
@@ -48,82 +121,48 @@ fn read_image(path: &std::path::Path) -> Result<Vec<u8>, AppError> {
     std::fs::read(path).map_err(|_| unreadable())
 }
 
-fn render(lines: &[OcrLine], find: Option<&str>) -> Value {
-    let text = lines
+pub(crate) fn render(spots: &[OcrSpot], find: Option<&str>, passes: usize) -> Value {
+    let text = spots
         .iter()
+        .filter_map(|spot| spot.readings.first())
         .map(|line| line.text.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    let mut body = json!({ "text": text, "lines": lines });
+    let lines: Vec<Value> = spots.iter().filter_map(render_spot).collect();
+    let mut body = json!({ "text": text, "lines": lines, "passes": passes });
     if let Some(query) = find {
-        body["matches"] = json!(find_matches(lines, query));
+        let matches: Vec<Value> = ocr_match::find(spots, query)
+            .into_iter()
+            .map(|hit| {
+                json!({
+                    "text": hit.text,
+                    "bounds": hit.bounds,
+                    "center": {
+                        "x": (hit.bounds.x + hit.bounds.width / 2.0).floor(),
+                        "y": (hit.bounds.y + hit.bounds.height / 2.0).floor(),
+                    },
+                    "whole_line": hit.whole_line,
+                })
+            })
+            .collect();
+        body["matches"] = json!(matches);
     }
     body
 }
 
-/// OCR splits Chinese into single characters and confuses `I` with `l`, so
-/// matching ignores spacing and case and treats those letters as one.
-fn normalize(text: &str) -> Vec<char> {
-    text.chars()
-        .filter(|ch| !ch.is_whitespace())
-        .map(|ch| match ch {
-            'I' | '|' => 'l',
-            other => other.to_lowercase().next().unwrap_or(other),
-        })
-        .collect()
-}
-
-fn find_matches(lines: &[OcrLine], query: &str) -> Vec<Value> {
-    let needle = normalize(query);
-    if needle.is_empty() {
-        return Vec::new();
+fn render_spot(spot: &OcrSpot) -> Option<Value> {
+    let shown = spot.readings.first()?;
+    let mut line = json!({ "text": shown.text, "bounds": spot.bounds, "words": shown.words });
+    let also: Vec<&str> = spot
+        .readings
+        .iter()
+        .skip(1)
+        .map(|reading| reading.text.as_str())
+        .collect();
+    if !also.is_empty() {
+        line["also"] = json!(also);
     }
-    let mut found = Vec::new();
-    for line in lines {
-        let mut letters = Vec::new();
-        let mut owner = Vec::new();
-        for (index, word) in line.words.iter().enumerate() {
-            for letter in normalize(&word.text) {
-                letters.push(letter);
-                owner.push(index);
-            }
-        }
-        for start in 0..letters.len().saturating_sub(needle.len() - 1) {
-            if letters[start..start + needle.len()] != needle[..] {
-                continue;
-            }
-            let bounds = union(
-                line.words[owner[start]..=owner[start + needle.len() - 1]]
-                    .iter()
-                    .map(|word| word.bounds),
-            );
-            found.push(json!({
-                "text": line.text,
-                "bounds": bounds,
-                "center": {
-                    "x": (bounds.x + bounds.width / 2.0).floor(),
-                    "y": (bounds.y + bounds.height / 2.0).floor(),
-                },
-            }));
-        }
-    }
-    found
-}
-
-fn union(boxes: impl Iterator<Item = Rect>) -> Rect {
-    let (mut left, mut top, mut right, mut bottom) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
-    for rect in boxes {
-        left = left.min(rect.x);
-        top = top.min(rect.y);
-        right = right.max(rect.x + rect.width);
-        bottom = bottom.max(rect.y + rect.height);
-    }
-    Rect {
-        x: left,
-        y: top,
-        width: right - left,
-        height: bottom - top,
-    }
+    Some(line)
 }
 
 #[cfg(test)]

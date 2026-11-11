@@ -1,4 +1,5 @@
 mod adapter;
+pub(crate) mod agent_pointer;
 pub(crate) mod app_catalog;
 pub(crate) mod app_ops;
 pub(crate) mod capture;

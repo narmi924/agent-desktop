@@ -18,7 +18,7 @@ mod visual_debug;
 mod test_noop_ops;
 
 use agent_desktop_core::{
-    AdapterError, AppError, DeliverySemantics, ErrorCode, SystemOps,
+    AdapterError, AppError, DeliverySemantics, ErrorCode, InputOps, SystemOps,
     context::{CommandContext, WaitSelector},
     response::output::{ErrorPayload, Response},
     session::resolve_active_session,
@@ -39,6 +39,13 @@ fn main() -> ExitCode {
 }
 
 fn run_command() -> ExitCode {
+    if let Some(result) = build_adapter().run_agent_pointer_child() {
+        return if result.is_ok() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
+    }
     if let Some(result) = build_adapter().run_cursor_overlay_child() {
         return if result.is_ok() {
             ExitCode::SUCCESS

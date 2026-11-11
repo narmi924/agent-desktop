@@ -74,17 +74,27 @@ fn default_ref_timeout_ms() -> u64 {
 pub(crate) struct TypeArgs {
     #[arg(
         value_name = "REF",
-        help = "Qualified ref from snapshot (@<snapshot_id>:eN)"
+        required_unless_present = "window_id",
+        help = "Qualified ref from snapshot (@<snapshot_id>:eN); with --window-id, the text to type"
     )]
-    pub ref_id: String,
+    #[serde(default)]
+    pub ref_id: Option<String>,
     #[arg(
         value_name = "TEXT",
         allow_hyphen_values = true,
         help = "Text to type",
-        required_unless_present = "stdin",
+        required_unless_present_any = ["stdin", "window_id"],
         conflicts_with = "stdin"
     )]
     pub text: Option<String>,
+    #[arg(
+        long = "window-id",
+        value_name = "ID",
+        conflicts_with_all = ["interval_ms", "selected_tab"],
+        help = "Type into the place that has keyboard focus in this window, for windows that expose no field ref; needs --headed and reports delivered_unverified"
+    )]
+    #[serde(default)]
+    pub window_id: Option<String>,
     #[arg(
         long = "timeout-ms",
         help = "Maximum wait in milliseconds, covering ref resolution, actionability and delivery of the text; default 5000 plus 30 per character of TEXT; 0 disables the wait"

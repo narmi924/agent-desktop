@@ -131,6 +131,7 @@ fn dispatch_command(
         Commands::ClipboardGet(args) => clipboard::get(args, adapter, context),
         Commands::ClipboardSet(args) => clipboard::set(args, adapter),
         Commands::ClipboardClear => commands::clipboard_clear::execute(adapter),
+        Commands::RestoreCursor => commands::restore_cursor::execute(adapter),
         Commands::Wait(args) => system::wait(args, adapter, context),
         Commands::Status => {
             commands::status::execute_with_report_with_context(adapter, permission_report, context)

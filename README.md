@@ -125,7 +125,7 @@ Global flags given to `mcp`, such as `--session`, `--headed` or `--trace`, apply
 
 ## Commands
 
-agent-desktop has 62 command names, 58 operational commands on Windows. The other four (`key-down`, `key-up`, `mouse-down`, `mouse-up`) refuse to run until a daemon can release a held key or button. The Windows-only `page-option` command backs the local [choose-by-label workflow](skills/agent-desktop/references/commands-interaction.md).
+agent-desktop has 63 command names, 59 operational commands on Windows. The other four (`key-down`, `key-up`, `mouse-down`, `mouse-up`) refuse to run until a daemon can release a held key or button. The Windows-only `page-option` command backs the local [choose-by-label workflow](skills/agent-desktop/references/commands-interaction.md).
 
 | Group | Commands |
 |---|---|

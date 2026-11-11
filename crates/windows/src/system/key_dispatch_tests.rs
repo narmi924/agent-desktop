@@ -358,3 +358,11 @@ fn adapter_press_key_for_app_is_wired_through_system_ops() {
         }
     }
 }
+
+#[test]
+fn the_first_character_goes_alone_and_a_surrogate_pair_stays_whole() {
+    assert_eq!(split_first_character("你好 Build"), ("你", "好 Build"));
+    assert_eq!(split_first_character("😀ok"), ("😀", "ok"));
+    assert_eq!(split_first_character("a"), ("a", ""));
+    assert_eq!(split_first_character(""), ("", ""));
+}

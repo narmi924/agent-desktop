@@ -57,6 +57,7 @@ pub mod press;
 pub mod query;
 pub mod resize_window;
 pub mod restore;
+pub mod restore_cursor;
 pub mod right_click;
 pub mod screenshot;
 #[cfg(test)]
@@ -78,6 +79,7 @@ pub mod triple_click;
 pub mod type_text;
 mod type_text_interval;
 mod type_text_interval_verify;
+pub mod type_text_window;
 pub mod uncheck;
 pub mod version;
 pub mod wait;
