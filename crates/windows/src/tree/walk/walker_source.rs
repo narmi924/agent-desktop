@@ -222,13 +222,6 @@ mod imp {
         type Node = UIAElement;
 
         fn first_child(&self, node: &UIAElement) -> Result<UIAElement, UiaFailure> {
-            if let Some(batched) = self
-                .children
-                .as_ref()
-                .and_then(|batch| batch.first_child(node))
-            {
-                return batched;
-            }
             match &self.cache {
                 Some(request) => self.walker.get_first_child_build_cache(&node.0, request),
                 None => self.walker.get_first_child(&node.0),
@@ -238,19 +231,21 @@ mod imp {
         }
 
         fn next_sibling(&self, node: &UIAElement) -> Result<UIAElement, UiaFailure> {
-            if let Some(batched) = self
-                .children
-                .as_ref()
-                .and_then(|batch| batch.next_sibling(node))
-            {
-                return batched;
-            }
             match &self.cache {
                 Some(request) => self.walker.get_next_sibling_build_cache(&node.0, request),
                 None => self.walker.get_next_sibling(&node.0),
             }
             .map(UIAElement::from)
             .map_err(|error| failure_of(&error))
+        }
+
+        fn children_at_once(
+            &self,
+            node: &UIAElement,
+            properties: &crate::tree::properties::ElementProperties,
+            deadline: Deadline,
+        ) -> Option<Vec<UIAElement>> {
+            self.children.as_ref()?.read(node, properties, deadline)
         }
 
         fn identity(&self, node: &UIAElement) -> NodeKey {
