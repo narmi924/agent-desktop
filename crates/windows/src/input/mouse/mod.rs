@@ -300,6 +300,7 @@ pub(crate) mod fixture {
 pub(super) mod mouse_click_guard;
 pub(super) mod mouse_coord;
 pub(super) mod mouse_modifier;
+pub(super) mod mouse_screen;
 pub(crate) mod mouse_send;
 #[cfg(all(test, target_os = "windows"))]
 #[path = "mouse_tests.rs"]

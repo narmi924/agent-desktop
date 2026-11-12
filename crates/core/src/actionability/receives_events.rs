@@ -29,6 +29,15 @@ pub(super) fn receives_events_check(
     let Some(bounds) = bounds else {
         return Ok((unknown("receives_events", "bounds unavailable"), None));
     };
+    if let Some(human) = request.human() {
+        let landing = crate::plan_landing(&bounds, &mut human.rng());
+        if matches!(
+            adapter.hit_test(handle, landing.clone(), deadline),
+            Ok(HitTestResult::ReachesTarget)
+        ) {
+            return Ok((pass("receives_events"), Some(landing)));
+        }
+    }
     let mut first_occlusion = None;
     let mut evidence = HitTestEvidence {
         attempted: 0,

@@ -54,6 +54,18 @@ pub trait InputOps: Send + Sync {
         ))
     }
 
+    /// A click in a captured window whose press lasts `hold_ms`, for
+    /// human-like input. An adapter that cannot hold sends a plain click.
+    fn pointer_click_held_in_window(
+        &self,
+        event: MouseEvent,
+        _hold_ms: u64,
+        window: &str,
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        self.pointer_in_window(event, window, lease)
+    }
+
     fn frame_screen_point(
         &self,
         _frame: &WindowFrame,

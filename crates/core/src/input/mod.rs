@@ -1,3 +1,4 @@
+pub(crate) mod caret_place;
 pub(crate) mod clipboard_content;
 pub(crate) mod clipboard_format;
 pub(crate) mod direction;
@@ -8,6 +9,7 @@ pub(crate) mod human_pace;
 pub(crate) mod human_path;
 pub(crate) mod human_rng;
 pub(crate) mod human_typing;
+pub(crate) mod human_wheel;
 pub(crate) mod key_combo;
 pub(crate) mod modifier;
 pub(crate) mod mouse_button;

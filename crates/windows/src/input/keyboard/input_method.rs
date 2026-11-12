@@ -4,6 +4,14 @@
 //! a composing mode a letter becomes pending composition text, which a field
 //! exposes as its value although nothing was committed. Unicode input arrives
 //! as `VK_PACKET`, which input methods do not compose.
+//!
+//! The method's own report is trusted only when it says it is open. Measured
+//! with Microsoft Pinyin: a browser text field reports open with conversion
+//! 1025 in Chinese mode and open with conversion 0 in English mode, while a
+//! text field served through the Text Services Framework reports closed with
+//! conversion 1 in both modes and composes in one of them. A closed report
+//! under a composing language therefore says nothing, and the key is treated
+//! as one the method would take.
 
 use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::HKL;
@@ -27,7 +35,6 @@ fn method_takes_keys(
     composing_language: bool,
 ) -> bool {
     match (open, conversion) {
-        (Some(false), _) => false,
         (Some(true), Some(mode)) => mode & (IME_CMODE_NATIVE | IME_CMODE_FULLSHAPE) != 0,
         _ => composing_language,
     }
@@ -86,7 +93,7 @@ pub(super) mod fake_state {
     use std::cell::Cell;
 
     thread_local! {
-        static STATE: Cell<MethodState> = const { Cell::new((Some(false), None)) };
+        static STATE: Cell<MethodState> = const { Cell::new((Some(true), Some(0))) };
     }
 
     pub(in crate::input::keyboard) fn set(open: Option<bool>, conversion: Option<u32>) {

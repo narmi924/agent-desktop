@@ -326,6 +326,21 @@ test('desktop.apps lists installed apps and desktop.launch opens one and reports
   assert.deepEqual(tools.calls.map(c => c.words.join(' ')), ['list-apps --installed --app 计算', 'launch 计算器 --arg=-x']);
 });
 
+test('desktop.focused names the control that holds the keyboard, not the window around it', async () => {
+  const browser = {
+    complete: true,
+    tree: { role: 'window', name: '练习 - Chrome', states: ['focused'], children: [
+      { role: 'button', name: '后退', ref_id: '@s1:e1' },
+      { role: 'document', name: '练习', states: ['focused'], children: [
+        { role: 'textfield', name: '代码编辑器', ref_id: '@s1:e2', states: ['focused'] },
+        { role: 'button', name: '运行', ref_id: '@s1:e3' },
+      ] },
+    ] },
+  };
+  const tools = fakeTools({ 'desktop snapshot': browser });
+  assert.deepEqual((await tools.run(`return await desktop.focused('w-1');`)).result, { role: 'textfield', name: '代码编辑器', ref: '@s1:e2' });
+});
+
 test('desktop.selection reads the selection of the focused control and is null without one', async () => {
   const focusedTree = {
     complete: true,

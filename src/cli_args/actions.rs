@@ -1,3 +1,4 @@
+use super::type_entry::{CaretPlaceArg, PageEntryMode};
 use clap::Parser;
 use serde::Deserialize;
 
@@ -90,8 +91,8 @@ pub(crate) struct TypeArgs {
     #[arg(
         long = "window-id",
         value_name = "ID",
-        conflicts_with_all = ["interval_ms", "selected_tab"],
-        help = "Type into the place that has keyboard focus in this window, for windows that expose no field ref; needs --headed and reports delivered_unverified"
+        conflicts_with = "selected_tab",
+        help = "Type into the place that has keyboard focus in this window, for windows that expose no field ref; needs --headed and reports delivered_unverified. --interval-ms and --human pace it one keystroke at a time"
     )]
     #[serde(default)]
     pub window_id: Option<String>,
@@ -118,18 +119,14 @@ pub(crate) struct TypeArgs {
     #[arg(long, requires = "interval_ms")]
     #[serde(default)]
     pub selected_tab: Option<String>,
-    /// Enter line breaks or explicitly replace the captured field
-    #[arg(long, value_enum, requires = "selected_tab")]
+    /// multiline presses Enter for each line break, where Enter starts a new line; the replace modes need --selected-tab
+    #[arg(long, value_enum)]
     #[serde(default)]
     pub entry_mode: Option<PageEntryMode>,
-}
-
-#[derive(Clone, Copy, Debug, clap::ValueEnum, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum PageEntryMode {
-    Multiline,
-    Replace,
-    ReplaceMultiline,
+    /// Put the caret at the start or the end of the field before typing; needs --headed
+    #[arg(long, value_enum, value_name = "PLACE")]
+    #[serde(default)]
+    pub at: Option<CaretPlaceArg>,
 }
 
 impl TypeArgs {

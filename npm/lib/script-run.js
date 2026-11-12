@@ -4,6 +4,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { invoke } = require('./script-call');
 const { createWeb } = require('./script-web');
 const { createDesktop } = require('./script-desktop');
+const { createVisible, readingMs } = require('./script-visible');
 const { readPage } = require('./page-read');
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
@@ -53,6 +54,24 @@ const api = [
   'to the front and uses the real mouse and keyboard: click returns {via: "picture", text, x, y}, fill clicks the text,',
   'types, and returns false when the typed text cannot be seen afterwards. The same text in several places needs',
   '{near} or {nth}. {picture: false} keeps a step to controls; waitText takes it as a fourth argument.',
+  '',
+  'visible (the page in the Chrome window on screen, with the real mouse and keyboard; one helper is one thing a person does):',
+  '  await visible.use(window?)              -> {title, url, text, controls}: binds the tab on screen; later helpers bind again when the page changes',
+  '  await visible.read()                    -> the same, read fresh',
+  '  await visible.click(name, {role, nth, expectText})      await visible.hover(name)',
+  '  await visible.choose(name)              -> ticks a radio button or checkbox and confirms it: {changed, checked}; {off: true} clears a checkbox.',
+  '                                             {gone: true} means the page moved on and the choice is no longer there to check',
+  '  await visible.type(field, text, {multiline, replace, at}) -> true when the field shows the text. Text goes in at the caret, and a field',
+  '                                             nobody clicked has its caret at the start: {at: "end"} appends, {multiline: true} lets a line break press Enter',
+  '  await visible.scrollTo(text)            -> turns the wheel until the text is on screen; {over: "text inside a panel"} scrolls that panel',
+  '  await visible.scroll(lines = 3, {over}) -> positive is down',
+  '',
+  'acting like a person (for a recording or a demonstration; slower, and it takes the mouse and keyboard):',
+  '  human("natural")                        -> from here on visible.*, desktop.click and desktop.type move and type like a person;',
+  '                                             "careful" is slower near small targets; human(false) turns it off',
+  '  await readTime(text)                    -> waits about as long as reading that text takes; returns at once while human() is off.',
+  '                                             Use it instead of sleep(): a wait should follow what is on screen, not a fixed number.',
+  '  await desktop.type(window, target, text, {multiline, at}) -> real keys into a field (desktop.fill writes the value directly and needs no keys)',
   '',
   'other:',
   '  await sleep(ms)   await waitFor(async () => condition, {timeout, interval})   log(...values)   expect(condition, message)',
@@ -121,10 +140,22 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     call: need(browser, 'agent-browser'), step, warn: text => warnings.push(text), flags,
     fetchPage: url => readPage(browser, url, (binary, args, options) => need(binary, 'agent-browser')(args, options)),
   });
-  const desk = createDesktop({ call: need(native, 'agent-desktop'), step, warn: text => warnings.push(text), note: text => notes.push(text), picture });
+  let pace;
+  const desk = createDesktop({ call: need(native, 'agent-desktop'), step, warn: text => warnings.push(text), note: text => notes.push(text), picture, pace: () => pace });
+  const seen = createVisible({ step, warn: text => warnings.push(text), pace: () => pace,
+    flow: (command, options) => {
+      if (!flow) throw new Error('The visible page helpers are not available here.');
+      return flow(command, options);
+    } });
   const helpers = {
     web: named('web', page.web),
     desktop: named('desktop', desk.desktop),
+    visible: named('visible', seen.visible),
+    human: value => {
+      if (![false, undefined, 'natural', 'careful'].includes(value)) throw Object.assign(new Error('human() takes "natural", "careful" or false.'), { code: 'INVALID_ARGS' });
+      pace = value || undefined;
+    },
+    readTime: text => (pace ? delay(readingMs(text) * (pace === 'careful' ? 1.3 : 1)) : Promise.resolve()),
     flow: (command, options = {}) => step('flow.' + command, '', () => {
       if (!flow || command === 'run') throw new Error('flow() cannot run "' + command + '".');
       return flow(String(command), options);
@@ -164,7 +195,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     for (const child of children) child.kill();
     let scene;
     try {
-      const look = surface === 'desktop' ? desk.scene() : surface === 'web' ? page.scene() : undefined;
+      const look = surface === 'desktop' ? desk.scene() : surface === 'web' ? page.scene() : surface === 'visible' ? seen.scene() : undefined;
       scene = await Promise.race([look, delay(SCENE_WAIT_MS)]);
     } catch { /* The page or window may be gone. */ }
     err.report = { ...(err.step ? { step: err.step } : {}), ...report(), ...(scene ? { scene } : {}) };

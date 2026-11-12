@@ -28,6 +28,12 @@ impl HumanRng {
         low + (high - low) * self.unit()
     }
 
+    /// A bell-shaped draw around `mean`, never further than three
+    /// deviations from it.
+    pub(crate) fn normal(&mut self, mean: f64, deviation: f64) -> f64 {
+        mean + deviation * 2.0 * (self.unit() + self.unit() + self.unit() - 1.5)
+    }
+
     pub(crate) fn chance(&mut self, probability: f64) -> bool {
         self.unit() < probability
     }

@@ -1,3 +1,5 @@
+use super::human_rng::HumanRng;
+
 /// How deliberately human-like input moves and types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HumanPace {
@@ -5,25 +7,37 @@ pub enum HumanPace {
     Careful,
 }
 
+const SHORTEST_CORRECTION: f64 = 0.012;
+
 impl HumanPace {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Natural => "natural",
+            Self::Careful => "careful",
+        }
+    }
+
     pub(crate) fn motion_scale(self) -> f64 {
         match self {
             Self::Natural => 1.0,
-            Self::Careful => 1.55,
+            Self::Careful => 1.3,
         }
     }
 
-    pub(crate) fn overshoot_chance(self) -> f64 {
-        match self {
-            Self::Natural => 0.45,
-            Self::Careful => 0.7,
-        }
-    }
-
-    pub(crate) fn extra_correction_chance(self) -> f64 {
-        match self {
-            Self::Natural => 0.35,
-            Self::Careful => 0.8,
+    /// The share of the distance the first stroke covers. A natural hand
+    /// usually stops a little short and now and then goes a little past; a
+    /// careful one always stops short and closes the rest slowly.
+    pub(crate) fn reach(self, rng: &mut HumanRng) -> f64 {
+        let reach = match self {
+            Self::Natural => rng.normal(0.95, 0.04).clamp(0.86, 1.04),
+            Self::Careful => rng
+                .normal(0.93, 0.03)
+                .clamp(0.86, 1.0 - SHORTEST_CORRECTION),
+        };
+        if (1.0 - reach).abs() < SHORTEST_CORRECTION {
+            1.0 - SHORTEST_CORRECTION
+        } else {
+            reach
         }
     }
 
@@ -44,7 +58,7 @@ impl HumanPace {
     pub(crate) fn typo_chance(self) -> f64 {
         match self {
             Self::Natural => 0.05,
-            Self::Careful => 0.09,
+            Self::Careful => 0.02,
         }
     }
 

@@ -134,7 +134,8 @@ pub(super) struct KeyStep {
 }
 
 /// The keys a burst sends: one per unit, or a human-like plan when requested.
-/// A field that needs exact entry never receives a deliberate wrong key.
+/// A wrong key is typed only when the request asks for typos, and never in a
+/// field that needs exact entry.
 pub(super) fn key_steps(
     units: &[String],
     ref_id: &str,
@@ -151,7 +152,8 @@ pub(super) fn key_steps(
             .collect());
     };
     let entry = crate::commands::helpers::load_ref_entry(ref_id, context)?;
-    let plan = plan_typing(units, human.pace, &mut human.rng(), allows_typos(&entry));
+    let typos = human.typos && allows_typos(&entry);
+    let plan = plan_typing(units, human.pace, &mut human.rng(), typos);
     Ok(plan
         .into_iter()
         .map(|step| match step {
@@ -167,6 +169,25 @@ pub(super) fn key_steps(
             },
         })
         .collect())
+}
+
+/// How the burst was paced: the fixed interval, or the human pace with the
+/// time the whole burst really took, because a human plan sets its own gaps.
+pub(super) fn pace_report(
+    context: &CommandContext,
+    interval_ms: u64,
+    started: Instant,
+) -> (&'static str, serde_json::Value) {
+    match context.human() {
+        Some(human) => (
+            "human",
+            serde_json::json!({
+                "pace": human.pace.name(),
+                "typed_in_ms": u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            }),
+        ),
+        None => ("interval_ms", serde_json::json!(interval_ms)),
+    }
 }
 
 #[cfg(test)]

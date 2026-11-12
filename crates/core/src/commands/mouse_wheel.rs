@@ -25,7 +25,7 @@ pub fn execute(
         ));
     }
     let _cursor = crate::cursor_overlay::hold_cursor(context, crate::Deadline::standard()?);
-    let lease = crate::commands::helpers::acquire_interaction_lease(adapter)?;
+    let lease = crate::commands::point_resolve::acquire_pointer_lease(adapter, context)?;
     let point = Point {
         x: args.x,
         y: args.y,

@@ -293,3 +293,51 @@ fn a_zero_timeout_with_an_interval_tries_each_keystroke_once_instead_of_failing(
     assert_eq!(*adapter.value.lock().unwrap(), "abc");
     assert_eq!(value["keystrokes"], 3);
 }
+
+fn typed(text: &str) -> TypeArgs {
+    TypeArgs {
+        ref_id: "unused".into(),
+        text: text.into(),
+        timeout_ms: None,
+        interval_ms: None,
+    }
+}
+
+#[test]
+fn headed_typing_refuses_a_line_break_nobody_said_starts_a_new_line() {
+    let err = execute_entry(
+        typed("first line\nsecond line"),
+        TypeEntry::default(),
+        &crate::adapter::NoopAdapter,
+        &CommandContext::default().with_headed(true),
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(err.to_string().contains("line break"));
+}
+
+#[test]
+fn a_caret_place_is_refused_without_headed_input() {
+    let entry = TypeEntry {
+        caret: Some(crate::CaretPlace::End),
+        ..TypeEntry::default()
+    };
+    let err = execute_entry(
+        typed("appended"),
+        entry,
+        &crate::adapter::NoopAdapter,
+        &CommandContext::default(),
+    )
+    .unwrap_err();
+    assert_eq!(err.code(), "INVALID_ARGS");
+    assert!(err.to_string().contains("--at"));
+}
+
+#[test]
+fn the_caret_keys_reach_the_start_and_the_end_of_any_field() {
+    let end = crate::CaretPlace::End.key_combo();
+    let start = crate::CaretPlace::Start.key_combo();
+    assert_eq!((end.key.as_str(), start.key.as_str()), ("end", "home"));
+    assert_eq!(end.modifiers, vec![crate::Modifier::Ctrl]);
+    assert_eq!(start.modifiers, vec![crate::Modifier::Ctrl]);
+}

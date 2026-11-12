@@ -40,7 +40,17 @@ impl InputOps for WindowsAdapter {
         window: &str,
         lease: &InteractionLease,
     ) -> Result<OperationReport, AdapterError> {
-        crate::input::page_pointer::dispatch(event, window, lease.deadline())
+        crate::input::page_pointer::dispatch(event, window, None, lease.deadline())
+    }
+
+    fn pointer_click_held_in_window(
+        &self,
+        event: MouseEvent,
+        hold_ms: u64,
+        window: &str,
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        crate::input::page_pointer::dispatch(event, window, Some(hold_ms), lease.deadline())
     }
 
     #[cfg(target_os = "windows")]

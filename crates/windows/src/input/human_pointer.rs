@@ -4,8 +4,9 @@
 use super::keyboard::escape_held;
 use super::keyboard::keyboard_send::key_is_down;
 use super::mouse::mouse_coord::normalize_point;
+use super::mouse::mouse_screen::keep_on_screen;
 use super::mouse::mouse_send::{move_input, post_mouse_inputs};
-use super::page_pointer::{near, refused};
+use super::page_pointer::{cursor_elsewhere, near, refused};
 use crate::system::window::window_ops::{is_root_foreground_window, parse_handle};
 use agent_desktop_core::{AdapterError, Deadline, PathSample, Point};
 use std::time::{Duration, Instant};
@@ -47,15 +48,17 @@ pub(crate) fn follow(
             .zip(previous.as_ref())
             .is_some_and(|(now, before)| near(now, before))
         {
-            return Err(refused(
+            return Err(cursor_elsewhere(
                 "Cursor movement interrupted the pointer action",
+                "moving",
+                (previous.as_ref(), current.as_ref()),
                 moved,
             ));
         }
-        let point = Point {
+        let point = keep_on_screen(&Point {
             x: sample.x,
             y: sample.y,
-        };
+        });
         post_mouse_inputs(&[move_input(normalize_point(&point))]);
         note_posted(&point);
         previous = Some(point);
@@ -105,13 +108,17 @@ pub(crate) mod fake_cursor {
                 None => false,
             }
         });
+        let screen = crate::input::mouse::mouse_screen::TEST_SCREEN;
         let landed = if jump {
             Point {
                 x: point.x + 200.0,
                 y: point.y + 200.0,
             }
         } else {
-            point.clone()
+            Point {
+                x: point.x.clamp(screen.left, screen.right - 1.0),
+                y: point.y.clamp(screen.top, screen.bottom - 1.0),
+            }
         };
         CURSOR.with(|cell| *cell.borrow_mut() = Some(landed));
     }

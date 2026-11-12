@@ -59,7 +59,10 @@ pub(crate) fn parse_mouse_button(s: &str) -> Result<MouseButton, AppError> {
 
 pub(crate) fn parse_xy(s: &str) -> Result<(f64, f64), AppError> {
     let (x_raw, y_raw) = s.split_once(',').ok_or_else(|| {
-        AppError::invalid_input("Invalid coordinates. Expected format: x,y (e.g., 500,300)")
+        AppError::invalid_input_with_suggestion(
+            "Invalid coordinates. Expected format: x,y (e.g., 500,300)",
+            "Pass both numbers as one word. In PowerShell, quote it when it comes from variables: --xy \"$x,$y\".",
+        )
     })?;
     if y_raw.contains(',') {
         return Err(AppError::invalid_input(

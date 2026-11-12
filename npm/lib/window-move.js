@@ -1,8 +1,39 @@
 'use strict';
 
-const { closeSync, existsSync, openSync, readSync, readFileSync, writeFileSync } = require('node:fs');
-const { resolve } = require('node:path');
+const { closeSync, existsSync, mkdirSync, openSync, readSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } = require('node:fs');
+const { homedir } = require('node:os');
+const { join, resolve } = require('node:path');
 const { crc32 } = require('node:zlib');
+
+const KEEP_IMAGES = 30;
+const CAPTURE_TRIES = 5;
+const CAPTURE_RETRY_MS = 250;
+
+/** A folder under the tool's own state for pictures it names itself. */
+function pictureDir(name) {
+  return join(process.env.AGENT_DESKTOP_HOME || join(homedir(), '.agent-desktop'), name);
+}
+
+function prunePictures(dir) {
+  try {
+    const images = readdirSync(dir).filter(name => name.endsWith('.png'))
+      .map(name => ({ path: join(dir, name), at: statSync(join(dir, name)).mtimeMs }))
+      .sort((a, b) => b.at - a.at);
+    for (const old of images.slice(KEEP_IMAGES)) rmSync(old.path, { force: true });
+  } catch { /* A folder that cannot be listed only keeps more images. */ }
+}
+
+let named = 0;
+
+/** A path no earlier picture has: view without --output saves there. */
+function newPicturePath(dir = pictureDir('views')) {
+  mkdirSync(dir, { recursive: true });
+  return join(dir, 'view-' + Date.now() + '-' + process.pid + '-' + (++named) + '.png');
+}
+
+function pause(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
 
 const keyword = Buffer.from('agent-desktop-frame\0');
 const pngSignature = Buffer.from([137,80,78,71,13,10,26,10]);
@@ -75,16 +106,36 @@ function same(a, b) {
   return a.id === b.id && a.pid === b.pid && a.process_instance === b.process_instance && a.title === b.title;
 }
 
+/**
+ * A page that is still loading changes its title, and a window that is still opening changes its size.
+ * The capture is taken again until the window is the same before and after it.
+ */
+function captureSettled(ad, id, region) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const before = windowOf(ad, id);
+      const img = ad('screenshot', '--window-id', id, ...(region ? ['--region', region] : []));
+      const current = windowOf(ad, id);
+      if (same(before, current) && before.bounds?.width === current.bounds?.width && before.bounds?.height === current.bounds?.height) return { img, current };
+      if (attempt === CAPTURE_TRIES) throw new Error('The window kept changing while it was captured (its title or size). Wait for what is loading, then capture again.');
+    } catch (err) {
+      if (attempt === CAPTURE_TRIES || !['STALE_REF', 'ACTION_FAILED', undefined].includes(err.code)) throw err;
+    }
+    pause(CAPTURE_RETRY_MS);
+  }
+}
+
 function view(ad, { window, app, output, region, popups }) {
-  if (Boolean(window) === Boolean(app) || !output) throw new Error('Provide either --window or --app, and --output for the window image.');
-  const initial = windowOf(ad, window, app);
-  const img = ad('screenshot', '--window-id', initial.id, ...(region ? ['--region',region] : []));
-  const current = windowOf(ad, initial.id);
-  if (!same(initial, current) || initial.bounds?.width !== current.bounds?.width || initial.bounds?.height !== current.bounds?.height) throw new Error('The window changed during capture.');
+  if (Boolean(window) === Boolean(app)) throw new Error('Provide either --window or --app. --output names the image; without it the image gets a new name of its own.');
+  if (output && existsSync(resolve(output))) {
+    throw new Error(resolve(output) + ' already exists and is never overwritten. Leave out --output to get a new file, or name one that does not exist.');
+  }
+  const { img, current } = captureSettled(ad, windowOf(ad, window, app).id, region);
   const frame = Buffer.from(JSON.stringify({ window: current, width: img.full_size?.[0] ?? img.width, height: img.full_size?.[1] ?? img.height,
     scale: img.scale_factor, ...(region ? {region:region.split(',').map(Number)} : {}) })).toString('base64url');
-  const path = resolve(output);
+  const path = output ? resolve(output) : newPicturePath();
   storeImage(Buffer.from(img.data,'base64'),frame,path);
+  if (!output) prunePictures(pictureDir('views'));
   const result = { window: current.id, title: current.title, path, width: img.width, height: img.height };
   if (!popups) return result;
   const owned = ad('list-windows').filter(w => w.pid === current.pid && w.id !== current.id && w.visible && !w.minimized && w.process_instance === current.process_instance);
@@ -115,10 +166,16 @@ function pointForText(ad, frame, text, nth) {
   return found[0].center.x + ',' + found[0].center.y;
 }
 
+/** A click lands on whatever is in front, so the captured window comes forward before its picture is checked. */
+function bringForward(ad, captured) {
+  const live = ad('list-windows').find(w => w.id === captured.id && w.process_instance === captured.process_instance);
+  if (live && !live.is_focused) ad('focus-window', '--window-id', live.id, '--headed');
+}
+
 function tap(ad, args) {
   const { frame, text, button = 'left', count = '1' } = args;
   if (!frame || Boolean(args.at) === Boolean(text)) throw new Error('Provide --frame and either --at in image pixels or --text to find.');
-  imageToken(frame);
+  bringForward(ad, decoded(imageToken(frame)).window);
   const at = args.at ?? pointForText(ad, frame, text, args.nth);
   const report = ad('--headed', '--when-idle', '600', ...humanFlags(args), 'mouse-click', '--frame', resolve(frame), '--xy', at, '--button', button, '--count', count);
   return { delivery: report.disposition?.delivery, x: report.x, y: report.y, window: report.window };
@@ -148,4 +205,4 @@ function move(ad, args) {
   return result;
 }
 
-module.exports = { view, move, edit, tap, storeImage };
+module.exports = { view, move, edit, tap, storeImage, pictureDir, prunePictures };

@@ -118,7 +118,7 @@ The result is the one in [Result shape](#result-shape). A click usually ends `de
 
 Platform limits: semantic everywhere headless; `--headed` tries physical input first on macOS and Linux. See [macOS](/desktop/platforms/macos), [Windows](/desktop/platforms/windows), and [Linux](/desktop/platforms/linux).
 
-On Windows, `--headed --human natural|careful` clicks with the real cursor along a curved path. `type` with the same flags sends one key at a time at uneven intervals and corrects occasional mistakes, except in password, verification-code and payment fields. `--seed N` repeats a plan, `--when-idle MS` waits for the keyboard and mouse to go quiet first, and `--expect-file PATH` adds `data.receipt` saying whether that file changed.
+On Windows, `--headed --human natural|careful` clicks with the real cursor in one continuous move whose time follows the distance and the size of the control, landing near the middle of the control. `type` with the same flags sends one key at a time at uneven intervals and types exactly the text; `--typos` lets it strike a wrong key now and then and correct it, except in password, verification-code and payment fields. The result of a human-paced `type` carries `human` with the `pace` and `typed_in_ms` instead of `interval_ms`. `--seed N` repeats a plan, `--when-idle MS` waits for the keyboard and mouse to go quiet first, and `--expect-file PATH` adds `data.receipt` saying whether that file changed.
 
 ## double-click
 
@@ -174,7 +174,9 @@ agent-desktop --headed type --window-id ID <TEXT>
   </tbody>
 </table>
 
-`--window-id` serves windows that draw their own fields and expose no ref. The window is brought to the front and checked to be the active window, then the text goes in through the real keyboard as Unicode input, so the input method state does not change what is typed. Nothing reads the field back, so the result is always `delivered_unverified` and carries `window_id`; confirm with `ocr --find`. It does not take `--interval-ms` or `--human`.
+A headed `type` sends keys, and a typed line break is the Enter key. Text with a line break is refused with `INVALID_ARGS` before anything is typed unless `--entry-mode multiline` says Enter starts a new line there; `set-value` writes line breaks without keys. Text goes in at the caret, and a field nobody has clicked has its caret at the start: `--at end` or `--at start` moves the caret first and needs `--headed`.
+
+`--window-id` serves windows that draw their own fields and expose no ref. The window is brought to the front and checked to be the active window, then the text goes in through the real keyboard as Unicode input, so the input method state does not change what is typed. Nothing reads the field back, so the result is always `delivered_unverified` and carries `window_id`; confirm with `ocr --find`. `--interval-ms` and `--human` pace it one keystroke at a time, and a human pace never types a wrong key here. A failure after the first keystroke carries `details.typed_keystrokes` and `details.keystrokes`.
 
 Use `--stdin` with `type` or `set-value` to read text from a pipe or redirected file. Terminal input is rejected. Replace the example ref with one from your snapshot:
 

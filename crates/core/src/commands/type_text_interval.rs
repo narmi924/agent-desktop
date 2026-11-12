@@ -12,7 +12,7 @@
 //! a `--wait-for` condition is waited on once, after the last keystroke.
 
 use std::cell::Cell;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -37,10 +37,12 @@ pub(crate) fn execute(
     interval_ms: u64,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
-    binding: Option<(&crate::RefEntry, super::type_text::PageTypingMode)>,
+    (tab, mode): (Option<&crate::RefEntry>, super::type_text::PageTypingMode),
 ) -> Result<Value, AppError> {
+    let binding = tab.map(|tab| (tab, mode));
     crate::commands::helpers::validate_post_action_wait(context)?;
     let per_keystroke = context.clone().with_wait_selector(None);
+    let started = Instant::now();
     let units = keystroke_units(&args.text);
     let steps = human::key_steps(&units, &args.ref_id, context)?;
     let mut clock = Clock {
@@ -76,8 +78,7 @@ pub(crate) fn execute(
         person
             .before_key()
             .map_err(|error| partial(error.into(), index))?;
-        let newline =
-            binding.is_some_and(|(_, mode)| mode.multiline) && matches!(unit, "\r" | "\n" | "\r\n");
+        let newline = mode.multiline && matches!(unit, "\r" | "\n" | "\r\n");
         if replacing
             && newline
             && let Some(burst) = &burst
@@ -165,7 +166,11 @@ pub(crate) fn execute(
             expected.as_deref(),
         );
     }
-    let value = with_keystrokes(last, units.len(), interval_ms);
+    let value = with_keystrokes(
+        last,
+        units.len(),
+        human::pace_report(context, interval_ms, started),
+    );
     if context.wait_selector().is_none() {
         return Ok(value);
     }
@@ -362,10 +367,14 @@ fn after_partial_delivery(error: AppError, typed: usize, total: usize) -> AppErr
     )
 }
 
-fn with_keystrokes(mut value: Value, keystrokes: usize, interval_ms: u64) -> Value {
+fn with_keystrokes(
+    mut value: Value,
+    keystrokes: usize,
+    (key, pace): (&'static str, Value),
+) -> Value {
     if let Some(object) = value.as_object_mut() {
         object.insert("keystrokes".into(), json!(keystrokes));
-        object.insert("interval_ms".into(), json!(interval_ms));
+        object.insert(key.into(), pace);
     }
     value
 }

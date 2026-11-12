@@ -1,25 +1,13 @@
 'use strict';
 
-const { mkdirSync, readdirSync, rmSync, statSync } = require('node:fs');
-const { homedir } = require('node:os');
+const { mkdirSync } = require('node:fs');
 const { join } = require('node:path');
-const { storeImage } = require('./window-move');
+const { storeImage, pictureDir, prunePictures: prune } = require('./window-move');
 
-const KEEP_IMAGES = 30;
 const TIE_PX = 2;
 
 function sceneDir() {
-  const root = process.env.AGENT_DESKTOP_HOME || join(homedir(), '.agent-desktop');
-  return join(root, 'scenes');
-}
-
-function prune(dir) {
-  try {
-    const images = readdirSync(dir).filter(name => name.endsWith('.png'))
-      .map(name => ({ path: join(dir, name), at: statSync(join(dir, name)).mtimeMs }))
-      .sort((a, b) => b.at - a.at);
-    for (const old of images.slice(KEEP_IMAGES)) rmSync(old.path, { force: true });
-  } catch { /* A scene folder that cannot be listed only keeps more images. */ }
+  return pictureDir('scenes');
 }
 
 const center = bounds => ({ x: Math.floor(bounds.x + bounds.width / 2), y: Math.floor(bounds.y + bounds.height / 2) });

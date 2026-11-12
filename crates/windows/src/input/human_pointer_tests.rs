@@ -43,6 +43,34 @@ fn a_person_moving_the_mouse_stops_the_path() {
 }
 
 #[test]
+fn a_person_moving_the_mouse_is_reported_with_both_positions() {
+    start(Some(1));
+    let error = follow(&path(), None, deadline()).unwrap_err();
+    let details = error.details.unwrap();
+    assert_eq!(details["phase"], "moving");
+    assert_eq!(details["expected"]["x"], 15.0);
+    assert_eq!(details["found"]["x"], 215.0);
+    assert_eq!(details["off_by"], 283.0);
+}
+
+#[test]
+fn a_path_that_bends_past_the_screen_edge_runs_along_the_edge() {
+    start(None);
+    let beyond: Vec<PathSample> = [10.0, -6.0, -31.0, -12.0, 8.0]
+        .into_iter()
+        .enumerate()
+        .map(|(index, y)| PathSample {
+            x: 10.0 + index as f64 * 40.0,
+            y,
+            at_ms: 0,
+            correction: false,
+        })
+        .collect();
+    follow(&beyond, None, deadline()).unwrap();
+    assert_eq!(mouse::recorded().len(), 5);
+}
+
+#[test]
 fn escape_stops_before_the_first_move() {
     start(None);
     keys::set_down(VK_ESCAPE);

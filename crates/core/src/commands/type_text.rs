@@ -95,12 +95,79 @@ fn focus_when_unfocused(
     Ok(())
 }
 
+/// How text goes into the field: the captured tab it belongs to, whether a
+/// line break is the Enter key and whether the field is replaced, and where
+/// the caret is put first.
+#[derive(Clone, Copy, Default)]
+pub struct TypeEntry<'a> {
+    pub tab: Option<&'a str>,
+    pub mode: PageTypingMode,
+    pub caret: Option<crate::CaretPlace>,
+}
+
+/// Puts the caret at the start or the end of the focused field with the key
+/// a person would use, so text typed next lands where the caller asked.
+fn place_caret(
+    ref_id: &str,
+    caret: Option<crate::CaretPlace>,
+    tab: Option<&crate::RefEntry>,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<(), AppError> {
+    let Some(caret) = caret else { return Ok(()) };
+    let target = RefArgs {
+        ref_id: ref_id.to_owned(),
+        timeout_ms: None,
+    };
+    let request = context.request_base(Action::PressKey(caret.key_combo()));
+    match tab {
+        Some(tab) => {
+            super::helpers::selected_tab::dispatch_in_tab(target, adapter, request, context, tab)?
+        }
+        None => execute_ref_action_with_context(target, adapter, request, context)?,
+    };
+    Ok(())
+}
+
 pub fn execute_with_tab(
     args: TypeArgs,
     binding: Option<(&str, PageTypingMode)>,
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
+    let entry = binding.map_or_else(TypeEntry::default, |(tab, mode)| TypeEntry {
+        tab: Some(tab),
+        mode,
+        caret: None,
+    });
+    execute_entry(args, entry, adapter, context)
+}
+
+/// A typed line break is the Enter key, which submits a single-line field.
+/// Keys therefore carry a line break only when the caller says Enter starts a
+/// new line here; otherwise the text is refused before anything is typed.
+fn refuse_unplanned_line_break(
+    args: &TypeArgs,
+    entry: &TypeEntry<'_>,
+    context: &CommandContext,
+) -> Result<bool, AppError> {
+    let breaks = args.text.contains(['\r', '\n']);
+    if breaks && context.is_headed() && entry.tab.is_none() && !entry.mode.multiline {
+        return Err(AppError::invalid_input_with_suggestion(
+            "The text has a line break, and a typed line break is the Enter key",
+            "Add --entry-mode multiline where Enter starts a new line, or write the text with set-value, which needs no keys.",
+        ));
+    }
+    Ok(breaks && entry.mode.multiline && context.is_headed())
+}
+
+pub fn execute_entry(
+    args: TypeArgs,
+    entry: TypeEntry<'_>,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let binding = entry.tab.map(|tab| (tab, entry.mode));
     if binding.is_some()
         && (args.interval_ms.is_none() || !context.is_headed() || args.text.is_empty())
     {
@@ -113,8 +180,18 @@ pub fn execute_with_tab(
             "Text exceeds maximum length of {MAX_TEXT_LEN} characters"
         )));
     }
+    if entry.caret.is_some() && !context.is_headed() {
+        return Err(AppError::invalid_input(
+            "--at moves the caret with a key press and needs --headed",
+        ));
+    }
+    let enters = refuse_unplanned_line_break(&args, &entry, context)?;
+    let caret = entry.caret.filter(|_| !entry.mode.replace);
 
-    let paced_ms = args.interval_ms.or(context.human().map(|_| 1));
+    let paced_ms = args
+        .interval_ms
+        .or(context.human().map(|_| 1))
+        .or(enters.then_some(1));
     if let Some(interval_ms) = paced_ms {
         if !(1..=MAX_INTERVAL_MS).contains(&interval_ms) {
             return Err(AppError::invalid_input(format!(
@@ -122,10 +199,10 @@ pub fn execute_with_tab(
             )));
         }
         if !args.text.is_empty() {
-            let mode = binding.map(|(_, mode)| mode).unwrap_or_default();
-            let multiline = mode.multiline;
+            let mode = entry.mode;
             if binding.is_some()
-                && (args.text.contains('\t') || (!multiline && args.text.contains(['\r', '\n'])))
+                && (args.text.contains('\t')
+                    || (!mode.multiline && args.text.contains(['\r', '\n'])))
             {
                 return Err(AppError::invalid_input(
                     "Use spaces for indentation and a multiline entry mode for line breaks",
@@ -136,17 +213,19 @@ pub fn execute_with_tab(
                 .map(|id| super::helpers::selected_tab::load_tab(&args.ref_id, id, context))
                 .transpose()?;
             focus_when_unfocused(&args.ref_id, tab.as_ref(), adapter, context)?;
+            place_caret(&args.ref_id, caret, tab.as_ref(), adapter, context)?;
             return super::type_text_interval::execute(
                 args,
                 interval_ms,
                 adapter,
                 context,
-                tab.as_ref().map(|tab| (tab, mode)),
+                (tab.as_ref(), mode),
             );
         }
     }
     if !args.text.is_empty() {
         focus_when_unfocused(&args.ref_id, None, adapter, context)?;
+        place_caret(&args.ref_id, caret, None, adapter, context)?;
     }
     let request = context.request_base(Action::TypeText(args.text));
     execute_ref_action_with_context(

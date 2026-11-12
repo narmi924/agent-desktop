@@ -13,6 +13,30 @@ pub(super) fn refused(reason: &str, moved: bool) -> AdapterError {
     })
 }
 
+const CURSOR_SUGGESTION: &str = "The cursor was not where this action left it, so the action stopped. details.off_by is how far it was: a few pixels is a bumped mouse, more is a person or another program. Read the window again before repeating.";
+
+/// A refusal because the cursor was somewhere other than where this action
+/// had put it, with both positions and the stage the action had reached.
+pub(super) fn cursor_elsewhere(
+    reason: &str,
+    phase: &str,
+    (expected, found): (Option<&Point>, Option<&Point>),
+    moved: bool,
+) -> AdapterError {
+    let off_by = expected
+        .zip(found)
+        .map(|(expected, found)| (expected.x - found.x).hypot(expected.y - found.y).round());
+    refused(reason, moved)
+        .with_details(serde_json::json!({
+            "kind": "cursor_moved",
+            "phase": phase,
+            "expected": expected,
+            "found": found,
+            "off_by": off_by,
+        }))
+        .with_suggestion(CURSOR_SUGGESTION)
+}
+
 pub(crate) fn position() -> Option<Point> {
     let mut point = POINT::default();
     (unsafe { GetCursorPos(&mut point) } != 0).then_some(Point {
@@ -25,9 +49,12 @@ pub(super) fn near(a: &Point, b: &Point) -> bool {
     (a.x - b.x).abs() <= 2.0 && (a.y - b.y).abs() <= 2.0
 }
 
+/// `hold_ms` keeps the button of a click down that long instead of the
+/// shortest press.
 pub(crate) fn dispatch(
     event: MouseEvent,
     window: &str,
+    hold_ms: Option<u64>,
     deadline: Deadline,
 ) -> Result<OperationReport, AdapterError> {
     let hwnd = parse_handle(window);
@@ -54,11 +81,20 @@ pub(crate) fn dispatch(
     };
     check(false)?;
     if !matches!(event.kind, MouseEventKind::Move) {
-        if !position().is_some_and(|p| near(&p, &event.point)) {
-            return Err(refused("The cursor moved before pointer input", false));
+        let found = position();
+        if !found.as_ref().is_some_and(|p| near(p, &event.point)) {
+            return Err(cursor_elsewhere(
+                "The cursor moved before pointer input",
+                "before_input",
+                (Some(&event.point), found.as_ref()),
+                false,
+            ));
         }
         let report = OperationReport::pointer_dispatched(&event, false);
-        super::mouse::synthesize_mouse(event, deadline)?;
+        match hold_ms {
+            Some(hold_ms) => super::mouse::synthesize_click_held(event, hold_ms, deadline)?,
+            None => super::mouse::synthesize_mouse(event, deadline)?,
+        }
         return Ok(report);
     }
     let start = position().ok_or_else(|| refused("Cannot read the cursor position", false))?;
@@ -67,9 +103,12 @@ pub(crate) fn dispatch(
     let mut previous = start.clone();
     for i in 1..=steps {
         check(i > 1)?;
-        if !position().is_some_and(|p| near(&p, &previous)) {
-            return Err(refused(
+        let found = position();
+        if !found.as_ref().is_some_and(|p| near(p, &previous)) {
+            return Err(cursor_elsewhere(
                 "Cursor movement interrupted the pointer action",
+                "moving",
+                (Some(&previous), found.as_ref()),
                 i > 1,
             ));
         }
@@ -90,9 +129,12 @@ pub(crate) fn dispatch(
         previous = point;
     }
     check(true)?;
-    if !position().is_some_and(|p| near(&p, &event.point)) {
-        return Err(refused(
+    let found = position();
+    if !found.as_ref().is_some_and(|p| near(p, &event.point)) {
+        return Err(cursor_elsewhere(
             "The cursor did not reach the requested position",
+            "arriving",
+            (Some(&event.point), found.as_ref()),
             true,
         ));
     }

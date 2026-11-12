@@ -23,10 +23,10 @@ const { readPage } = require('../lib/page-read');
 const usage = [
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
   'agent-desktop-workflow disconnect',
-  'agent-desktop-workflow current [--window ID | --page PAGE]',
+  'agent-desktop-workflow current [--window ID | --page PAGE] [--visible]   (--visible binds the tab for the real mouse and keyboard only and skips the background connection)',
   'agent-desktop-workflow follow --page PAGE (--link NAME [--expect-url URL] | --button NAME --expect-url URL) [--visible]',
-  'agent-desktop-workflow type --page PAGE --field NAME (--value TEXT | --stdin) [--interval-ms MS] [--multiline] [--replace] [--after IMAGE.png] [--human natural|careful] [--seed N]',
-  'agent-desktop-workflow wheel --page PAGE --over VISIBLE_TEXT [--lines N] [--until TEXT] [--human natural|careful] [--seed N] (positive is down)',
+  'agent-desktop-workflow type --page PAGE --field NAME (--value TEXT | --stdin) [--interval-ms MS | --human natural|careful [--seed N]] [--multiline] [--replace | --at start|end] [--after IMAGE.png]   (text goes in at the caret; a field that was never clicked has its caret at the start, so say --at end to append)',
+  'agent-desktop-workflow wheel --page PAGE [--over VISIBLE_TEXT] [--lines N] [--until TEXT] [--human natural|careful] [--seed N] (positive is down; without --over the page itself scrolls)',
   'agent-desktop-workflow point --page PAGE --on NAME [--role ROLE] [--nth N] [--expect-text TEXT] [--human natural|careful] [--seed N]',
   'agent-desktop-workflow click --page PAGE --on NAME [--role ROLE] [--nth N] [--expect-text TEXT] [--human natural|careful] [--seed N]',
   'agent-desktop-workflow edit --page PAGE --field NAME (--value TEXT | --stdin)',
@@ -34,7 +34,7 @@ const usage = [
   'agent-desktop-workflow choose --session NAME [--tab TAB] (--field LABEL | --input CSS) --value VALUE [--position N] [--format DATE_FORMAT]',
   'agent-desktop-workflow choose-file --session NAME [--tab TAB] --input CSS --file ABSOLUTE_PATH',
   'agent-desktop-workflow reveal --session NAME [--tab TAB] --within CSS --text EXACT_TEXT',
-  'agent-desktop-workflow view (--window ID | --app NAME) --output IMAGE.png [--region X,Y,W,H] [--popups]',
+  'agent-desktop-workflow view (--window ID | --app NAME) [--output NEW_IMAGE.png] [--region X,Y,W,H] [--popups]   (without --output the image gets a new name; the reply has its path)',
   'agent-desktop-workflow edit (--window ID | --app NAME) --document TAB_NAME [--field LABEL] (--value TEXT | --stdin)',
   'agent-desktop-workflow move --frame IMAGE.png --from X,Y --to X,Y [--to-frame DEST.png] [--after IMAGE.png] [--human natural|careful] [--seed N]',
   'agent-desktop-workflow tap --frame IMAGE.png (--at X,Y | --text VISIBLE_TEXT [--nth N]) [--button left|right|middle] [--count N] [--human natural|careful] [--seed N]',
@@ -230,6 +230,19 @@ async function chooseFile({ session, tab, input, file }) {
   throw new Error('File selection was not confirmed on the original input.');
 }
 
+/** A shell that splits `812,604` into separate words still means one coordinate. */
+function joinCoordinates(args) {
+  const joined = [];
+  for (let i = 0; i < args.length; i++) {
+    joined.push(args[i]);
+    if (!['--at', '--from', '--to', '--region'].includes(args[i])) continue;
+    const parts = [];
+    while (/^-?\d+(\.\d+)?$/.test(args[i + 1] ?? '')) parts.push(args[++i]);
+    if (parts.length) joined.push(parts.join(','));
+  }
+  return joined;
+}
+
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--help')) { console.log(usage); return; }
@@ -238,13 +251,13 @@ async function main() {
   const commands = {
     connect: ['cdp'],
     disconnect: [],
-    current: ['window', 'page'],
+    current: ['window', 'page', 'visible'],
     follow: ['page', 'link', 'button', 'expect-url', 'visible', 'human', 'seed'],
     choose: ['page', 'session', 'tab', 'field', 'input', 'value', 'position', 'format', 'within', 'open', 'popup', 'advance', 'search', 'confirm', 'expect-value'],
     reveal: ['session', 'tab', 'within', 'text'],
     'choose-file': ['session', 'tab', 'input', 'file'],
     view: ['window', 'app', 'output', 'region', 'popups'],
-    type: ['page','field','value','stdin','interval-ms','multiline','replace','after','human','seed'],
+    type: ['page','field','value','stdin','interval-ms','multiline','replace','at','after','human','seed'],
     wheel: ['page','over','lines','until','human','seed'],
     point: ['page','on','role','nth','expect-text','human','seed'],
     click: ['page','on','role','nth','expect-text','human','seed'],
@@ -261,7 +274,7 @@ async function main() {
   if (!Object.hasOwn(commands, command)) throw new Error(usage);
   const names = commands[command];
   const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close'].includes(key) ? 'boolean' : 'string' }]));
-  const { values } = parseArgs({ args, options });
+  const { values } = parseArgs({ args: joinCoordinates(args), options });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   if (command === 'run' && values.api) { console.log(api); return; }
   const own = {
@@ -323,7 +336,11 @@ async function perform(command, values) {
   switch (command) {
     case 'connect': data = connect(browserBinary(), values); break;
     case 'disconnect': data = disconnect(); break;
-    case 'current': data = withRoute(optionalBrowserBinary(), await current(ad, values)); break;
+    case 'current': {
+      const page = await current(ad, values);
+      data = values.visible ? { ...page, route: 'desktop' } : withRoute(optionalBrowserBinary(), page);
+      break;
+    }
     case 'follow': data = await follow(ad, values, physicalPointer); break;
     case 'choose-file': data = await chooseFile(values); break;
     case 'choose':

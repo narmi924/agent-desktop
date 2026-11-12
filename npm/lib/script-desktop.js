@@ -11,6 +11,8 @@ const VIEW_LIMIT = 6000;
 const PATIENCE_MS = 4000;
 const SELECTION_FIELDS = 5;
 const SEEN_WAIT_MS = 1500;
+const TYPE_WAIT_MS = 30000;
+const TYPE_KEY_MS = 700;
 
 function isTitleBar(node) {
   return node.role === 'titlebar' || (node.native_id?.kind === 'automation_id' && node.native_id.value === 'TitleBar');
@@ -23,7 +25,8 @@ function flatten(node, depth, lines, controls, texts, level = 0, inTitle = false
   if (node.name) kept.push(node.name);
   if (node.value && node.value !== node.name) kept.push(node.value);
   controls.push({ role: node.role, name: node.name ?? '', near: node.description ?? '', ref: node.ref_id, value: node.value, depth: level,
-    checked: (node.states ?? []).includes('checked'), focused: (node.states ?? []).includes('focused'), title });
+    checked: (node.states ?? []).includes('checked') || (node.role === 'radiobutton' && (node.states ?? []).includes('selected')),
+    focused: (node.states ?? []).includes('focused'), title });
   if (shown) {
     const states = (node.states ?? []).filter(s => ['disabled', 'selected', 'checked', 'expanded', 'focused'].includes(s));
     const value = node.value && node.value !== node.name ? ': ' + (node.value.length > VALUE_LIMIT ? node.value.slice(0, VALUE_LIMIT) + '…' : node.value) : '';
@@ -47,6 +50,15 @@ function renderTree(snapshot) {
   return { text: lines.join('\n'), controls, texts, drawn };
 }
 
+/**
+ * A window in front reports focus on itself and on the control that holds the keyboard inside it.
+ * The one that matters is the innermost.
+ */
+function innermostFocused(controls) {
+  return controls.filter(control => control.focused)
+    .reduce((best, control) => (!best || control.depth >= best.depth ? control : best), undefined);
+}
+
 const isRef = target => /^@\w+:e\d+$/.test(String(target));
 
 /**
@@ -54,11 +66,12 @@ const isRef = target => /^@\w+:e\d+$/.test(String(target));
  * A name is looked for among the window's controls first; when no control has it, the window's
  * picture is read and the text found there is used instead, unless the call passes {picture: false}.
  */
-function createDesktop({ call, step, warn, note = () => {}, picture: makePicture = createPicture }) {
+function createDesktop({ call, step, warn, note = () => {}, picture: makePicture = createPicture, pace = () => undefined }) {
   const views = new Map(), found = new Map(), drawnWindows = new Set();
   let last;
   const ad = (args, options) => call(args.map(String), options);
   const picture = makePicture({ ad });
+  const asPerson = () => (pace() ? ['--headed', '--human', pace()] : []);
 
   async function windows(filter) {
     const wanted = filter === undefined ? undefined : String(filter).toLowerCase();
@@ -146,7 +159,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     const spot = await picture.find(id, target, options);
     if (!spot) return undefined;
     const { x, y } = spot.hit.center;
-    const report = await ad(['--headed', '--when-idle', '600', 'mouse-click', '--frame', spot.shot.path, '--xy', x + ',' + y]);
+    const report = await ad(['--headed', '--when-idle', '600', ...asPerson().slice(1), 'mouse-click', '--frame', spot.shot.path, '--xy', x + ',' + y]);
     note('by picture at ' + x + ',' + y);
     return { via: 'picture', text: spot.hit.text, x, y, delivery: report?.disposition?.delivery ?? report?.delivery };
   }
@@ -200,14 +213,14 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       return { app: launched.app, pid: launched.pid, window: launched.window?.id ?? null, title: launched.window?.title ?? null };
     }),
     focused: window => step('desktop.focused', window, async () => {
-      const hit = (await view(window, true)).controls.find(control => control.focused);
+      const hit = innermostFocused((await view(window, true)).controls);
       return hit ? { role: hit.role, name: hit.name, ref: hit.ref ?? null } : null;
     }),
     selection: (window, target, options) => step('desktop.selection', target ?? window, async () => {
       const selected = async ref => (await ad(['get', ref, '--property', 'selection'])).value ?? null;
       if (target !== undefined) return act(window, target, options, selected);
       const controls = (await view(window)).controls.filter(control => control.ref);
-      const focused = controls.find(control => control.focused);
+      const focused = innermostFocused(controls);
       if (focused) return selected(focused.ref);
       for (const field of controls.filter(control => WRITABLE.includes(control.role)).slice(0, SELECTION_FIELDS)) {
         const text = await selected(field.ref);
@@ -223,7 +236,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       return [seen.text, '- picture (text read from the screen, not from controls):', renderLines(lines)].filter(Boolean).join('\n');
     }),
     click: (window, target, options) => step('desktop.click', target, async () => {
-      const done = await act(window, target, options, ref => ad(['click', ref]), id => clickPicture(id, target, options));
+      const done = await act(window, target, options, ref => ad([...asPerson(), 'click', ref]), id => clickPicture(id, target, options));
       views.clear();
       return done?.via === 'picture' ? done : undefined;
     }),
@@ -238,6 +251,14 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       };
       const reply = await act(window, target, { roles: WRITABLE, ...options }, ref => ad(['set-value', ref, '--stdin'], { input: String(value) }), typed);
       return typeof reply === 'boolean' ? reply : confirmed('desktop.fill', target, reply);
+    }),
+    type: (window, target, text, options) => step('desktop.type', target, async () => {
+      const keys = String(text);
+      const entry = [...(options?.multiline ? ['--entry-mode', 'multiline'] : []), ...(options?.at ? ['--at', options.at] : [])];
+      const reply = await act(window, target, { roles: WRITABLE, ...options },
+        ref => ad(['--headed', ...asPerson().slice(1), 'type', ref, '--stdin', ...entry], { input: keys, timeout: TYPE_WAIT_MS + keys.length * TYPE_KEY_MS }));
+      views.clear();
+      return confirmed('desktop.type', target, reply);
     }),
     value: (window, target, options) => step('desktop.value', target, async () => {
       const reply = await act(window, target, options, ref => ad(['get', ref, '--property', 'value']));

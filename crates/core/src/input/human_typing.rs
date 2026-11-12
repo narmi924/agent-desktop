@@ -111,7 +111,7 @@ fn key_ms(pace: HumanPace, rng: &mut HumanRng) -> u64 {
 }
 
 fn gap_before(units: &[String], index: usize, pace: HumanPace, rng: &mut HumanRng) -> u64 {
-    let multiplier = if is_cjk(&units[index]) { 1.9 } else { 1.0 };
+    let multiplier = reach_cost(&units[index]);
     let mut gap = (key_ms(pace, rng) as f64 * multiplier) as u64;
     if ends_a_word(&units[index - 1]) {
         gap += (pace.word_gap_ms() * rng.unit()) as u64;
@@ -120,6 +120,18 @@ fn gap_before(units: &[String], index: usize, pace: HumanPace, rng: &mut HumanRn
         gap += rng.between(300.0, 900.0) as u64;
     }
     gap
+}
+
+/// How much longer a key takes than a plain letter: a Chinese character is
+/// composed from several keys, a symbol needs a stretch or Shift, and a digit
+/// sits on the far row.
+fn reach_cost(unit: &str) -> f64 {
+    match single_char(unit) {
+        Some(_) if is_cjk(unit) => 1.9,
+        Some(ch) if ch.is_ascii_punctuation() && !",.".contains(ch) => 1.9,
+        Some(ch) if ch.is_ascii_digit() => 1.25,
+        _ => 1.0,
+    }
 }
 
 fn typed_before_noticing(units: &[String], index: usize, rng: &mut HumanRng) -> usize {

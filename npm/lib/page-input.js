@@ -42,6 +42,17 @@ function observedInsertion(before, after, text) {
   return false;
 }
 
+/** Where typed text went into a field: at its start, at its end or in the middle. Unknown when the field changed in another way. */
+function landing(before, after, text) {
+  if (typeof before !== 'string' || typeof after !== 'string') return undefined;
+  before = normalize(before);
+  after = normalize(after);
+  text = normalize(text);
+  if (after === before + text) return 'end';
+  if (after === text + before) return 'start';
+  return observedInsertion(before, after, text) ? 'middle' : undefined;
+}
+
 const WHEN_IDLE_MS = '600';
 
 function inForeground(ad, state) {
@@ -78,8 +89,11 @@ async function captureTypedPage(ad, output, report, originalUrl) {
   }
 }
 
-async function typePage(ad, write, {page, field, value, stdin, multiline, replace, after: output, human, seed, 'interval-ms': interval = '75'}) {
+async function typePage(ad, write, {page, field, value, stdin, multiline, replace, at, after: output, human, seed, 'interval-ms': given}) {
   if (!page || !field || (value !== undefined) === Boolean(stdin)) throw new Error('Use --page, --field and either --value or --stdin.');
+  if (given !== undefined && human !== undefined) throw new Error('Use --interval-ms or --human, not both: --human sets its own uneven rhythm.');
+  if (at !== undefined && (!['start', 'end'].includes(at) || replace)) throw new Error('--at takes start or end, and has no meaning with --replace.');
+  const interval = given ?? '75';
   if (stdin && process.stdin.isTTY) throw new Error('Pipe text to --stdin.');
   if (output && existsSync(output)) throw new Error('Use a new path for --after.');
   if (!/^\d+$/.test(interval) || Number(interval) < 1 || Number(interval) > 2000) throw new Error('--interval-ms must be between 1 and 2000.');
@@ -97,8 +111,10 @@ async function typePage(ad, write, {page, field, value, stdin, multiline, replac
   const mode = replace ? (multiline ? 'replace-multiline' : 'replace') : (multiline ? 'multiline' : undefined);
   const args = ['type', original.ref_id, '--headed', '--selected-tab', state.tab, '--interval-ms', interval, ...physicalArgs({human, seed})];
   if (mode) args.push('--entry-mode', mode);
+  if (at) args.push('--at', at);
   const action = write([...args, '--stdin'], text);
-  const report = {page, field, keystrokes: action.keystrokes, interval_ms: Number(interval), verified: false};
+  const pace = human ? {human: action.human ?? {pace: human}} : {interval_ms: Number(interval)};
+  const report = {page, field, keystrokes: action.keystrokes, ...pace, verified: false};
   try {
     const {state: next} = await source(ad, page);
     if (next.url !== state.url) {
@@ -109,12 +125,17 @@ async function typePage(ad, write, {page, field, value, stdin, multiline, replac
     report.verified = replace
       ? typeof after.value === 'string' && normalize(after.value) === normalize(text)
       : observedInsertion(original.value ?? '', after.value ?? '', text);
+    if (!replace) report.landed = landing(original.value ?? '', after.value ?? '', text);
+    if (at && report.verified && report.landed !== at) {
+      report.verified = false;
+      report.message = 'The text was typed, but it went in at the ' + report.landed + ' of the field, not at its ' + at + '.';
+    }
   } catch (err) {
     throw Object.assign(new Error('Keyboard input was sent. ' + err.message + ' Inspect the field before repeating.'),
       {code: 'ACTION_FAILED', disposition: {delivery: 'delivered_unverified', retry: 'unsafe'}});
   }
-  if (!report.verified) report.message = 'Keys were sent; the field did not expose the expected text. Inspect the rendered field.';
+  if (!report.verified) report.message ??= 'Keys were sent; the field did not expose the expected text. Inspect the rendered field.';
   return captureTypedPage(ad, output, report, state.url);
 }
 
-module.exports = {typePage, pageState, descendants, bringToFront, physicalArgs, observedInsertion};
+module.exports = {typePage, pageState, descendants, bringToFront, physicalArgs, observedInsertion, landing};

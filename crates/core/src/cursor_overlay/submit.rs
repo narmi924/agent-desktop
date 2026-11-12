@@ -284,20 +284,26 @@ pub(crate) fn dispatch_press_with_cursor(
     } = press;
     let point = event.point.clone();
     crate::cursor_overlay::submit_travel(adapter, context, point.clone(), lease, click);
-    let human = context.human().filter(|_| {
-        matches!(
-            event.kind,
-            MouseEventKind::Move | MouseEventKind::Click { .. }
-        )
-    });
-    let result = match (human, hold_ms) {
+    let glides = matches!(
+        event.kind,
+        MouseEventKind::Move | MouseEventKind::Click { .. } | MouseEventKind::Wheel { .. }
+    );
+    let result = match (context.human().filter(|_| glides), hold_ms) {
         (Some(human), _) => {
-            let press = crate::input::human_glide::glide(adapter, &point, human, None, lease)?;
-            if matches!(event.kind, MouseEventKind::Click { .. }) {
-                std::thread::sleep(std::time::Duration::from_millis(press.settle_ms));
-                adapter.mouse_click_held(event, hold_ms.unwrap_or(press.hold_ms), lease)
-            } else {
-                adapter.mouse_event(event, lease)
+            let target = crate::input::human_glide::GlideTarget::point(&point);
+            let press = crate::input::human_glide::glide(adapter, target, human, lease)?;
+            match event.kind {
+                MouseEventKind::Click { .. } => {
+                    std::thread::sleep(std::time::Duration::from_millis(press.settle_ms));
+                    adapter.mouse_click_held(event, hold_ms.unwrap_or(press.hold_ms), lease)
+                }
+                MouseEventKind::Wheel { .. } => {
+                    std::thread::sleep(std::time::Duration::from_millis(press.settle_ms));
+                    crate::input::human_wheel::roll(event, human, |notch| {
+                        adapter.mouse_event(notch, lease)
+                    })
+                }
+                _ => adapter.mouse_event(event, lease),
             }
         }
         (None, Some(hold_ms)) => adapter.mouse_click_held(event, hold_ms, lease),

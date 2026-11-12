@@ -21,9 +21,16 @@ pub(crate) struct InteractionArgs {
         value_enum,
         value_name = "PACE",
         requires = "headed",
-        help = "With --headed, move the real cursor along a curved path and type one key at a time with uneven timing and corrected mistakes"
+        help = "With --headed, move the real cursor along a curved path, turn the wheel a line at a time and type one key at a time with uneven timing"
     )]
     pub human: Option<HumanPaceArg>,
+    #[arg(
+        long,
+        global = true,
+        requires = "human",
+        help = "With --human, let typing strike a wrong key now and then and correct it; never in password, code or payment fields"
+    )]
+    pub typos: bool,
     #[arg(
         long,
         global = true,
@@ -73,6 +80,7 @@ impl InteractionArgs {
                 HumanPaceArg::Careful => HumanPace::Careful,
             },
             seed: self.seed,
+            typos: self.typos,
         })
     }
 }

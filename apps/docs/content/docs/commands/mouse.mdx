@@ -191,4 +191,6 @@ agent-desktop --headed mouse-wheel --x 700 --y 400 --dy -2
 }
 ```
 
+On Windows, `--human natural|careful` moves the cursor to the point along a curved path and turns the wheel one line at a time, a few lines per stroke with a pause between strokes. One command then turns at most 15 lines. A failure part way carries `details.wheel_lines_sent` and `details.wheel_lines`. When a pointer action stops because the cursor was not where the action left it, `details` has `phase`, `expected`, `found` and `off_by` in pixels.
+
 Platform limits for all mouse commands: Linux needs X11. See [macOS](/desktop/platforms/macos), [Windows](/desktop/platforms/windows), and [Linux](/desktop/platforms/linux).

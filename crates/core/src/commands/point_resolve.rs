@@ -93,6 +93,21 @@ pub(crate) fn focus_for_physical_input(
     crate::actions::headed_focus::focus_entry_window(entry, adapter, context, lease)
 }
 
+const HUMAN_POINTER_TIMEOUT_MS: u64 = 12_000;
+
+/// A human-paced pointer action glides to its point and turns the wheel one
+/// notch at a time, so it holds the lease longer than a direct one.
+pub(crate) fn acquire_pointer_lease(
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<crate::InteractionLease, AppError> {
+    let deadline = match context.human() {
+        Some(_) => crate::Deadline::after(HUMAN_POINTER_TIMEOUT_MS)?,
+        None => crate::Deadline::standard()?,
+    };
+    Ok(adapter.acquire_interaction_lease(deadline)?)
+}
+
 #[cfg(test)]
 #[path = "point_resolve_tests.rs"]
 mod tests;

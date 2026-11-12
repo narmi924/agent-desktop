@@ -8,9 +8,11 @@ const { setTimeout: delay } = require('node:timers/promises');
 
 const SESSION = 'agent-desktop-web';
 const ROUTED = new Set(['click', 'type', 'edit', 'follow']);
-const DESKTOP_ONLY = ['human', 'seed', 'visible', 'interval-ms', 'multiline', 'after', 'nth', 'stdin'];
+const DESKTOP_ONLY = ['human', 'seed', 'visible', 'interval-ms', 'multiline', 'at', 'after', 'nth', 'stdin'];
 const CONNECT_WAIT_MS = 120000;
 const COMMAND_WAIT_MS = 20000;
+const ROUTE_PROBE_MS = 4000;
+const NO_ANSWER = 'The browser connection did not answer.';
 const NAVIGATION_WAIT_MS = 7000;
 const EXPECT_WAIT_MS = '3500';
 const MISS = /not found|no element|no match|did not match|could not find|unable to find|found 0/i;
@@ -31,7 +33,7 @@ function call(binary, args, timeout) {
     const env = { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' };
     out = execFileSync(binary, args, { encoding: 'utf8', windowsHide: true, timeout, env, maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) {
-    if (!err.stdout) throw new Error('The browser connection did not answer.');
+    if (!err.stdout) throw new Error(NO_ANSWER);
     out = err.stdout;
   }
   const reply = JSON.parse(out);
@@ -39,8 +41,8 @@ function call(binary, args, timeout) {
   return reply.data;
 }
 
-function browser(binary, route) {
-  return (...command) => call(binary, ['--session', route.session, ...route.flags, '--json', ...command], COMMAND_WAIT_MS);
+function browser(binary, route, wait = COMMAND_WAIT_MS, run = call) {
+  return (...command) => run(binary, ['--session', route.session, ...route.flags, '--json', ...command], wait);
 }
 
 /** Opens the one connection later commands reuse. Chrome may ask to allow it. */
@@ -67,20 +69,28 @@ function encoded(saved) {
 
 function claim(ab, { url, title }) {
   if (title) {
-    try { return ab('tab', 'claim', '--url', url, '--title', title); } catch { /* The title may have changed since it was read. */ }
+    try { return ab('tab', 'claim', '--url', url, '--title', title); } catch (err) {
+      if (err.message === NO_ANSWER) throw err;
+    }
   }
   return ab('tab', 'claim', '--url', url);
 }
 
-/** Marks a page handle as reachable over the connection when its tab can be bound. */
-function withRoute(binary, data) {
+/**
+ * Marks a page handle as reachable over the connection when its tab can be bound. Reading a page
+ * must not hang on a browser that is closed or is waiting for its user to allow the connection, so
+ * the connection gets a few seconds to answer and is asked once. `connect` is the command that waits.
+ */
+function withRoute(binary, data, run = call) {
   const route = savedRoute();
   if (!route || !binary) return { ...data, route: 'desktop' };
   try {
-    claim(browser(binary, route), data);
+    claim(browser(binary, route, ROUTE_PROBE_MS, run), data);
     return { ...data, page: encoded({ ...decoded(data.page), route: 'web', title: data.title }), route: 'web' };
-  } catch {
-    return { ...data, route: 'desktop' };
+  } catch (err) {
+    return { ...data, route: 'desktop', ...(err.message === NO_ANSWER
+      ? { route_note: 'The saved Chrome connection did not answer within ' + ROUTE_PROBE_MS / 1000 + ' s, so page commands use the real mouse and keyboard. Run connect to restore the background route.' }
+      : {}) };
   }
 }
 

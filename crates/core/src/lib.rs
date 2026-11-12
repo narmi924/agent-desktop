@@ -53,6 +53,7 @@ pub use cursor_overlay::{
     MAX_CURSOR_IMAGE_BYTES, MAX_CURSOR_IMAGE_PATH_BYTES, MAX_CURSOR_IMAGE_PIXELS,
     MAX_CURSOR_LABEL_BYTES, MAX_CURSOR_LABEL_WORDS, place_label,
 };
+pub use input::caret_place::CaretPlace;
 pub use input::clipboard_content::ClipboardContent;
 pub use input::clipboard_format::ClipboardFormat;
 pub use input::direction::Direction;
@@ -61,9 +62,12 @@ pub use input::drag_params::{
 };
 pub use input::human_input::HumanInput;
 pub use input::human_pace::HumanPace;
-pub use input::human_path::{PathSample, PressTiming, plan_pointer_path, plan_press};
+pub use input::human_path::{
+    DEFAULT_TARGET_WIDTH, PathSample, PressTiming, plan_landing, plan_pointer_path, plan_press,
+};
 pub use input::human_rng::HumanRng;
 pub use input::human_typing::{TypingStep, plan_typing};
+pub use input::human_wheel::{WheelNotch, plan_wheel};
 pub use input::key_combo::KeyCombo;
 pub use input::modifier::Modifier;
 pub use input::mouse_button::MouseButton;

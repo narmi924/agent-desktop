@@ -151,8 +151,13 @@ pub fn execute(
     );
     let result = match context.human() {
         Some(human) => {
-            let path =
-                crate::plan_pointer_path(&params.from, &params.to, human.pace, &mut human.rng());
+            let path = crate::plan_pointer_path(
+                &params.from,
+                &params.to,
+                crate::DEFAULT_TARGET_WIDTH,
+                human.pace,
+                &mut human.rng(),
+            );
             adapter.drag_along(params, &path, &lease)
         }
         None => adapter.drag(params, &lease),

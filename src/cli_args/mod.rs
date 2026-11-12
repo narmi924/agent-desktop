@@ -23,6 +23,7 @@ pub(crate) mod snapshot_tree;
 pub(crate) mod stdin;
 pub(crate) mod system;
 pub(crate) mod trace;
+pub(crate) mod type_entry;
 
 pub(crate) use snapshot::SnapshotArgs;
 

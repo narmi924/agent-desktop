@@ -55,7 +55,8 @@ function readPage(ad, win, bounds=false) {
     if (node.role === 'document') return;
     if (node.name && ['heading','statictext'].includes(node.role) && !(node.children ?? []).length) text.push(node.name);
     if (node.ref_id && node.name && (node.available_actions ?? []).some(a => ['Click','SetValue','Select','Toggle'].includes(a))) {
-      controls.push({ref:node.ref_id, role:node.role, name:node.name, ...(node.role === 'link' && webUrl(node.value) ? {href:webUrl(node.value)} : {})});
+      controls.push({ref:node.ref_id, role:node.role, name:node.name, ...(node.states?.includes('checked') || (node.role === 'radiobutton' && node.states?.includes('selected')) ? {checked:true} : {}),
+        ...(node.role === 'link' && webUrl(node.value) ? {href:webUrl(node.value)} : {})});
     }
     for (const child of node.children ?? []) collect(child);
   }

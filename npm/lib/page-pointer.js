@@ -43,12 +43,49 @@ function one(root, name, options = {}) {
     if (!match) throw new Error('No visible match at position ' + options.nth + ' for ' + name + '.');
     return match;
   }
+  if (!found.length && options.visible !== false && matches(root, name, {...options, visible: false}).length) {
+    throw Object.assign(new Error(name + ' is on the page but outside the part that is on screen. Scroll it into view first: wheel --until with its name.'),
+      {code: 'NOT_ON_SCREEN'});
+  }
   if (found.length !== 1) throw new Error('Expected one target named ' + name + ', found ' + found.length + '.');
   return found[0];
 }
 
 function center(rect) {
   return {x: Math.floor(rect.x + rect.width / 2), y: Math.floor(rect.y + rect.height / 2)};
+}
+
+const scrolls = node => node.role === 'document' || node.available_actions?.includes('Scroll');
+const holds = (rect, point) => point.x >= rect.x && point.x < rect.x + rect.width && point.y >= rect.y && point.y < rect.y + rect.height;
+
+/** The visible part of the scroll region at `path`: its box cut by every scrolling box around it. */
+function panelClip(doc, path) {
+  let node = doc, clip = doc.bounds;
+  for (const index of path) {
+    node = node?.children?.[index];
+    if (node?.bounds?.width > 0 && node.bounds.height > 0 && scrolls(node)) clip = intersection(clip, node.bounds);
+  }
+  return clip;
+}
+
+/**
+ * Where the cursor rests while a region is scrolled: a place in the region that no smaller scrolling
+ * box inside it covers. It is the same place every time, so a second scroll of the region does not
+ * move the cursor again, the way a hand stays put while the wheel turns.
+ */
+function restingPoint(panel, clip, fallback) {
+  const inner = [];
+  (function visit(node) {
+    for (const child of node.children ?? []) {
+      if (child.bounds?.width > 0 && child.bounds.height > 0 && scrolls(child)) inner.push(child.bounds);
+      visit(child);
+    }
+  })(panel);
+  for (const [fx, fy] of [[0.5, 0.5], [0.5, 0.35], [0.5, 0.65], [0.35, 0.5], [0.65, 0.5]]) {
+    const point = {x: Math.floor(clip.x + clip.width * fx), y: Math.floor(clip.y + clip.height * fy)};
+    if (clip.width > 0 && clip.height > 0 && !inner.some(rect => holds(rect, point))) return point;
+  }
+  return fallback;
 }
 
 function panelAt(doc, path) {
@@ -65,16 +102,17 @@ function visibleRows(panel) {
 }
 
 async function wheelPage(ad, {page, over, lines = '3', until, human, seed}) {
-  if (!page || !over || !/^-?\d+$/.test(lines) || !Number(lines) || Math.abs(Number(lines)) > 12) {
-    throw new Error('Use --page, --over and 1 to 12 wheel lines. Positive is down.');
+  if (!page || !/^-?\d+$/.test(lines) || !Number(lines) || Math.abs(Number(lines)) > 12) {
+    throw new Error('Use --page and 1 to 12 wheel lines. Positive is down. --over names a visible text inside the region to scroll; without it the page itself scrolls.');
   }
   let state = await pageState(ad, page, true);
   bringToFront(ad, state);
   const flags = physicalArgs({human, seed});
-  const anchor = one(state.doc, over);
-  const point = center(anchor.clip);
+  const anchor = over ? one(state.doc, over) : {panel: [], clip: state.doc.bounds, bounds: state.doc.bounds};
   const original = panelAt(state.doc, anchor.panel);
-  const report = {page, over, lines: Number(lines), moves: 0, verified: false};
+  const steady = human || !over ? restingPoint(original, panelClip(state.doc, anchor.panel), center(anchor.clip)) : undefined;
+  const point = steady ?? center(anchor.clip);
+  const report = {page, ...(over ? {over} : {}), lines: Number(lines), moves: 0, verified: false};
   const panel = () => {
     const next = panelAt(state.doc, anchor.panel);
     if (!next?.bounds || next.role !== original.role || next.name !== original.name ||
@@ -93,7 +131,7 @@ async function wheelPage(ad, {page, over, lines = '3', until, human, seed}) {
   for (let i = 0; i < (until ? 12 : 1); i++) {
     let progress = false;
     try {
-      const area = panel(), rows = until && visibleRows(area);
+      const area = panel(), rows = (until || !over) && visibleRows(area);
       const receiver = area !== state.doc && area.ref_id;
       const action = ad('mouse-wheel', '--headed', '--x=' + point.x, '--y=' + point.y, '--dy=' + (-Number(lines)),
         '--page-refs', state.tab, state.doc.ref_id, ...(receiver ? [receiver] : []), ...flags);
@@ -103,7 +141,7 @@ async function wheelPage(ad, {page, over, lines = '3', until, human, seed}) {
       do {
         state = await pageState(ad, page, true);
         if (until && goalVisible()) return {...report, until, verified: true};
-        if (until) progress = visibleRows(panel()) !== rows;
+        if (until || !over) progress = visibleRows(panel()) !== rows;
         else {
           const found = matches(state.doc, over, {visible: false});
           if (found.length === 1) report.anchor_delta_y = found[0].bounds.y - anchor.bounds.y;
@@ -150,4 +188,4 @@ async function pointerPage(ad, command, {page, on, role, nth, human, seed, 'expe
   return report;
 }
 
-module.exports = {pointerPage, wheelPage, physicalPointer};
+module.exports = {pointerPage, wheelPage, physicalPointer, restingPoint, panelClip};

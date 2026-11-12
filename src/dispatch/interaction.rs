@@ -111,19 +111,7 @@ pub(super) fn type_text(
     adapter: &dyn PlatformAdapter,
     context: &CommandContext,
 ) -> Result<Value, AppError> {
-    use crate::cli_args::actions::PageEntryMode;
-    if let Some((window_id, text)) = window_text(&mut args)? {
-        return agent_desktop_core::commands::type_text_window::execute(
-            agent_desktop_core::commands::type_text_window::WindowTypeArgs { window_id, text },
-            adapter,
-            context,
-        );
-    }
-    if args.entry_mode.is_some() && args.selected_tab.is_none() {
-        return Err(AppError::invalid_input(
-            "--entry-mode requires --selected-tab",
-        ));
-    }
+    use crate::cli_args::type_entry::{CaretPlaceArg, PageEntryMode};
     let mode = type_text_command::PageTypingMode {
         multiline: matches!(
             args.entry_mode,
@@ -134,7 +122,35 @@ pub(super) fn type_text(
             Some(PageEntryMode::Replace | PageEntryMode::ReplaceMultiline)
         ),
     };
-    let paced = args.interval_ms.is_some() || context.human().is_some();
+    let caret = args.at.map(|place| match place {
+        CaretPlaceArg::Start => agent_desktop_core::CaretPlace::Start,
+        CaretPlaceArg::End => agent_desktop_core::CaretPlace::End,
+    });
+    if mode.replace && (args.selected_tab.is_none() || args.window_id.is_some()) {
+        return Err(AppError::invalid_input(
+            "The replace entry modes require --selected-tab",
+        ));
+    }
+    if let Some((window_id, text)) = window_text(&mut args)? {
+        return agent_desktop_core::commands::type_text_window::execute(
+            agent_desktop_core::commands::type_text_window::WindowTypeArgs {
+                window_id,
+                text,
+                interval_ms: args.interval_ms,
+                multiline: mode.multiline,
+                caret,
+            },
+            adapter,
+            context,
+        );
+    }
+    let breaks = args
+        .text
+        .as_deref()
+        .is_some_and(|text| text.contains(['\r', '\n']));
+    let paced = args.interval_ms.is_some()
+        || context.human().is_some()
+        || (breaks && mode.multiline && context.is_headed());
     let timeout_ms = if paced {
         args.timeout_ms
     } else {
@@ -143,14 +159,18 @@ pub(super) fn type_text(
     let text = args
         .text
         .ok_or_else(|| AppError::invalid_input("type text is missing"))?;
-    type_text_command::execute_with_tab(
+    type_text_command::execute_entry(
         type_text_command::TypeArgs {
             ref_id: args.ref_id.unwrap_or_default(),
             text,
             timeout_ms,
             interval_ms: args.interval_ms,
         },
-        args.selected_tab.as_deref().map(|tab| (tab, mode)),
+        type_text_command::TypeEntry {
+            tab: args.selected_tab.as_deref(),
+            mode,
+            caret,
+        },
         adapter,
         context,
     )

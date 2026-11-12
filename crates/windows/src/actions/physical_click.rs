@@ -118,11 +118,12 @@ pub(crate) fn physical_click_steps(
 fn glide_and_click(
     event: MouseEvent,
     human: HumanInput,
+    width: f64,
     deadline: Deadline,
 ) -> Result<(), AdapterError> {
     let mut rng = human.rng();
     let from = crate::input::page_pointer::position().unwrap_or_else(|| event.point.clone());
-    let path = plan_pointer_path(&from, &event.point, human.pace, &mut rng);
+    let path = plan_pointer_path(&from, &event.point, width, human.pace, &mut rng);
     crate::input::human_pointer::follow(&path, None, deadline)?;
     let press = plan_press(human.pace, &mut rng);
     std::thread::sleep(std::time::Duration::from_millis(press.settle_ms));
@@ -138,6 +139,7 @@ pub(crate) fn click_from_gate(
     if !gate.foreground_ready {
         return Err(focus_lost_before_delivery());
     }
+    let width = gate.bounds.width.min(gate.bounds.height);
     let point = delivery_point(gate.bounds, verified_point)?;
     point.validate()?;
     let human = spec.human;
@@ -148,7 +150,7 @@ pub(crate) fn click_from_gate(
         modifiers: Vec::new(),
     };
     match human {
-        Some(human) => glide_and_click(event, human, deadline)?,
+        Some(human) => glide_and_click(event, human, width, deadline)?,
         None => synthesize_mouse(event, deadline)?,
     }
     Ok(ActionStep::succeeded(CLICK_LABEL)

@@ -127,3 +127,31 @@ fn the_same_seed_reproduces_the_same_plan() {
     };
     assert_eq!(plan(4), plan(4));
 }
+
+fn mean_gap(text: &str) -> f64 {
+    let (mut total, mut count) = (0u64, 0u64);
+    for seed in 0..300 {
+        let steps = plan_typing(
+            &units(text),
+            HumanPace::Natural,
+            &mut HumanRng::new(seed),
+            false,
+        );
+        for step in &steps[1..] {
+            if let TypingStep::Text { after_ms, .. } = step {
+                total += after_ms;
+                count += 1;
+            }
+        }
+    }
+    total as f64 / count as f64
+}
+
+#[test]
+fn symbols_and_digits_take_longer_than_letters() {
+    let letters = mean_gap("abcdefghijklmnop");
+    let digits = mean_gap("1234567890123456");
+    let symbols = mean_gap("(){}[]=+*&^%$#@!");
+    assert!(digits > letters * 1.1, "digits {digits}, letters {letters}");
+    assert!(symbols > digits * 1.1, "symbols {symbols}, digits {digits}");
+}
