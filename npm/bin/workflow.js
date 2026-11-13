@@ -19,6 +19,7 @@ const { connect, disconnect, webPerform, withRoute, chromeFlags } = require('../
 const { runScript, api } = require('../lib/script-run');
 const { space, spaceFlags } = require('../lib/space');
 const { readPage } = require('../lib/page-read');
+const { markRepeat, clearRepeat } = require('../lib/script-repeat');
 
 const usage = [
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
@@ -41,7 +42,7 @@ const usage = [
   'agent-desktop-workflow browser-move --session NAME [--tab TAB] --surface CSS --from X,Y --to X,Y [--object CSS] [--after IMAGE.png]',
   'agent-desktop-workflow drop-file --session NAME [--tab TAB] --input DROP_ZONE_CSS --file ABSOLUTE_PATH',
   'agent-desktop-workflow replay --file FLOW.jsonl [--window ID] [--speed N]   (record a flow by setting AGENT_DESKTOP_RECORD=FLOW.jsonl)',
-  'agent-desktop-workflow run [--file SCRIPT.js] [--session NAME | --space | --chrome] [--timeout-ms MS]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers)',
+  'agent-desktop-workflow run [--file SCRIPT.js] [--session NAME | --space | --chrome] [--allow-input] [--timeout-ms MS]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers. Without --allow-input a step that needs the real mouse and keyboard is refused before anything is sent)',
   'agent-desktop-workflow read --url URL   (the text of a web page: a plain request and a background browser run together and the first full answer is returned)',
   'agent-desktop-workflow space [--login URL | --close]   (the agent\'s own browser profile: --login shows its window so the user signs in once; later runs with --space keep that sign-in in the background)',
 ].join('\n');
@@ -51,7 +52,8 @@ function one(items, description) {
   return items[0];
 }
 
-function run(binary, args, input) {
+function run(binary, args, input, check) {
+  check?.(args);
   let out;
   try {
     const timeout = args[0] === 'type' && args.includes('--interval-ms') ? 0 : 15000;
@@ -267,13 +269,13 @@ async function main() {
     replay: ['file', 'window', 'speed'],
     'browser-move': ['session', 'tab', 'surface', 'from', 'to', 'object', 'after'],
     'drop-file': ['session', 'tab', 'input', 'file'],
-    run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api'],
+    run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api', 'allow-input'],
     space: ['login', 'close'],
     read: ['url'],
   };
   if (!Object.hasOwn(commands, command)) throw new Error(usage);
   const names = commands[command];
-  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close'].includes(key) ? 'boolean' : 'string' }]));
+  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close','allow-input'].includes(key) ? 'boolean' : 'string' }]));
   const { values } = parseArgs({ args: joinCoordinates(args), options });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   if (command === 'run' && values.api) { console.log(api); return; }
@@ -314,22 +316,28 @@ async function replay({ file, window, speed = '1' }) {
   return { steps: report.length, report };
 }
 
-function script({ file, session, chrome, space: own, 'timeout-ms': wait = '120000' }) {
+async function script({ file, session, chrome, space: own, 'timeout-ms': wait = '120000', 'allow-input': allowInput = false }) {
   const timeout = Number(wait);
   if (!(timeout > 0) || (!file && process.stdin.isTTY)) throw new Error('Pipe a script to run, or pass --file SCRIPT.js. --timeout-ms takes a positive number.');
   if ([session, chrome, own].filter(Boolean).length > 1) throw new Error('Choose one of --session NAME, --space and --chrome.');
   const source = readFileSync(file ?? 0, 'utf8').replace(/^\uFEFF/, '');
   process.env.AGENT_DESKTOP_POINTER_HOLDER ??= String(process.pid);
-  return runScript(source, {
-    browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform,
-    flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? 'work'],
-    env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env,
-  });
+  try {
+    const done = await runScript(source, {
+      browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform, allowInput,
+      flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? 'work'],
+      env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env,
+    });
+    clearRepeat();
+    return done;
+  } catch (err) {
+    throw markRepeat(err);
+  }
 }
 
-async function perform(command, values) {
+async function perform(command, values, check) {
   const db = nativeBinary();
-  const ad = (...args) => run(db, args);
+  const ad = (...args) => run(db, args, undefined, check);
   const web = await webPerform(optionalBrowserBinary(), command, values);
   if (web) return web;
   let data;
@@ -356,11 +364,11 @@ async function perform(command, values) {
       break;
     }
     case 'view': data = view(ad, values); break;
-    case 'type': data = await typePage(ad,(args,input)=>run(db,args,input),values); break;
+    case 'type': data = await typePage(ad,(args,input)=>run(db,args,input,check),values); break;
     case 'wheel': data = await wheelPage(ad,values); break;
     case 'point': case 'click': data = await pointerPage(ad,command,values); break;
     case 'edit': {
-      const write = (args,data) => run(db,args,data);
+      const write = (args,data) => run(db,args,data,check);
       data = values.page ? await editPage(ad,write,values) : edit(ad,write,values);
       break;
     }

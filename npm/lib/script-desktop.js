@@ -3,6 +3,7 @@
 const { setTimeout: delay } = require('node:timers/promises');
 const { pick } = require('./script-match');
 const { createPicture, renderLines } = require('./script-picture');
+const { inputRefused } = require('./script-input');
 
 const WRITABLE = ['textfield', 'combobox', 'incrementor', 'slider'];
 const TICKS = ['checkbox', 'radiobutton', 'switch'];
@@ -13,6 +14,8 @@ const SELECTION_FIELDS = 5;
 const SEEN_WAIT_MS = 1500;
 const TYPE_WAIT_MS = 30000;
 const TYPE_KEY_MS = 700;
+const QUIET_MS = 400;
+const EFFECT_LIMIT = 3;
 
 function isTitleBar(node) {
   return node.role === 'titlebar' || (node.native_id?.kind === 'automation_id' && node.native_id.value === 'TitleBar');
@@ -66,16 +69,18 @@ const isRef = target => /^@\w+:e\d+$/.test(String(target));
  * A name is looked for among the window's controls first; when no control has it, the window's
  * picture is read and the text found there is used instead, unless the call passes {picture: false}.
  */
-function createDesktop({ call, step, warn, note = () => {}, picture: makePicture = createPicture, pace = () => undefined }) {
+function createDesktop({ call, step, warn, note = () => {}, picture: makePicture = createPicture, pace = () => undefined, inputAllowed = () => true }) {
   const views = new Map(), found = new Map(), drawnWindows = new Set();
-  let last;
+  let last, listed;
   const ad = (args, options) => call(args.map(String), options);
   const picture = makePicture({ ad });
   const asPerson = () => (pace() ? ['--headed', '--human', pace()] : []);
 
   async function windows(filter) {
     const wanted = filter === undefined ? undefined : String(filter).toLowerCase();
-    return (await ad(['list-windows']))
+    const all = listed ?? await ad(['list-windows']);
+    listed = undefined;
+    return all
       .filter(w => !wanted || w.id === filter || (w.app_name ?? '').toLowerCase().includes(wanted) || (w.title ?? '').toLowerCase().includes(wanted))
       .map(w => ({ id: w.id, app: w.app_name, title: w.title, minimized: Boolean(w.minimized), focused: Boolean(w.is_focused) }));
   }
@@ -126,10 +131,11 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
   async function act(window, target, options, run, byPicture) {
     const until = Date.now() + (options?.timeout ?? PATIENCE_MS);
     const usePicture = byPicture && pictureAllowed(target, options);
+    const tryPicture = id => (inputAllowed() ? byPicture(id) : refuseByPicture(id, target, options));
     for (;;) {
       const id = usePicture ? await resolve(window) : undefined;
       if (usePicture && drawnWindows.has(id)) {
-        const done = await byPicture(id);
+        const done = await tryPicture(id);
         if (done !== undefined) return done;
         drawnWindows.delete(id);
       } else {
@@ -137,7 +143,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
           const named = !isRef(target);
           if (!named || !['STALE_REF', 'ELEMENT_NOT_FOUND', 'WINDOW_NOT_FOUND'].includes(err.code)) throw err;
           if (usePicture && err.code === 'ELEMENT_NOT_FOUND') {
-            const done = await byPicture(id);
+            const done = await tryPicture(id);
             if (done !== undefined) return done;
           }
           if (Date.now() >= until) throw usePicture && err.code === 'ELEMENT_NOT_FOUND'
@@ -151,6 +157,42 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       views.clear();
       await delay(200);
     }
+  }
+
+  /**
+   * Without --allow-input a name found only in the picture is refused before the window moves:
+   * the picture is read where the window is, and the reply says where it shows the name.
+   */
+  async function refuseByPicture(id, target, options) {
+    const spot = await picture.find(id, target, options);
+    if (!spot) return undefined;
+    throw inputRefused('No control is named "' + target + '" in this window. Its picture shows it at ' + spot.hit.center.x + ',' + spot.hit.center.y +
+      ', and acting on the picture needs the real mouse and keyboard: the window comes to the front and the pointer moves.');
+  }
+
+  /** Windows that opened, closed or changed title while `run` ran, as notes on the step. */
+  async function watchWindows(run) {
+    const list = async () => {
+      try { return await ad(['list-windows']); } catch { return undefined; }
+    };
+    const before = await list();
+    listed = before;
+    let result;
+    try { result = await run(); } finally { listed = undefined; }
+    const after = before && await list();
+    if (!before || !after) return result;
+    const shown = w => w.visible !== false && !w.minimized;
+    const was = new Map(before.filter(shown).map(w => [w.id, w]));
+    const now = new Map(after.filter(shown).map(w => [w.id, w]));
+    const effects = [
+      ...[...now.values()].filter(w => !was.has(w.id)).map(w => 'opened window "' + w.title + '" ' + w.id),
+      ...[...was.values()].filter(w => !now.has(w.id)).map(w => 'closed window "' + w.title + '"'),
+      ...[...now.values()].filter(w => was.has(w.id) && was.get(w.id).title !== w.title)
+        .map(w => 'window title "' + was.get(w.id).title + '" -> "' + w.title + '"'),
+    ];
+    for (const effect of effects.slice(0, EFFECT_LIMIT)) note(effect);
+    if (effects.length > EFFECT_LIMIT) note((effects.length - EFFECT_LIMIT) + ' more window changes');
+    return result;
   }
 
   /** Clicks where the picture shows the text: the window comes to the front and the real mouse moves. */
@@ -236,7 +278,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       return [seen.text, '- picture (text read from the screen, not from controls):', renderLines(lines)].filter(Boolean).join('\n');
     }),
     click: (window, target, options) => step('desktop.click', target, async () => {
-      const done = await act(window, target, options, ref => ad([...asPerson(), 'click', ref]), id => clickPicture(id, target, options));
+      const done = await watchWindows(() => act(window, target, options, ref => ad([...asPerson(), 'click', ref]), id => clickPicture(id, target, options)));
       views.clear();
       return done?.via === 'picture' ? done : undefined;
     }),
@@ -255,8 +297,8 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     type: (window, target, text, options) => step('desktop.type', target, async () => {
       const keys = String(text);
       const entry = [...(options?.multiline ? ['--entry-mode', 'multiline'] : []), ...(options?.at ? ['--at', options.at] : [])];
-      const reply = await act(window, target, { roles: WRITABLE, ...options },
-        ref => ad(['--headed', ...asPerson().slice(1), 'type', ref, '--stdin', ...entry], { input: keys, timeout: TYPE_WAIT_MS + keys.length * TYPE_KEY_MS }));
+      const reply = await watchWindows(() => act(window, target, { roles: WRITABLE, ...options },
+        ref => ad(['--headed', ...asPerson().slice(1), 'type', ref, '--stdin', ...entry], { input: keys, timeout: TYPE_WAIT_MS + keys.length * TYPE_KEY_MS })));
       views.clear();
       return confirmed('desktop.type', target, reply);
     }),
@@ -308,7 +350,21 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     cmd: (...args) => step('desktop.cmd', args[0], () => {
       views.clear();
       found.clear();
-      return ad(args, { timeout: 120000 });
+      const send = () => ad(args, { timeout: 120000 });
+      return args[0] === 'press' ? watchWindows(send) : send();
+    }),
+    waitIdle: (window, { timeout = 10000, quiet = QUIET_MS } = {}) => step('desktop.waitIdle', window, async () => {
+      const until = Date.now() + timeout;
+      let last, since = Date.now();
+      for (;;) {
+        const { text } = await view(window, true);
+        if (text !== last) { last = text; since = Date.now(); } else if (Date.now() - since >= quiet) return text;
+        if (Date.now() >= until) {
+          warn('desktop.waitIdle: the window was still changing after ' + timeout + ' ms; this is its latest read.');
+          return text;
+        }
+        await delay(150);
+      }
     }),
   };
 

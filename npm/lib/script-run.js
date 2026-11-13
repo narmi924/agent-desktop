@@ -6,6 +6,7 @@ const { createWeb } = require('./script-web');
 const { createDesktop } = require('./script-desktop');
 const { createVisible, readingMs } = require('./script-visible');
 const { readPage } = require('./page-read');
+const { inputUses, inputRefused } = require('./script-input');
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const SCENE_WAIT_MS = 8000;
@@ -21,6 +22,12 @@ const api = [
   'Steps wait up to 4 s for a control that is not there yet, is disabled or is covered; {timeout: ms} changes that.',
   'Names reach into frames and shadow DOM. css: selectors and web.text()/web.table() see the top document only.',
   'read() lists controls, not messages. To see what an action produced, use waitText(), which returns the text.',
+  'A line in data.steps says what the step changed: a window that opened, closed or changed title, a page that went to another',
+  'address, a new tab or a dialog. A step that used the real mouse and keyboard says so, and data.input_used is then true.',
+  '',
+  'The real mouse and keyboard (visible.*, human(), desktop.type, acting by picture, --headed) need run --allow-input. Without',
+  'it such a step is refused with code INPUT_NOT_ALLOWED before anything is sent: ask the user, then run the steps that are',
+  'left with --allow-input. Everything else runs in the background and leaves the mouse and keyboard alone.',
   '',
   'web (background browser, or your Chrome with --chrome):',
   '  await web.open(url)                     -> {url, title}',
@@ -30,6 +37,7 @@ const api = [
   '  await web.select(target, option)        await web.check(target)        await web.uncheck(target)',
   '  await web.waitText(text, ms = 10000)    -> the text node that shows it, for example "订单号 D6176"',
   '  await web.waitFor(target, {timeout})    await web.has(target) -> true when the control is there and enabled',
+  '  await web.waitIdle({timeout})           -> the page read once it stops changing; for when you cannot know what text will appear',
   '  await web.text()                        -> readable page text; web.text(target) -> text of one element',
   '  await web.value(target)                 await web.table(cssSelector?) -> rows of cell text',
   '  await web.eval("document.title")        await web.url()                await web.title()',
@@ -48,6 +56,7 @@ const api = [
   '  await desktop.check(window, target)     await desktop.uncheck(window, target)',
   '  await desktop.value(window, target)     await desktop.has(window, target)   await desktop.waitFor(window, target, {timeout})',
   '  await desktop.waitText(window, text, ms = 10000)  -> the line that shows the text',
+  '  await desktop.waitIdle(window, {timeout}) -> the window read once it stops changing',
   '  await desktop.cmd("press", "ctrl+s", "--app", "notepad")  -> any agent-desktop command, returns its data',
   'A name no control has is looked for in the window\'s picture right away, and a window with no control outside its',
   'title bar is read from its picture; read() then lists that text as [picture x,y]. Acting by picture brings the window',
@@ -55,7 +64,7 @@ const api = [
   'types, and returns false when the typed text cannot be seen afterwards. The same text in several places needs',
   '{near} or {nth}. {picture: false} keeps a step to controls; waitText takes it as a fourth argument.',
   '',
-  'visible (the page in the Chrome window on screen, with the real mouse and keyboard; one helper is one thing a person does):',
+  'visible (the page in the Chrome window on screen, with the real mouse and keyboard; one helper is one thing a person does; needs --allow-input):',
   '  await visible.use(window?)              -> {title, url, text, controls}: binds the tab on screen; later helpers bind again when the page changes',
   '  await visible.read()                    -> the same, read fresh',
   '  await visible.click(name, {role, nth, expectText})      await visible.hover(name)',
@@ -66,7 +75,7 @@ const api = [
   '  await visible.scrollTo(text)            -> turns the wheel until the text is on screen; {over: "text inside a panel"} scrolls that panel',
   '  await visible.scroll(lines = 3, {over}) -> positive is down',
   '',
-  'acting like a person (for a recording or a demonstration; slower, and it takes the mouse and keyboard):',
+  'acting like a person (for a recording or a demonstration; slower, takes the mouse and keyboard, needs --allow-input):',
   '  human("natural")                        -> from here on visible.*, desktop.click and desktop.type move and type like a person;',
   '                                             "careful" is slower near small targets; human(false) turns it off',
   '  await readTime(text)                    -> waits about as long as reading that text takes; returns at once while human() is off.',
@@ -109,13 +118,23 @@ function brief(subject) {
 }
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
-async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture } = {}) {
+async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput = false } = {}) {
   const started = Date.now();
   env = holding(env ?? process.env);
   const steps = [], logs = [], warnings = [], children = new Set();
-  let surface;
+  let surface, inputUsed = false;
 
   let notes = [];
+  /**
+   * Every command that takes the real mouse and keyboard passes here first. Without
+   * --allow-input it is refused before anything is sent; with it, the step is marked.
+   */
+  const takeInput = what => {
+    if (!allowInput) throw inputRefused('This step needs the real mouse and keyboard' + (what ? ' (' + what + ')' : '') + ': the window comes to the front and the pointer moves.');
+    inputUsed = true;
+    if (!notes.includes('real mouse and keyboard')) notes.push('real mouse and keyboard');
+  };
+  const gate = args => { if (args.includes('--headed')) takeInput(); };
   const step = async (name, subject, run) => {
     const at = Date.now();
     surface = name.split('.')[0];
@@ -132,20 +151,23 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
       throw err;
     }
   };
-  const need = (binary, name) => (args, options) => {
+  const need = (binary, name, check = () => {}) => (args, options) => {
     if (!binary) return Promise.reject(new Error(name + ' is not installed.'));
+    try { check(args); } catch (err) { return Promise.reject(err); }
     return call(binary, args, { env, children, ...options });
   };
+  const note = text => notes.push(text);
   const page = createWeb({
-    call: need(browser, 'agent-browser'), step, warn: text => warnings.push(text), flags,
+    call: need(browser, 'agent-browser'), step, warn: text => warnings.push(text), note, flags,
     fetchPage: url => readPage(browser, url, (binary, args, options) => need(binary, 'agent-browser')(args, options)),
   });
   let pace;
-  const desk = createDesktop({ call: need(native, 'agent-desktop'), step, warn: text => warnings.push(text), note: text => notes.push(text), picture, pace: () => pace });
-  const seen = createVisible({ step, warn: text => warnings.push(text), pace: () => pace,
+  const desk = createDesktop({ call: need(native, 'agent-desktop', gate), step, warn: text => warnings.push(text), note, picture, pace: () => pace,
+    inputAllowed: () => allowInput });
+  const seen = createVisible({ step, warn: text => warnings.push(text), pace: () => pace, takeInput,
     flow: (command, options) => {
       if (!flow) throw new Error('The visible page helpers are not available here.');
-      return flow(command, options);
+      return flow(command, options, gate);
     } });
   const helpers = {
     web: named('web', page.web),
@@ -153,12 +175,13 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     visible: named('visible', seen.visible),
     human: value => {
       if (![false, undefined, 'natural', 'careful'].includes(value)) throw Object.assign(new Error('human() takes "natural", "careful" or false.'), { code: 'INVALID_ARGS' });
+      if (value && !allowInput) throw inputRefused('human("' + value + '") moves the real mouse and keyboard.');
       pace = value || undefined;
     },
     readTime: text => (pace ? delay(readingMs(text) * (pace === 'careful' ? 1.3 : 1)) : Promise.resolve()),
     flow: (command, options = {}) => step('flow.' + command, '', () => {
       if (!flow || command === 'run') throw new Error('flow() cannot run "' + command + '".');
-      return flow(String(command), options);
+      return flow(String(command), options, gate);
     }),
     sleep: ms => delay(ms),
     waitFor: async (condition, { timeout: wait = 10000, interval = 200 } = {}) => {
@@ -177,11 +200,17 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
   };
 
   const report = () => ({
-    ...(warnings.length ? { warnings } : {}), ...(logs.length ? { logs } : {}), steps, elapsed_ms: Date.now() - started,
+    ...(warnings.length ? { warnings } : {}), ...(logs.length ? { logs } : {}), steps,
+    ...(inputUsed ? { input_used: true } : {}), elapsed_ms: Date.now() - started,
   });
   let body;
   try { body = new AsyncFunction(...Object.keys(helpers), source); } catch (err) {
     throw Object.assign(new Error('The script does not parse: ' + err.message), { code: 'INVALID_ARGS', report: report() });
+  }
+  const uses = allowInput ? [] : inputUses(source);
+  if (uses.length) {
+    throw Object.assign(inputRefused('This script uses the real mouse and keyboard (' + uses.join(', ') + '), so none of it ran.',
+      'Ask the user first; when they agree, run it again with --allow-input.'), { report: report() });
   }
   let timer;
   const expired = new Promise((_, reject) => {

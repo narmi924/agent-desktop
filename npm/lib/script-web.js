@@ -14,6 +14,13 @@ const NOT_READY = /would not reach it|is covered by|cannot take focus|No option 
 const PATIENCE_MS = 4000;
 const SETTLE_MS = 2000;
 const VIEW_LIMIT = 6000;
+const QUIET_MS = 400;
+const EFFECTS = [
+  ['url_changed', 'the page went to another address'],
+  ['new_tab', 'a new tab opened'],
+  ['dialog_opened', 'a dialog opened'],
+  ['target_removed', 'the control is gone from the page'],
+];
 
 function unquote(text) {
   return text === undefined ? '' : text.replace(/\\(.)/g, '$1');
@@ -76,7 +83,7 @@ function extractTable(selector) {
 }
 
 /** Page helpers for a script: every target is a visible name, a ref or `css:SELECTOR`. */
-function createWeb({ call, step, warn, flags = [], fetchPage }) {
+function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage }) {
   let known;
   const ab = (args, options) => call([...flags, '--json', ...args], options);
   const controls = async fresh => {
@@ -138,6 +145,8 @@ function createWeb({ call, step, warn, flags = [], fetchPage }) {
   }
 
   function confirmed(label, target, reply) {
+    const effects = reply?.receipt?.effects ?? {};
+    for (const [key, text] of EFFECTS) if (effects[key]) note(text);
     if (reply?.receipt?.verified === false) warn(label + ' "' + target + '" was sent, but the page did not confirm it.');
     return reply?.receipt?.verified !== false;
   }
@@ -208,6 +217,20 @@ function createWeb({ call, step, warn, flags = [], fetchPage }) {
         const found = shows((await ab(['snapshot', '-c'])).snapshot, String(text));
         if (found) { changed(); return found; }
         if (Date.now() >= until) throw Object.assign(new Error('The text "' + text + '" did not appear within ' + timeout + ' ms.'), { code: 'TIMEOUT' });
+        await delay(120);
+      }
+    }),
+    waitIdle: ({ timeout = 10000, quiet = QUIET_MS } = {}) => step('web.waitIdle', '', async () => {
+      const until = Date.now() + timeout;
+      let last, since = Date.now();
+      for (;;) {
+        const { snapshot } = await ab(['snapshot', '-c']);
+        if (snapshot !== last) { last = snapshot; since = Date.now(); } else if (Date.now() - since >= quiet) { changed(); return snapshot; }
+        if (Date.now() >= until) {
+          changed();
+          warn('web.waitIdle: the page was still changing after ' + timeout + ' ms; this is its latest read.');
+          return snapshot;
+        }
         await delay(120);
       }
     }),

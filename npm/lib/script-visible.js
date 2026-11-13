@@ -23,7 +23,7 @@ function readingMs(text, random = Math.random) {
  * text shows. `pace()` is the human pace the script asked for, if any. Every command is marked
  * `visible`, so none of them is handed to a background browser connection.
  */
-function createVisible({ flow, step, warn, pace }) {
+function createVisible({ flow, step, warn, pace, takeInput = () => {} }) {
   let handle, windowId;
   const human = () => ({ visible: true, ...(pace() ? { human: pace() } : {}) });
 
@@ -65,10 +65,15 @@ function createVisible({ flow, step, warn, pace }) {
   const visible = {
     use: window => step('visible.use', window ?? '', async () => shown(await bind(window))),
     read: () => step('visible.read', '', async () => shown(await bind())),
-    click: (name, { role, nth, expectText } = {}) => step('visible.click', name, () => reaching(name, page => flow('click',
-      { page, on: name, role, nth: nth === undefined ? undefined : String(nth), 'expect-text': expectText, ...human() }))),
-    hover: (name, { role, nth } = {}) => step('visible.hover', name, () => reaching(name, page => flow('point',
-      { page, on: name, role, nth: nth === undefined ? undefined : String(nth), ...human() }))),
+    click: (name, { role, nth, expectText } = {}) => step('visible.click', name, async () => {
+      takeInput('visible.click');
+      return reaching(name, page => flow('click',
+        { page, on: name, role, nth: nth === undefined ? undefined : String(nth), 'expect-text': expectText, ...human() }));
+    }),
+    hover: (name, { role, nth } = {}) => step('visible.hover', name, async () => {
+      takeInput('visible.hover');
+      return reaching(name, page => flow('point', { page, on: name, role, nth: nth === undefined ? undefined : String(nth), ...human() }));
+    }),
     choose: (name, { off = false } = {}) => step('visible.choose', name, async () => {
       const find = page => page.controls.filter(control => control.name === name && TICKS.includes(control.role));
       const boxes = find(await bind());
@@ -79,6 +84,7 @@ function createVisible({ flow, step, warn, pace }) {
       const wanted = !off;
       if (off && boxes[0].role === 'radiobutton') throw Object.assign(new Error('A radio button is cleared by choosing another one.'), { code: 'INVALID_ARGS' });
       if (Boolean(boxes[0].checked) === wanted) return { changed: false, checked: wanted };
+      takeInput('visible.choose');
       await reaching(name, page => flow('click', { page, on: name, role: boxes[0].role, ...human() }));
       const until = Date.now() + CONFIRM_MS;
       let seen = 0;
@@ -94,16 +100,19 @@ function createVisible({ flow, step, warn, pace }) {
       return { changed: false, checked: !wanted };
     }),
     type: (field, text, { multiline, replace, at } = {}) => step('visible.type', field, async () => {
+      takeInput('visible.type');
       const report = await on(page => flow('type', { page, field, value: String(text), multiline: multiline || undefined, replace: replace || undefined, at, ...human() }));
       if (!report.verified) warn('visible.type "' + field + '" sent the keys, but the field does not show the text. ' + (report.message ?? ''));
       return report.verified;
     }),
     scrollTo: (text, { over, lines } = {}) => step('visible.scrollTo', text, async () => {
+      takeInput('visible.scrollTo');
       const report = await on(page => flow('wheel', { page, over, until: String(text), lines: lines === undefined ? undefined : String(lines), ...human() }));
       if (!report.verified) throw Object.assign(new Error('"' + text + '" did not come into view. ' + (report.message ?? '')), { code: 'ELEMENT_NOT_FOUND' });
       return true;
     }),
     scroll: (lines = 3, { over } = {}) => step('visible.scroll', lines, async () => {
+      takeInput('visible.scroll');
       const report = await on(page => flow('wheel', { page, over, lines: String(lines), ...human() }));
       return Boolean(report.verified);
     }),

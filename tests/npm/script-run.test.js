@@ -26,7 +26,7 @@ function fakeTools(answers) {
     if (answer === undefined) throw new Error('unexpected command: ' + binary + ' ' + words.join(' '));
     return typeof answer === 'function' ? answer(words, options, calls) : answer;
   };
-  return { call, calls, run: (source, extra) => runScript(source, { browser: 'browser', native: 'desktop', flags: ['--session', 't'], call, ...extra }) };
+  return { call, calls, run: (source, extra) => runScript(source, { browser: 'browser', native: 'desktop', flags: ['--session', 't'], call, allowInput: true, ...extra }) };
 }
 
 test('a page read becomes controls with a role, a name, a ref and nearby text', () => {
@@ -242,7 +242,8 @@ test('desktop steps find the window by name and the control by name, and text go
   const fill = tools.calls.find(c => c.words[0] === 'set-value');
   assert.deepEqual([fill.words.join(' '), fill.input], ['set-value @s1:e1 --stdin', '报告.txt']);
   assert.equal(data.warnings, undefined, 'a click has nothing to read back, so it is not reported as unconfirmed');
-  assert.equal(tools.calls.filter(c => c.words[0] === 'list-windows').length, 1, 'the window is looked up once per script');
+  assert.equal(tools.calls.filter(c => c.words[0] === 'list-windows').length, 3,
+    'the window is looked up once per script; the click reads the list before and after to see what it opened');
   await assert.rejects(tools.run(`await desktop.read('chrome');`), { code: 'WINDOW_NOT_FOUND' });
   assert.equal((await tools.run(`return await desktop.waitText('notepad', '共 3');`)).result, '共 3 行');
 });
@@ -434,7 +435,8 @@ test('a window with nothing but a title bar is clicked by its picture, with the 
   assert.match(click.words[click.words.indexOf('--frame') + 1], /scene-.*\.png$/);
   const ocr = tools.calls.find(c => c.words[0] === 'ocr');
   assert.equal(ocr.words[ocr.words.indexOf('--scale') + 1], '2.25', 'the picture is read at the scale it was captured at');
-  assert.match(data.steps[0], /^desktop\.click 发送 \(by picture at 1012,716\) \d+ms$/);
+  assert.match(data.steps[0], /^desktop\.click 发送 \(real mouse and keyboard, by picture at 1012,716\) \d+ms$/);
+  assert.equal(data.input_used, true);
 });
 
 test('a name no control has is looked for in the picture at once, not after the wait', async () => {
@@ -448,7 +450,7 @@ test('a name no control has is looked for in the picture at once, not after the 
 test('a name a control has never touches the picture, and picture:false keeps a step to controls', async () => {
   const tools = drawnTools({ 保存: [SPOT('保存', 50, 60)] }, { tree: WINDOW });
   await tools.run(`await desktop.click('自绘', '文件名');`);
-  assert.deepEqual(tools.calls.map(c => c.words[0]), ['list-windows', 'snapshot', 'click']);
+  assert.deepEqual(tools.calls.map(c => c.words[0]), ['list-windows', 'snapshot', 'click', 'list-windows']);
   await assert.rejects(tools.run(`await desktop.click('自绘', '发送', { picture: false, timeout: 50 });`), { code: 'ELEMENT_NOT_FOUND' });
   assert.ok(!tools.calls.some(c => c.words[0] === 'ocr'), 'the picture is captured for the failure scene only, never read');
 });
