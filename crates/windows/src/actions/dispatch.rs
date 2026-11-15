@@ -30,6 +30,7 @@ mod imp {
         CLICK_CHAIN, ChainRung, DeliveryOutcome, INVOKE_LABEL, build_step, execute_chain, gated,
         invoke_available, invoke_pattern_delivered,
     };
+    use crate::actions::click_disclosure::{ClickRoute, route_for as click_route_for};
     use crate::actions::disclosure::{collapse_steps, expand_steps};
     use crate::actions::focus::focus_element;
     use crate::actions::mutation::{classify_success, classify_write};
@@ -224,6 +225,14 @@ mod imp {
         policy: InteractionPolicy,
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
+        if let ClickRoute::Disclose { want_expanded } = click_route_for(element) {
+            let steps = if want_expanded {
+                expand_steps(element, policy, deadline)?
+            } else {
+                collapse_steps(element, policy, deadline)?
+            };
+            return Ok(ActionResult::from_execution(&Action::Click, steps));
+        }
         let steps = click_chain_judged_for(
             deadline,
             policy,
