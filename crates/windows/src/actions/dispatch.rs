@@ -225,7 +225,8 @@ mod imp {
         policy: InteractionPolicy,
         deadline: Deadline,
     ) -> Result<ActionResult, AdapterError> {
-        if let ClickRoute::Disclose { want_expanded } = click_route_for(element) {
+        let invoke = invoke_available(element);
+        if let ClickRoute::Disclose { want_expanded } = click_route_for(element, invoke) {
             let steps = if want_expanded {
                 expand_steps(element, policy, deadline)?
             } else {
@@ -237,7 +238,7 @@ mod imp {
             deadline,
             policy,
             ClickAvailability {
-                invoke_available: invoke_available(element),
+                invoke_available: invoke,
                 legacy_available: click_legacy_available(element),
             },
             || {

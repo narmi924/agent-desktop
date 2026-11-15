@@ -44,15 +44,15 @@ pub(crate) fn click_route(traits: ClickTraits) -> ClickRoute {
 #[cfg(target_os = "windows")]
 mod imp {
     use super::{ClickRoute, ClickTraits, click_route};
-    use crate::actions::chain::invoke_available;
     use crate::actions::disclosure::expand_state_if_available;
     use crate::tree::element::UIAElement;
     use crate::tree::properties::property_ids::TreeProperty;
     use crate::tree::properties::read_one;
     use uiautomation::types::ControlType;
 
-    pub(crate) fn route_for(element: &UIAElement) -> ClickRoute {
-        let invoke = invoke_available(element);
+    /// Routes a click from the Invoke availability the caller already read,
+    /// so a button with Invoke costs no extra property read.
+    pub(crate) fn route_for(element: &UIAElement, invoke: bool) -> ClickRoute {
         if invoke {
             return ClickRoute::Chain;
         }
