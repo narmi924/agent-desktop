@@ -20,6 +20,7 @@ const { runScript, api } = require('../lib/script-run');
 const { space, spaceFlags } = require('../lib/space');
 const { readPage } = require('../lib/page-read');
 const { markRepeat, clearRepeat } = require('../lib/script-repeat');
+const routines = require('../lib/routine-command');
 
 const usage = [
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
@@ -42,7 +43,9 @@ const usage = [
   'agent-desktop-workflow browser-move --session NAME [--tab TAB] --surface CSS --from X,Y --to X,Y [--object CSS] [--after IMAGE.png]',
   'agent-desktop-workflow drop-file --session NAME [--tab TAB] --input DROP_ZONE_CSS --file ABSOLUTE_PATH',
   'agent-desktop-workflow replay --file FLOW.jsonl [--window ID] [--speed N]   (record a flow by setting AGENT_DESKTOP_RECORD=FLOW.jsonl)',
-  'agent-desktop-workflow run [--file SCRIPT.js] [--session NAME | --space | --chrome] [--allow-input] [--timeout-ms MS]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers. Without --allow-input a step that needs the real mouse and keyboard is refused before anything is sent)',
+  'agent-desktop-workflow run [--file SCRIPT.js] [--session NAME | --space | --chrome] [--allow-input] [--allow-final] [--timeout-ms MS] [--args JSON | --args-file FILE.json] [--save NAME --about TEXT [--param name="what it is"]... [--replace]]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers. Without --allow-input a step that needs the real mouse and keyboard is refused before anything is sent; without --allow-final a send, submit, pay or delete step is refused the same way. --save keeps a script that succeeded as a routine; argument values are not stored)',
+  'agent-desktop-workflow routine run NAME [--args JSON | --args-file FILE.json] [--allow-input] [--allow-final] [--session NAME | --space | --chrome]   (runs a saved routine and stops at the first step whose effect differs from the saved runs: EFFECT_MISMATCH)',
+  'agent-desktop-workflow routine list [--for TEXT] | routine show NAME | routine remove NAME',
   'agent-desktop-workflow read --url URL   (the text of a web page: a plain request and a background browser run together and the first full answer is returned)',
   'agent-desktop-workflow space [--login URL | --close]   (the agent\'s own browser profile: --login shows its window so the user signs in once; later runs with --space keep that sign-in in the background)',
 ].join('\n');
@@ -269,26 +272,28 @@ async function main() {
     replay: ['file', 'window', 'speed'],
     'browser-move': ['session', 'tab', 'surface', 'from', 'to', 'object', 'after'],
     'drop-file': ['session', 'tab', 'input', 'file'],
-    run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api', 'allow-input'],
+    run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api', 'allow-input', 'allow-final', 'args', 'args-file', 'save', 'about', 'param', 'replace'],
+    routine: ['args', 'args-file', 'allow-input', 'allow-final', 'session', 'chrome', 'space', 'timeout-ms', 'for'],
     space: ['login', 'close'],
     read: ['url'],
   };
   if (!Object.hasOwn(commands, command)) throw new Error(usage);
   const names = commands[command];
-  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close','allow-input'].includes(key) ? 'boolean' : 'string' }]));
-  const { values } = parseArgs({ args: joinCoordinates(args), options });
+  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close','allow-input','allow-final'].includes(key) ? 'boolean' : 'string', ...(key === 'param' ? { multiple: true } : {}) }]));
+  const { values, positionals } = parseArgs({ args: joinCoordinates(args), options, allowPositionals: command === 'routine' });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   if (command === 'run' && values.api) { console.log(api); return; }
   const own = {
     replay: () => replay(values),
     run: () => script(values),
+    routine: () => routine(positionals, values),
     space: () => space(browserBinary(), values),
     read: () => readPage(browserBinary(), values.url ?? ''),
   };
   const data = await (own[command] ?? (() => perform(command, values)))();
   if (process.env.AGENT_DESKTOP_RECORD) recordStep(process.env.AGENT_DESKTOP_RECORD, command, values);
   console.log(JSON.stringify({ ok: true, data }));
-  if (command === 'run') leave(0);
+  if (command === 'run' || command === 'routine') leave(0);
 }
 
 function nativeBinary() {
@@ -316,18 +321,47 @@ async function replay({ file, window, speed = '1' }) {
   return { steps: report.length, report };
 }
 
-async function script({ file, session, chrome, space: own, 'timeout-ms': wait = '120000', 'allow-input': allowInput = false }) {
+/** The runner both `run` and `routine run` use: same helpers, same refusals, same reply. */
+function scriptRunner({ session, chrome, space: own, 'timeout-ms': wait = '120000', 'allow-input': allowInput = false, 'allow-final': allowFinal = false }) {
   const timeout = Number(wait);
-  if (!(timeout > 0) || (!file && process.stdin.isTTY)) throw new Error('Pipe a script to run, or pass --file SCRIPT.js. --timeout-ms takes a positive number.');
+  if (!(timeout > 0)) throw new Error('--timeout-ms takes a positive number.');
   if ([session, chrome, own].filter(Boolean).length > 1) throw new Error('Choose one of --session NAME, --space and --chrome.');
-  const source = readFileSync(file ?? 0, 'utf8').replace(/^\uFEFF/, '');
   process.env.AGENT_DESKTOP_POINTER_HOLDER ??= String(process.pid);
+  return (source, extra) => runScript(source, {
+    browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform, allowInput, allowFinal,
+    flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? 'work'],
+    env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env, ...extra,
+  });
+}
+
+async function script(values) {
+  const { file, save, about, param, replace = false } = values;
+  if (!file && process.stdin.isTTY) throw new Error('Pipe a script to run, or pass --file SCRIPT.js.');
+  if ((about !== undefined || param || replace) && !save) throw new Error('--about, --param and --replace go with --save NAME.');
+  const args = routines.readArgs(values, path => readFileSync(path, 'utf8'));
+  const run = scriptRunner(values);
+  const source = readFileSync(file ?? 0, 'utf8').replace(/^\uFEFF/, '');
   try {
-    const done = await runScript(source, {
-      browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform, allowInput,
-      flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? 'work'],
-      env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env,
-    });
+    const done = await run(source, { args, watch: Boolean(save) });
+    clearRepeat();
+    if (save) return { ...done, saved: routines.save({ name: save, about, params: param, replace, source, args, done }) };
+    const known = routines.knownRoutines(done.trail);
+    return known.length ? { ...done, known_routines: known, known_note: 'Saved routines already work on this app or site. Before writing steps here again, check them with routine show NAME and use routine run NAME.' } : done;
+  } catch (err) {
+    throw markRepeat(err);
+  }
+}
+
+async function routine([action, name, ...rest], values) {
+  if (rest.length) throw new Error(usage);
+  if (action === 'list') return routines.list(values.for);
+  if (!name) throw new Error('Name the routine: routine ' + (action ?? 'run') + ' NAME.');
+  if (action === 'show') return routines.show(name);
+  if (action === 'remove') return routines.remove(name);
+  if (action !== 'run') throw new Error(usage);
+  const args = routines.readArgs(values, path => readFileSync(path, 'utf8'));
+  try {
+    const done = await routines.runRoutine(name, args, scriptRunner(values));
     clearRepeat();
     return done;
   } catch (err) {
@@ -384,7 +418,9 @@ main().catch(err => {
   const partial=err.details?.typed_keystrokes;
   console.error(JSON.stringify({ok:false,error:err.message,...(err.disposition ? {code:err.code,disposition:err.disposition} : {}),
     ...(Number.isInteger(partial) ? {typed_keystrokes:partial,keystrokes:err.details.keystrokes} : {}),
-    ...(err.report ? {...(err.code && !err.disposition ? {code:err.code} : {}),...err.report} : {})}));
+    ...(err.report ? {...(err.code && !err.disposition ? {code:err.code} : {}),...err.report} : {}),
+    ...(['MISSING_ARGS','EFFECT_MISMATCH','FINAL_NOT_ALLOWED','ROUTINE_NOT_FOUND','ROUTINE_EXISTS','INVALID_ARGS'].includes(err.code) && !err.report ? {code:err.code} : {}),
+    ...(err.details && ['MISSING_ARGS','EFFECT_MISMATCH','FINAL_NOT_ALLOWED'].includes(err.code) ? {details:err.details} : {})}));
   process.exitCode=1;
   if (err.report) leave(1);
 });

@@ -4,6 +4,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { pick } = require('./script-match');
 const { createPicture, renderLines } = require('./script-picture');
 const { inputRefused } = require('./script-input');
+const { markedPicture } = require('./final-picture');
 
 const WRITABLE = ['textfield', 'combobox', 'incrementor', 'slider'];
 const TICKS = ['checkbox', 'radiobutton', 'switch'];
@@ -16,6 +17,8 @@ const TYPE_WAIT_MS = 30000;
 const TYPE_KEY_MS = 700;
 const QUIET_MS = 400;
 const EFFECT_LIMIT = 3;
+const BLOCKED_AFTER_MS = 1500;
+const BLOCKED_POLL_MS = 600;
 
 function isTitleBar(node) {
   return node.role === 'titlebar' || (node.native_id?.kind === 'automation_id' && node.native_id.value === 'TitleBar');
@@ -69,10 +72,10 @@ const isRef = target => /^@\w+:e\d+$/.test(String(target));
  * A name is looked for among the window's controls first; when no control has it, the window's
  * picture is read and the text found there is used instead, unless the call passes {picture: false}.
  */
-function createDesktop({ call, step, warn, note = () => {}, picture: makePicture = createPicture, pace = () => undefined, inputAllowed = () => true }) {
-  const views = new Map(), found = new Map(), drawnWindows = new Set();
-  let last, listed;
-  const ad = (args, options) => call(args.map(String), options);
+function createDesktop({ call, step, warn, note = () => {}, picture: makePicture = createPicture, pace = () => undefined, inputAllowed = () => true, touch = () => {}, watching = () => false }) {
+  const views = new Map(), found = new Map(), drawnWindows = new Set(), apps = new Map();
+  let last, listed, pending;
+  const ad = (args, options) => call(args.map(String), pending ? { signal: pending, ...options } : options);
   const picture = makePicture({ ad });
   const asPerson = () => (pace() ? ['--headed', '--human', pace()] : []);
 
@@ -80,12 +83,19 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     const wanted = filter === undefined ? undefined : String(filter).toLowerCase();
     const all = listed ?? await ad(['list-windows']);
     listed = undefined;
+    for (const w of all) apps.set(w.id, w.app_name);
     return all
       .filter(w => !wanted || w.id === filter || (w.app_name ?? '').toLowerCase().includes(wanted) || (w.title ?? '').toLowerCase().includes(wanted))
       .map(w => ({ id: w.id, app: w.app_name, title: w.title, minimized: Boolean(w.minimized), focused: Boolean(w.is_focused) }));
   }
 
   async function resolve(window) {
+    const id = await resolveId(window);
+    if (apps.has(id)) touch({ app: apps.get(id) });
+    return id;
+  }
+
+  async function resolveId(window) {
     if (/^w-\d+$/.test(String(window))) return String(window);
     if (found.has(window)) return found.get(window);
     const open = (await windows(window)).filter(w => !w.minimized);
@@ -177,22 +187,51 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     };
     const before = await list();
     listed = before;
+    const shown = w => w.visible !== false && !w.minimized;
     let result;
-    try { result = await run(); } finally { listed = undefined; }
+    const control = before ? new AbortController() : undefined;
+    try {
+      pending = control?.signal;
+      const running = run();
+      result = control ? await Promise.race([running, blocked(before.filter(shown), running, control)]) : await running;
+    } finally { listed = undefined; pending = undefined; }
     const after = before && await list();
     if (!before || !after) return result;
-    const shown = w => w.visible !== false && !w.minimized;
     const was = new Map(before.filter(shown).map(w => [w.id, w]));
     const now = new Map(after.filter(shown).map(w => [w.id, w]));
     const effects = [
-      ...[...now.values()].filter(w => !was.has(w.id)).map(w => 'opened window "' + w.title + '" ' + w.id),
-      ...[...was.values()].filter(w => !now.has(w.id)).map(w => 'closed window "' + w.title + '"'),
+      ...[...now.values()].filter(w => !was.has(w.id)).map(w => ['opened window "' + w.title + '" ' + w.id, { kind: 'window_opened', app: w.app_name, title: w.title }]),
+      ...[...was.values()].filter(w => !now.has(w.id)).map(w => ['closed window "' + w.title + '"', { kind: 'window_closed', app: w.app_name, title: w.title }]),
       ...[...now.values()].filter(w => was.has(w.id) && was.get(w.id).title !== w.title)
-        .map(w => 'window title "' + was.get(w.id).title + '" -> "' + w.title + '"'),
+        .map(w => ['window title "' + was.get(w.id).title + '" -> "' + w.title + '"', { kind: 'window_title', app: w.app_name, title: w.title }]),
     ];
-    for (const effect of effects.slice(0, EFFECT_LIMIT)) note(effect);
+    effects.forEach(([text, effect], index) => note(index < EFFECT_LIMIT ? text : undefined, effect));
     if (effects.length > EFFECT_LIMIT) note((effects.length - EFFECT_LIMIT) + ' more window changes');
     return result;
+  }
+
+  /**
+   * A click whose app opens a modal dialog can wait until the dialog closes. A window that opens while the action
+   * still waits ends the wait: the waiting command stops, the step counts as sent, and the new window is its effect.
+   */
+  async function blocked(before, running, control) {
+    let done = false;
+    running.then(() => { done = true; }, () => { done = true; });
+    const known = new Set(before.map(w => w.id));
+    await delay(BLOCKED_AFTER_MS);
+    while (!done) {
+      let now;
+      try { now = await call(['list-windows'], {}); } catch { now = undefined; }
+      const opened = (now ?? []).filter(w => !known.has(w.id) && w.visible !== false && !w.minimized);
+      if (opened.length && !done) {
+        running.catch(() => {});
+        control.abort(Object.assign(new Error('A window opened while the step waited.'), { code: 'ACTION_BLOCKED' }));
+        warn('The step opened ' + opened.map(w => '"' + w.title + '"').join(', ') + ' and the app waits for it; the step was sent but not confirmed.');
+        return undefined;
+      }
+      await delay(BLOCKED_POLL_MS);
+    }
+    return running;
   }
 
   /** Clicks where the picture shows the text: the window comes to the front and the real mouse moves. */
@@ -368,6 +407,19 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     }),
   };
 
+  /** A picture of the window with the target framed in red, for a step that was refused before it was sent. */
+  async function markTarget(window, target) {
+    const id = await resolve(window);
+    const ref = await locate(window, target);
+    const box = (await ad(['get', ref, '--property', 'bounds'])).value;
+    const frame = (await ad(['list-windows'])).find(w => w.id === id)?.bounds;
+    if (!box || !frame) return undefined;
+    return markedPicture(async path => { await ad(['screenshot', '--window-id', id, path]); }, png => {
+      const left = frame.x + Math.max(0, (frame.width - png.width) / 2);
+      return { x: box.x - left, y: box.y - frame.y, width: box.width, height: box.height };
+    });
+  }
+
   async function scene() {
     if (!last) return undefined;
     const { text } = await view(last);
@@ -376,7 +428,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     return { surface: 'desktop', window: last, view: text.length > VIEW_LIMIT ? text.slice(0, VIEW_LIMIT) + '\n… (cut)' : text, ...(screenshot ? { screenshot } : {}) };
   }
 
-  return { desktop, scene };
+  return { desktop, markTarget, scene };
 }
 
 module.exports = { createDesktop, renderTree };

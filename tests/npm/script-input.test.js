@@ -43,7 +43,7 @@ function tools(answers, extra = {}) {
     if (answer === undefined) throw new Error('unexpected command: ' + binary + ' ' + words.join(' '));
     return typeof answer === 'function' ? answer(words, options, calls) : answer;
   };
-  const run = (source, options) => runScript(source, { browser: 'browser', native: 'desktop', flags: ['--session', 't'], call, ...extra, ...options });
+  const run = (source, options) => runScript(source, { browser: 'browser', native: 'desktop', flags: ['--session', 't'], call, allowFinal: true, ...extra, ...options });
   return { calls, run };
 }
 

@@ -6,8 +6,9 @@ const DEFAULT_WAIT_MS = 30000;
 const MAX_REPLY_BYTES = 96 * 1024 * 1024;
 
 /** Runs one CLI command and returns the parsed `data` of its JSON reply. */
-function invoke(binary, args, { input, timeout = DEFAULT_WAIT_MS, env, children } = {}) {
+function invoke(binary, args, { input, timeout = DEFAULT_WAIT_MS, env, children, signal } = {}) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
     const child = spawn(binary, args, { windowsHide: true, env: env ?? process.env, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
     children?.add(child);
     let out = '', size = 0, settled = false;
@@ -22,6 +23,10 @@ function invoke(binary, args, { input, timeout = DEFAULT_WAIT_MS, env, children 
       child.kill();
       finish(reject, Object.assign(new Error('No answer within ' + timeout + ' ms.'), { code: 'TIMEOUT' }));
     }, timeout);
+    signal?.addEventListener('abort', () => {
+      child.kill();
+      finish(reject, signal.reason);
+    }, { once: true });
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', chunk => {
       size += chunk.length;

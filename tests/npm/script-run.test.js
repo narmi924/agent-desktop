@@ -26,7 +26,7 @@ function fakeTools(answers) {
     if (answer === undefined) throw new Error('unexpected command: ' + binary + ' ' + words.join(' '));
     return typeof answer === 'function' ? answer(words, options, calls) : answer;
   };
-  return { call, calls, run: (source, extra) => runScript(source, { browser: 'browser', native: 'desktop', flags: ['--session', 't'], call, allowInput: true, ...extra }) };
+  return { call, calls, run: (source, extra) => runScript(source, { browser: 'browser', native: 'desktop', flags: ['--session', 't'], call, allowInput: true, allowFinal: true, ...extra }) };
 }
 
 test('a page read becomes controls with a role, a name, a ref and nearby text', () => {

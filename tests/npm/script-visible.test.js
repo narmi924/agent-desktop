@@ -22,7 +22,7 @@ function run(source, flow, native = {}) {
     if (answer === undefined) throw new Error('unexpected command: ' + args.join(' '));
     return answer;
   };
-  const result = runScript(source, { native: 'desktop', call, allowInput: true,
+  const result = runScript(source, { native: 'desktop', call, allowInput: true, allowFinal: true,
     flow: async (command, options) => { flows.push([command, JSON.parse(JSON.stringify(options))]); return flow(command, options, flows); } });
   return { result, flows, calls };
 }

@@ -2,6 +2,7 @@
 
 const { setTimeout: delay } = require('node:timers/promises');
 const { pick } = require('./script-match');
+const { markedPicture } = require('./final-picture');
 
 const LINE = /^(\s*)- (\S+?)(?: "((?:[^"\\]|\\.)*)")?(?: \[(.*)\])?(?:: (.*))?$/;
 const WRITABLE = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider'];
@@ -21,6 +22,10 @@ const EFFECTS = [
   ['dialog_opened', 'a dialog opened'],
   ['target_removed', 'the control is gone from the page'],
 ];
+
+function hostOf(url) {
+  try { return new URL(String(url)).host || undefined; } catch { return undefined; }
+}
 
 function unquote(text) {
   return text === undefined ? '' : text.replace(/\\(.)/g, '$1');
@@ -76,6 +81,12 @@ function selectedText() {
   return read(document) || null;
 }
 
+function modalTexts() {
+  const shown = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+  return [...document.querySelectorAll('dialog[open], [aria-modal="true"], [role=dialog], [role=alertdialog]')].filter(shown)
+    .map(el => (el.innerText || el.getAttribute('aria-label') || '').replace(/\s+/g, ' ').trim().slice(0, 120));
+}
+
 function extractTable(selector) {
   const tables = document.querySelectorAll(selector || 'table');
   if (tables.length !== 1) throw new Error('Expected one table, found ' + tables.length);
@@ -83,14 +94,20 @@ function extractTable(selector) {
 }
 
 /** Page helpers for a script: every target is a visible name, a ref or `css:SELECTOR`. */
-function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage }) {
-  let known;
+function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage, touch = () => {}, watching = () => false }) {
+  let known, host, modalsSeen;
   const ab = (args, options) => call([...flags, '--json', ...args], options);
   const controls = async fresh => {
     if (!known || fresh) known = parseControls((await ab(['snapshot', '-i'])).snapshot);
     return known;
   };
   const changed = () => { known = undefined; };
+  /** The text of each modal dialog open on the page now: <dialog open> and shown elements marked aria-modal or role dialog. */
+  const openModals = async () => {
+    try {
+      return (await ab(['eval', '--stdin'], { input: '(' + modalTexts + ')()' })).result ?? [];
+    } catch { return []; }
+  };
 
   async function locate(target, options) {
     if (typeof target !== 'string' || !target) throw Object.assign(new Error('Name the control: its visible name, a ref such as @e5, or css:SELECTOR.'), { code: 'INVALID_ARGS' });
@@ -146,7 +163,8 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage })
 
   function confirmed(label, target, reply) {
     const effects = reply?.receipt?.effects ?? {};
-    for (const [key, text] of EFFECTS) if (effects[key]) note(text);
+    if (host) touch({ host });
+    for (const [key, text] of EFFECTS) if (effects[key]) note(text, { kind: key, app: 'web', ...(host ? { host } : {}) });
     if (reply?.receipt?.verified === false) warn(label + ' "' + target + '" was sent, but the page did not confirm it.');
     return reply?.receipt?.verified !== false;
   }
@@ -159,6 +177,9 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage })
     open: url => step('web.open', url, async () => {
       changed();
       const { url: at, title } = await ab(['open', String(url)], { timeout: 60000 });
+      host = hostOf(at ?? url);
+      modalsSeen = undefined;
+      if (host) touch({ host });
       return { url: at, title };
     }),
     read: ({ all = false } = {}) => step('web.read', all ? 'all' : '', async () => {
@@ -186,9 +207,11 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage })
       return confirmed('web.type', target, reply);
     }),
     click: (target, options) => step('web.click', target, async () => {
+      const modals = watching() ? modalsSeen ?? await openModals() : [];
       const reply = await act(target, options, at => ab(['click', at]),
         options?.role ? undefined : byName(['text', 'button', 'link'], target, 'click'));
       changed();
+      if (watching() && (modalsSeen = await openModals()).some(text => !modals.includes(text))) note('a dialog opened on the page', { kind: 'dialog_opened', app: 'web', ...(host ? { host } : {}) });
       return confirmed('web.click', target, reply);
     }),
     select: (target, ...choices) => step('web.select', target, async () => {
@@ -276,13 +299,25 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage })
     }),
   };
 
+  /** A picture of the page with the target framed in red, for a step that was refused before it was sent. */
+  async function markTarget(target) {
+    const ref = await locate(target, {});
+    if (!ref) return undefined;
+    const box = await ab(['get', 'box', ref]);
+    const width = (await ab(['eval', 'window.innerWidth'])).result;
+    return markedPicture(async path => { await ab(['screenshot', path]); }, png => {
+      const scale = width > 0 ? png.width / width : 1;
+      return { x: box.x * scale, y: box.y * scale, width: box.width * scale, height: box.height * scale };
+    });
+  }
+
   async function scene() {
     const data = await ab(['snapshot', '-c']);
     const view = data.snapshot.length > VIEW_LIMIT ? data.snapshot.slice(0, VIEW_LIMIT) + '\n… (cut)' : data.snapshot;
     return { surface: 'web', url: data.origin, view };
   }
 
-  return { web, scene };
+  return { web, markTarget, scene };
 }
 
 module.exports = { createWeb, parseControls, shows };

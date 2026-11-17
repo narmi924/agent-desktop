@@ -7,6 +7,8 @@ const { createDesktop } = require('./script-desktop');
 const { createVisible, readingMs } = require('./script-visible');
 const { readPage } = require('./page-read');
 const { inputUses, inputRefused } = require('./script-input');
+const { argsView, missingArgs } = require('./script-args');
+const { scanFinals, guardFinals, finalRefused } = require('./script-final');
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const SCENE_WAIT_MS = 8000;
@@ -16,10 +18,13 @@ const api = [
   'A script is the body of an async function. It runs many steps in one call and returns one JSON reply.',
   'Return a value to get it back as data.result. A step that fails stops the script; the reply then names the step',
   'and carries data.scene, a fresh read of the page or window, so the next script can continue from there.',
+  'Values given with run --args JSON are read as args.name; a script that reads a name nobody gave stops with MISSING_ARGS.',
   '',
   'A target is the name shown in quotes by read(), a ref (@e5), or css:SELECTOR. When a name repeats, add',
   '{near: "text in the same row or card"}, {nth: 2} or {role: "button"}.',
   'Steps wait up to 4 s for a control that is not there yet, is disabled or is covered; {timeout: ms} changes that.',
+  'A click on a control named like 发送, 提交, 付款, 删除, Send, Submit, Pay or Delete, and any step given {final: "what it does"},',
+  'is a final step: without run --allow-final it is refused with FINAL_NOT_ALLOWED before anything is sent. {final: false} clears a name.',
   'Names reach into frames and shadow DOM. css: selectors and web.text()/web.table() see the top document only.',
   'read() lists controls, not messages. To see what an action produced, use waitText(), which returns the text.',
   'A line in data.steps says what the step changed: a window that opened, closed or changed title, a page that went to another',
@@ -118,11 +123,14 @@ function brief(subject) {
 }
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
-async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput = false } = {}) {
+async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput = false,
+  args = {}, allowFinal = false, onStep, watch = false } = {}) {
+  const watching = () => watch || Boolean(onStep);
   const started = Date.now();
   env = holding(env ?? process.env);
-  const steps = [], logs = [], warnings = [], children = new Set();
-  let surface, inputUsed = false;
+  const steps = [], logs = [], warnings = [], children = new Set(), records = [], finals = [];
+  const touched = { apps: new Set(), hosts: new Set() };
+  let surface, inputUsed = false, effects = [];
 
   let notes = [];
   /**
@@ -140,12 +148,23 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     surface = name.split('.')[0];
     const label = name + (brief(subject) ? ' ' + brief(subject) : '');
     notes = [];
+    effects = [];
     const how = () => (notes.length ? ' (' + notes.join(', ') + ')' : '');
+    let recorded = false;
+    const record = ok => {
+      recorded = true;
+      const entry = { label, effects, input: notes.includes('real mouse and keyboard'), ms: Date.now() - at, ok };
+      records.push(entry);
+      return entry;
+    };
     try {
       const value = await run();
+      const done = record(true);
+      if (onStep) await onStep(done);
       steps.push(label + how() + ' ' + (Date.now() - at) + 'ms');
       return value;
     } catch (err) {
+      if (!recorded) record(false);
       steps.push(label + how() + ' ' + (Date.now() - at) + 'ms FAILED');
       if (err && typeof err === 'object' && !err.step) err.step = label;
       throw err;
@@ -156,23 +175,36 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     try { check(args); } catch (err) { return Promise.reject(err); }
     return call(binary, args, { env, children, ...options });
   };
-  const note = text => notes.push(text);
+  const note = (text, effect) => {
+    if (text) notes.push(text);
+    if (effect) effects.push(effect);
+  };
+  const touch = ({ app, host }) => {
+    if (app) touched.apps.add(app);
+    if (host) touched.hosts.add(host);
+  };
   const page = createWeb({
-    call: need(browser, 'agent-browser'), step, warn: text => warnings.push(text), note, flags,
+    call: need(browser, 'agent-browser'), step, warn: text => warnings.push(text), note, flags, touch, watching,
     fetchPage: url => readPage(browser, url, (binary, args, options) => need(binary, 'agent-browser')(args, options)),
   });
   let pace;
   const desk = createDesktop({ call: need(native, 'agent-desktop', gate), step, warn: text => warnings.push(text), note, picture, pace: () => pace,
-    inputAllowed: () => allowInput });
+    inputAllowed: () => allowInput, touch, watching });
   const seen = createVisible({ step, warn: text => warnings.push(text), pace: () => pace, takeInput,
     flow: (command, options) => {
       if (!flow) throw new Error('The visible page helpers are not available here.');
       return flow(command, options, gate);
     } });
+  const guarded = guardFinals({ web: page.web, desktop: desk.desktop, visible: seen.visible }, {
+    allowed: allowFinal,
+    onFinal: final => finals.push(final),
+    mark: (on, callArgs) => (on === 'web' ? page.markTarget(callArgs[0]) : on === 'desktop' ? desk.markTarget(callArgs[0], callArgs[1]) : undefined),
+  });
   const helpers = {
-    web: named('web', page.web),
-    desktop: named('desktop', desk.desktop),
-    visible: named('visible', seen.visible),
+    args: argsView(args),
+    web: named('web', guarded.web),
+    desktop: named('desktop', guarded.desktop),
+    visible: named('visible', guarded.visible),
     human: value => {
       if (![false, undefined, 'natural', 'careful'].includes(value)) throw Object.assign(new Error('human() takes "natural", "careful" or false.'), { code: 'INVALID_ARGS' });
       if (value && !allowInput) throw inputRefused('human("' + value + '") moves the real mouse and keyboard.');
@@ -201,11 +233,23 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
 
   const report = () => ({
     ...(warnings.length ? { warnings } : {}), ...(logs.length ? { logs } : {}), steps,
-    ...(inputUsed ? { input_used: true } : {}), elapsed_ms: Date.now() - started,
+    ...(inputUsed ? { input_used: true } : {}), ...(finals.length ? { finals } : {}), elapsed_ms: Date.now() - started,
   });
+  const trail = () => ({ records, apps: [...touched.apps], hosts: [...touched.hosts] });
+  const withTrail = (target, value = trail()) => Object.defineProperty(target, 'trail', { value, enumerable: false });
   let body;
   try { body = new AsyncFunction(...Object.keys(helpers), source); } catch (err) {
     throw Object.assign(new Error('The script does not parse: ' + err.message), { code: 'INVALID_ARGS', report: report() });
+  }
+  const missing = missingArgs(source, args);
+  if (missing.length) {
+    throw Object.assign(new Error('The script reads arguments that were not given: ' + missing.join(', ') + '. Pass them with --args JSON.'),
+      { code: 'MISSING_ARGS', details: { needs: missing }, report: report() });
+  }
+  const seenFinals = allowFinal ? [] : scanFinals(source);
+  if (seenFinals.length) {
+    throw Object.assign(finalRefused('This script has final steps (' + seenFinals.map(f => f.what + ': ' + f.why).join('; ') + '), so none of it ran.',
+      { finals: seenFinals }), { report: report() });
   }
   const uses = allowInput ? [] : inputUses(source);
   if (uses.length) {
@@ -218,7 +262,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
   });
   try {
     const result = await Promise.race([body(...Object.values(helpers)), expired]);
-    return { result: result === undefined ? null : result, ...report() };
+    return withTrail({ result: result === undefined ? null : result, ...report() });
   } catch (thrown) {
     const err = thrown instanceof Error ? thrown : new Error(String(thrown));
     for (const child of children) child.kill();
@@ -228,6 +272,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
       scene = await Promise.race([look, delay(SCENE_WAIT_MS)]);
     } catch { /* The page or window may be gone. */ }
     err.report = { ...(err.step ? { step: err.step } : {}), ...report(), ...(scene ? { scene } : {}) };
+    withTrail(err);
     throw err;
   } finally {
     clearTimeout(timer);
