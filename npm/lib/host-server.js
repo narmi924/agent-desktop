@@ -149,7 +149,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     child?.send({ type: 'stop' });
     setTimeout(() => { if (children.has(job.id)) child.kill(); }, 3000).unref();
     if (!child) change(job, { state: 'stopped', reason: undefined, waiting: undefined, ended: new Date().toISOString() });
-    return summary(job);
+    return { ...summary(job), state: job.state === 'stopped' ? 'stopped' : 'stopping', reason: undefined };
   }
 
   function wait(body, reply) {
