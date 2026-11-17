@@ -9,6 +9,7 @@ const { readPage } = require('./page-read');
 const { inputUses, inputRefused } = require('./script-input');
 const { argsView, missingArgs } = require('./script-args');
 const { scanFinals, guardFinals, finalRefused } = require('./script-final');
+const { fixable } = require('./script-fix');
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const SCENE_WAIT_MS = 8000;
@@ -124,7 +125,7 @@ function brief(subject) {
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
 async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput = false,
-  args = {}, allowFinal = false, onStep, watch = false } = {}) {
+  args = {}, allowFinal = false, onStep, watch = false, fix } = {}) {
   const watching = () => watch || Boolean(onStep);
   const started = Date.now();
   env = holding(env ?? process.env);
@@ -200,11 +201,22 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     onFinal: final => finals.push(final),
     mark: (on, callArgs) => (on === 'web' ? page.markTarget(callArgs[0]) : on === 'desktop' ? desk.markTarget(callArgs[0], callArgs[1]) : undefined),
   });
+  const sceneOf = async on => {
+    try {
+      const look = on === 'desktop' ? desk.scene() : on === 'web' ? page.scene() : on === 'visible' ? seen.scene() : undefined;
+      return await Promise.race([look, delay(SCENE_WAIT_MS)]);
+    } catch { return undefined; }
+  };
+  const surfaces = fix ? fixable(guarded, {
+    fixes: fix.fixes,
+    ask: async info => fix.ask({ ...info, scene: await sceneOf(info.surface) }),
+    runPatch: patchSource => new AsyncFunction(...Object.keys(helpers), String(patchSource))(...Object.values(helpers)),
+  }) : guarded;
   const helpers = {
     args: argsView(args),
-    web: named('web', guarded.web),
-    desktop: named('desktop', guarded.desktop),
-    visible: named('visible', guarded.visible),
+    web: named('web', surfaces.web),
+    desktop: named('desktop', surfaces.desktop),
+    visible: named('visible', surfaces.visible),
     human: value => {
       if (![false, undefined, 'natural', 'careful'].includes(value)) throw Object.assign(new Error('human() takes "natural", "careful" or false.'), { code: 'INVALID_ARGS' });
       if (value && !allowInput) throw inputRefused('human("' + value + '") moves the real mouse and keyboard.');

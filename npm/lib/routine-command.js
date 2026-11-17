@@ -47,7 +47,7 @@ function save({ name, about, params, replace, source, args, done }) {
 }
 
 /** Runs a saved routine through the same script runner, stopping at the first step whose effects differ. */
-async function runRoutine(name, given, run) {
+async function runRoutine(name, given, run, { fixes } = {}) {
   const routine = store.load(name);
   const missing = routine.params.filter(p => !Object.hasOwn(given, p.name));
   if (missing.length) {
@@ -57,7 +57,9 @@ async function runRoutine(name, given, run) {
   const checker = effectChecker(routine, given);
   try {
     const done = await run(routine.script, { args: given, onStep: record => checker.check(record) });
-    const next = store.update(name, current => learn(current, checker.matched));
+    const next = fixes?.length
+      ? store.update(name, current => ({ ...current, last_fixed: new Date().toISOString() }))
+      : store.update(name, current => learn(current, checker.matched));
     return Object.defineProperty({ routine: name, status: next?.status, successes: next?.successes, ...done }, 'trail', { value: done.trail, enumerable: false });
   } catch (err) {
     store.update(name, current => ({ ...current, failures: (current.failures ?? 0) + 1, last_failure: new Date().toISOString() }));
