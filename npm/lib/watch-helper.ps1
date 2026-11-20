@@ -3,7 +3,11 @@
 #   {"e":"dirty","pid":N}                                                                  something inside a window of that process changed
 #   {"e":"hash","hwnd":N,"hash":"..."}                                                     answer to a "hash HWND" line on stdin
 #   {"e":"list","windows":[...]}                                                           answer to a "list" line on stdin
+#   {"e":"foreign","what":"mouse|key"}                                                     while "guard on": input that does not carry the
+#                                                                                          tool's mark (a person, or another program); at most every 150 ms
+#   {"e":"lock","locked":true|false,"desktop":"..."}                                        answer to a "lock" line: whether input goes to the lock screen
 # Out-of-context WinEvent hooks cost nothing while nothing changes. Nothing is read from window contents except titles.
+# The guard hooks see only whether a key or mouse event carried the mark; no key, character or position is kept or sent.
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
 Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition @'
@@ -107,7 +111,68 @@ public static class WatchHelper {
         return worker.Join(ms) ? result : "";
     }
 
+    delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int id, HookProc proc, IntPtr module, uint thread);
+    [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hook);
+    [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
+    [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string name);
+    [DllImport("user32.dll", SetLastError = true)] static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+    [DllImport("user32.dll")] static extern bool CloseDesktop(IntPtr desktop);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool GetUserObjectInformationW(IntPtr obj, int index, StringBuilder info, int length, out int needed);
+    const long AGENT_INPUT_MARK = 0x41444B54;
+    static HookProc keyProc, mouseProc;
+    static IntPtr keyHook = IntPtr.Zero, mouseHook = IntPtr.Zero;
+    static long foreignAt;
+    static Control ui;
+
+    static void Foreign(string what, long extra) {
+        if (extra == AGENT_INPUT_MARK) return;
+        long now = Environment.TickCount;
+        if (now - foreignAt < 150) return;
+        foreignAt = now;
+        Emit("{\"e\":\"foreign\",\"what\":\"" + what + "\"}");
+    }
+
+    static IntPtr OnKey(int code, IntPtr wParam, IntPtr lParam) {
+        if (code >= 0) Foreign("key", Marshal.ReadIntPtr(lParam, 16).ToInt64());
+        return CallNextHookEx(keyHook, code, wParam, lParam);
+    }
+
+    static IntPtr OnMouse(int code, IntPtr wParam, IntPtr lParam) {
+        if (code >= 0) Foreign("mouse", Marshal.ReadIntPtr(lParam, 24).ToInt64());
+        return CallNextHookEx(mouseHook, code, wParam, lParam);
+    }
+
+    static void Guard(bool on) {
+        if (on && keyHook == IntPtr.Zero) {
+            keyProc = new HookProc(OnKey); mouseProc = new HookProc(OnMouse);
+            IntPtr module = GetModuleHandle(null);
+            keyHook = SetWindowsHookEx(13, keyProc, module, 0);
+            mouseHook = SetWindowsHookEx(14, mouseProc, module, 0);
+        } else if (!on && keyHook != IntPtr.Zero) {
+            UnhookWindowsHookEx(keyHook); UnhookWindowsHookEx(mouseHook);
+            keyHook = IntPtr.Zero; mouseHook = IntPtr.Zero;
+        }
+        Emit("{\"e\":\"guard\",\"on\":" + (keyHook != IntPtr.Zero ? "true" : "false") + "}");
+    }
+
+    /// The desktop that receives input: anything but Default means the lock screen or a secure desktop has it.
+    public static string Lock() {
+        IntPtr desk = OpenInputDesktop(0, false, 0x0001);
+        string name = "";
+        if (desk != IntPtr.Zero) {
+            var text = new StringBuilder(256); int needed;
+            if (GetUserObjectInformationW(desk, 2, text, 512, out needed)) name = text.ToString();
+            CloseDesktop(desk);
+        }
+        bool locked = name != "Default";
+        return "{\"e\":\"lock\",\"locked\":" + (locked ? "true" : "false") + ",\"desktop\":\"" + Esc(name) + "\"}";
+    }
+
     public static void Run() {
+        ui = new Control();
+        ui.CreateControl();
+        IntPtr made = ui.Handle;
         keep = new WinEventProc(OnEvent);
         SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_HIDE, IntPtr.Zero, keep, 0, 0, 2);
         SetWinEventHook(EVENT_OBJECT_NAMECHANGE, 0x800E, IntPtr.Zero, keep, 0, 0, 2);
@@ -118,6 +183,8 @@ public static class WatchHelper {
                 line = line.Trim();
                 try {
                     if (line == "list") Emit(List());
+                    else if (line == "lock") Emit(Lock());
+                    else if (line == "guard on" || line == "guard off") { bool on = line == "guard on"; ui.Invoke(new Action(() => Guard(on))); }
                     else if (line.StartsWith("hash ")) { long h = long.Parse(line.Substring(5)); Emit("{\"e\":\"hash\",\"hwnd\":" + h + ",\"hash\":\"" + HashWithin(h, 1500) + "\"}"); }
                 } catch (Exception ex) { Emit("{\"e\":\"error\",\"message\":\"" + Esc(ex.Message) + "\"}"); }
             }

@@ -1,7 +1,9 @@
 'use strict';
 
 /** Errors a fix cannot help with: the user has to decide, or the script itself is wrong. */
-const NOT_FIXABLE = new Set(['INPUT_NOT_ALLOWED', 'MISSING_ARGS', 'INVALID_ARGS', 'EXPECTATION_FAILED']);
+const NOT_FIXABLE = new Set(['MISSING_ARGS', 'INVALID_ARGS', 'EXPECTATION_FAILED']);
+/** A step the tool stopped itself because a person took the mouse or keyboard: not sent, safe to do again. */
+const YIELDED = /Cursor movement interrupted|stopped by Escape|held mouse button|left the foreground|PERSON_TOOK_OVER/;
 /** A step that was sent: doing it again could send it twice. */
 const SENT = new Set(['EFFECT_MISMATCH']);
 
@@ -21,7 +23,7 @@ function withOptions(args, options) {
  * {action: "stop"}. A patch runs first and then the step is tried again, unless the step was already sent: then the
  * script goes on with the patch's value. The script's variables stay as they were; steps that already ran are not run again.
  */
-function fixable(surfaces, { ask, runPatch, fixes = [], allowOnce = () => {} }) {
+function fixable(surfaces, { ask, runPatch, fixes = [], allowOnce = () => {}, waitHands }) {
   const wrapped = {};
   for (const [surface, helpers] of Object.entries(surfaces)) {
     wrapped[surface] = Object.fromEntries(Object.entries(helpers).map(([name, fn]) => {
@@ -33,6 +35,12 @@ function fixable(surfaces, { ask, runPatch, fixes = [], allowOnce = () => {} }) 
             return await fn(...current);
           } catch (err) {
             if (!err || NOT_FIXABLE.has(err.code)) throw err;
+            const cutShort = waitHands?.cutShort?.() ?? false;
+            if (waitHands && (err.code === 'INPUT_NOT_ALLOWED' || YIELDED.test(err.message ?? '') || cutShort)) {
+              const outcome = await waitHands({ step: err.step ?? surface + '.' + name, helper: name, reason: err.code === 'INPUT_NOT_ALLOWED' ? 'hands' : 'user', error: err, uncertain: cutShort && !YIELDED.test(err.message ?? '') });
+              if (outcome === 'retry') continue;
+              if (outcome !== 'fix') throw err;
+            }
             const approval = err.code === 'FINAL_NOT_ALLOWED';
             const at = targetIndex(surface, name);
             const decision = await ask({ step: err.step ?? surface + '.' + name, surface, helper: name, target: current[at], error: err, sent: SENT.has(err.code), approval });
@@ -58,4 +66,4 @@ function fixable(surfaces, { ask, runPatch, fixes = [], allowOnce = () => {} }) 
   return wrapped;
 }
 
-module.exports = { fixable, NOT_FIXABLE, SENT };
+module.exports = { fixable, NOT_FIXABLE, SENT, YIELDED };

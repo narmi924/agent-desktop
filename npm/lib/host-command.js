@@ -7,7 +7,7 @@ const { request, running, ensureHost } = require('./host-client');
 const { jobsDir } = require('./host-paths');
 
 const FIX_WAIT_MS = 10 * 60 * 1000;
-const usage = 'job list | job show ID | job wait ID [--timeout-ms MS] | job stop ID | job report ID | job retry ID [--target NAME] [--options JSON] | job do ID --file PATCH.js | job skip ID [--value JSON] | job approve ID';
+const usage = 'job list | job show ID | job wait ID [--timeout-ms MS] | job stop ID | job report ID | job retry ID [--target NAME] [--options JSON] | job do ID --file PATCH.js | job skip ID [--value JSON] | job approve ID | job grant (ID | --all) --for SECONDS';
 
 async function hostCommand([action], { workflowPath, nativeBinary }) {
   if (action === 'serve') {
@@ -61,6 +61,7 @@ function offline(action, id) {
 
 async function job([action, id, ...rest], values, readText) {
   if (rest.length) throw Object.assign(new Error(usage), { code: 'INVALID_ARGS' });
+  if (action === 'grant' && values.all) return request('grant', { all: true, seconds: Number(values.for) });
   if (action === 'list' || action === 'show') {
     try { return await request(action, { id }); } catch (err) {
       if (err.code !== 'HOST_NOT_RUNNING') throw err;
@@ -79,6 +80,7 @@ async function job([action, id, ...rest], values, readText) {
       return fix({ action: 'do', source: readText(values.file).replace(/^﻿/, '') });
     case 'skip': return fix({ action: 'skip', ...(values.value !== undefined ? { value: parseJson(values.value, '--value') } : {}) });
     case 'approve': return fix({ action: 'approve' });
+    case 'grant': return request('grant', { id, seconds: Number(values.for) });
     default: throw Object.assign(new Error(usage), { code: 'INVALID_ARGS' });
   }
 }
@@ -109,10 +111,30 @@ async function runJob(start, { runner, routines, nativeBinary }) {
     pending = decision => { clearTimeout(timer); send({ type: 'running' }); resolve(decision); };
   });
   const fix = { ask, fixes };
+  const held = { until: 0, yielded: false, cutShort: false, abort: () => {}, resume: undefined, told: false };
+  const allowInput = () => Boolean(start.values?.['allow-input']) || (!held.yielded && Date.now() < held.until);
+  const hands = {
+    bind: ({ abort }) => { held.abort = abort; },
+    using: () => { if (!held.told) { held.told = true; send({ type: 'hands_used' }); } },
+    cutShort: () => held.cutShort,
+    /** A step that needs the hands waits for a grant; one a person interrupted waits until they stop. */
+    wait: info => new Promise(resolve => {
+      const reason = held.yielded || info.reason === 'user' ? 'user' : 'hands';
+      send({ type: 'waiting', reason, info: { step: info.step, at: new Date().toISOString(), error: errorInfo(info.error), ...(info.uncertain ? { uncertain: true } : {}),
+        need: reason === 'hands' ? 'the real mouse and keyboard: job grant ' + start.id + ' --for SECONDS' : 'nobody touching the mouse or keyboard for 3 seconds' } });
+      execFile(nativeBinary, ['restore-cursor'], { windowsHide: true }, () => {});
+      held.resume = () => { held.yielded = false; held.cutShort = false; send({ type: 'running' }); resolve(info.uncertain ? 'fix' : 'retry'); };
+    }),
+  };
+  process.on('message', message => {
+    if (message?.type === 'grant') { held.until = message.until; held.resume?.(); held.resume = undefined; }
+    if (message?.type === 'resume') { held.resume?.(); held.resume = undefined; }
+    if (message?.type === 'yield' && !held.yielded) { held.yielded = true; held.cutShort = held.abort(); }
+  });
   try {
     const done = start.routine
-      ? await routines.runRoutine(start.routine, start.args, (source, extra) => runner(source, { ...extra, fix, finalsAtRunTime: true }), { fixes })
-      : await runner(start.source, { args: start.args, fix, finalsAtRunTime: true });
+      ? await routines.runRoutine(start.routine, start.args, (source, extra) => runner(source, { ...extra, fix, finalsAtRunTime: true, hands, allowInput }), { fixes })
+      : await runner(start.source, { args: start.args, fix, finalsAtRunTime: true, hands, allowInput });
     send({ type: 'done', data: { ...done, ...(fixes.length ? { fixes, fixes_note: 'These steps needed a fix. If this was a routine, save the fixed script with run --save NAME --replace.' } : {}) } });
   } catch (err) {
     send({ type: 'failed', error: { ...errorInfo(err), ...(err.report ?? {}), ...(fixes.length ? { fixes } : {}) } });

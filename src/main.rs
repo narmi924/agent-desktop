@@ -287,6 +287,7 @@ fn execute_with_adapter(
     };
     command_policy::preflight(&cmd, &report)?;
     command_policy::preflight_context(&cmd, context)?;
+    command_policy::refuse_input_while_locked(&cmd, context.is_headed(), adapter)?;
 
     if debug.debug && report.screen_recording_denied() {
         return Err(pre_dispatch_error(

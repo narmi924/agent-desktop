@@ -100,6 +100,11 @@ impl InputOps for WindowsAdapter {
         ))
     }
 
+    #[cfg(target_os = "windows")]
+    fn input_locked(&self) -> Result<bool, AdapterError> {
+        Ok(crate::input::lock_state::input_desktop_locked())
+    }
+
     fn cursor_position(&self) -> Result<agent_desktop_core::Point, AdapterError> {
         crate::input::page_pointer::position()
             .ok_or_else(|| AdapterError::internal("the cursor position could not be read"))

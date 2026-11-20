@@ -207,6 +207,25 @@ test('a job without --allow-final runs up to a final step and waits there for an
   } finally { await stopHost(env); }
 });
 
+test('a job waits before a step that needs the hands, goes on once granted, and the background steps before it ran', async () => {
+  const env = isolated();
+  const { reply } = await cli(env, ['run', '--detach'], 'human("natural"); log("background first"); await desktop.cmd("click", "@s1:e1", "--headed"); return "typed";');
+  try {
+    const id = reply.data.id;
+    const waiting = (await cli(env, ['job', 'wait', id])).reply.data;
+    assert.equal(waiting.state, 'waiting');
+    assert.equal(waiting.reason, 'hands');
+    assert.match(waiting.waiting.need, /job grant/);
+    const granted = (await cli(env, ['job', 'grant', id, '--for', '30'])).reply.data;
+    assert.deepEqual(granted.granted, [id]);
+    const next = (await cli(env, ['job', 'wait', id, '--timeout-ms', '15000'])).reply.data;
+    assert.equal(next.reason, 'fix', 'granted, the step went on and failed only because no desktop tool exists here');
+    assert.notEqual(next.waiting.error.code, 'INPUT_NOT_ALLOWED');
+    await cli(env, ['job', 'skip', id]);
+    assert.equal((await cli(env, ['job', 'wait', id])).reply.data.result.result, 'typed');
+  } finally { await stopHost(env); }
+});
+
 test('stop ends a job that waits for a fix', async () => {
   const env = isolated();
   const { reply } = await cli(env, ['run', '--detach'], 'await desktop.read("x");');

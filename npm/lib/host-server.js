@@ -76,7 +76,14 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
   let closing = false;
   const lostOnStart = markLost();
   prune();
+  let lastForeign = 0, guarding = false;
   const watches = createWatches({
+    onForeign: () => {
+      lastForeign = Date.now();
+      for (const job of jobs.values()) {
+        if (job.holdsHands && job.state === 'running' && (job.grantUntil ?? 0) > Date.now()) children.get(job.id)?.send({ type: 'yield' });
+      }
+    },
     helperPath: join(__dirname, 'watch-helper.ps1'),
     startJob: body => startJob(body),
     readWindow: async win => {
@@ -122,7 +129,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     const screenshots = Boolean(body.values?.['allow-input'] || body.values?.['allow-final']);
     const session = await native(['session', 'start', '--name', 'job-' + id, ...(screenshots ? ['--screenshots'] : [])]);
     const sessionId = session?.data?.session_id ?? session?.data?.id;
-    writeJson(join(dir, 'start.json'), { routine: body.routine, source: body.source, args: body.args ?? {}, values: body.values ?? {} });
+    writeJson(join(dir, 'start.json'), { id, routine: body.routine, source: body.source, args: body.args ?? {}, values: body.values ?? {} });
     const job = { id, what: body.routine ? 'routine ' + body.routine : 'script', state: 'running', created: new Date().toISOString(), ...(sessionId ? { session: sessionId } : {}), screenshots };
     jobs.set(id, job);
     change(job, {});
@@ -132,6 +139,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     children.set(id, child);
     child.on('message', message => {
       if (message.type === 'waiting') change(job, { state: 'waiting', reason: message.reason, waiting: message.info });
+      if (message.type === 'hands_used' && !job.holdsHands) { job.holdsHands = true; updateGuard(); }
       if (message.type === 'running') change(job, { state: 'running', reason: undefined, waiting: undefined });
       if (message.type === 'done') change(job, { state: 'done', reason: undefined, waiting: undefined, ended: new Date().toISOString(), result: message.data });
       if (message.type === 'failed') change(job, { state: job.stopping ? 'stopped' : 'failed', reason: undefined, waiting: undefined, ended: new Date().toISOString(), error: message.error, stopping: undefined });
@@ -161,6 +169,37 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     children.get(job.id)?.send({ type: 'fix', decision });
     change(job, { state: 'running', reason: undefined, waiting: undefined });
     return summary(job);
+  }
+
+  /** The low-level hooks run only while some job may take the hands; the person's input is noticed through them. */
+  function updateGuard() {
+    const want = [...jobs.values()].some(j => j.holdsHands && ACTIVE.has(j.state));
+    if (want !== guarding) { guarding = want; watches.guard(want).catch(() => {}); }
+  }
+
+  /** Lets jobs use the real mouse and keyboard until a time; a job that waits for hands goes on when the screen is not locked. */
+  function grant(body) {
+    const seconds = Number(body.seconds);
+    if (!(seconds > 0)) throw Object.assign(new Error('job grant ID --for SECONDS (or --all).'), { code: 'INVALID_ARGS' });
+    const targets = body.all ? [...jobs.values()].filter(j => ACTIVE.has(j.state)) : [load(body.id)];
+    const until = Date.now() + seconds * 1000;
+    for (const job of targets) { job.grantUntil = until; job.holdsHands = true; change(job, { granted_until: new Date(until).toISOString() }); }
+    updateGuard();
+    return { granted: targets.map(j => j.id), until: new Date(until).toISOString() };
+  }
+
+  /** Every half second: hand a grant to a job that waits for it, or let a yielded job go on after three quiet seconds. */
+  async function dispatchHands() {
+    const waiting = [...jobs.values()].filter(j => j.state === 'waiting' && ['hands', 'user'].includes(j.reason) && (j.grantUntil ?? 0) > Date.now());
+    if (!waiting.length) return;
+    let isLocked;
+    try { isLocked = await watches.locked(); } catch { isLocked = true; }
+    for (const job of waiting) {
+      const note = isLocked ? 'the screen is locked' : job.reason === 'user' && Date.now() - lastForeign < 3000 ? 'someone is using the mouse or keyboard' : undefined;
+      if (note) { if (job.waiting?.held !== note) change(job, { waiting: { ...job.waiting, held: note } }); continue; }
+      children.get(job.id)?.send({ type: job.reason === 'user' ? 'resume' : 'grant', until: job.grantUntil });
+      change(job, { state: 'running', reason: undefined, waiting: undefined });
+    }
   }
 
   function stop(body) {
@@ -246,6 +285,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     fix: body => fix(body),
     stop_job: body => stop(body),
     report: body => report(body),
+    grant: async body => { const granted = grant(body); await dispatchHands(); return granted; },
     watch_add: body => watches.add(body.spec ?? {}),
     watch_list: () => watches.list(),
     watch_show: body => watches.get(body.id),
@@ -287,9 +327,11 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
       writeFileSync(tokenPath(), token);
       const idle = setInterval(() => {
         const busy = [...jobs.values()].some(j => ACTIVE.has(j.state)) || watches.busy();
+        updateGuard();
         if (!busy && Date.now() - lastBusy >= idleMs) { clearInterval(idle); shutdown('idle'); }
       }, Math.min(30000, Math.max(200, idleMs / 4)));
       for (const signal of ['SIGINT', 'SIGTERM', 'SIGBREAK']) process.on(signal, () => shutdown(signal));
+      setInterval(() => { dispatchHands().catch(() => {}); updateGuard(); }, 500).unref();
       resolve({ pid: process.pid, pipe: pipePath(), lost_on_start: lostOnStart });
     });
   });

@@ -136,6 +136,26 @@ pub(crate) fn preflight_context(
     Ok(())
 }
 
+/// Real keyboard and mouse input sent while the screen is locked would land on the sign-in screen, so a headed
+/// command that changes something is refused before anything is sent. A platform that cannot tell goes ahead.
+pub(crate) fn refuse_input_while_locked(
+    cmd: &Commands,
+    headed: bool,
+    adapter: &dyn agent_desktop_core::PlatformAdapter,
+) -> Result<(), AppError> {
+    if !headed || !cmd.is_mutating() || !matches!(adapter.input_locked(), Ok(true)) {
+        return Ok(());
+    }
+    Err(AppError::Adapter(
+        AdapterError::new(
+            ErrorCode::PolicyDenied,
+            "The screen is locked: keyboard and mouse input would go to the sign-in screen",
+        )
+        .with_suggestion("Wait until the user unlocks the screen, then run the step again.")
+        .with_disposition(DeliverySemantics::not_delivered()),
+    ))
+}
+
 pub(crate) fn requires_permission_report(cmd: &Commands) -> bool {
     policy_for(cmd) != PermissionNeed::None
         || matches!(

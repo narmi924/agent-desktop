@@ -118,7 +118,7 @@ mod imp {
                         wScan: event.scan,
                         dwFlags: event.flags,
                         time: 0,
-                        dwExtraInfo: 0,
+                        dwExtraInfo: crate::input::AGENT_INPUT_MARK,
                     },
                 },
             }

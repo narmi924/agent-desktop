@@ -222,3 +222,33 @@ fn a_multi_agent_desktop_action_needs_an_agent_id_on_every_platform() {
     assert!(!agent_id_missing(&click, false, None));
     assert!(!agent_id_missing(&Commands::Status, true, None));
 }
+
+struct LockedScreen(Result<bool, AdapterError>);
+
+impl agent_desktop_core::ObservationOps for LockedScreen {}
+impl agent_desktop_core::ActionOps for LockedScreen {}
+impl agent_desktop_core::SystemOps for LockedScreen {}
+
+impl agent_desktop_core::InputOps for LockedScreen {
+    fn input_locked(&self) -> Result<bool, AdapterError> {
+        self.0.clone()
+    }
+}
+
+#[test]
+fn a_headed_change_is_refused_while_the_screen_is_locked_and_nothing_else_is() {
+    let locked = LockedScreen(Ok(true));
+    let err = refuse_input_while_locked(&click(VALID_REF_ID), true, &locked).unwrap_err();
+    let AppError::Adapter(err) = err else {
+        panic!("expected an adapter error");
+    };
+    assert_eq!(err.code, ErrorCode::PolicyDenied);
+    assert!(err.message.contains("locked"));
+    assert!(refuse_input_while_locked(&click(VALID_REF_ID), false, &locked).is_ok());
+    assert!(refuse_input_while_locked(&Commands::Status, true, &locked).is_ok());
+    assert!(
+        refuse_input_while_locked(&click(VALID_REF_ID), true, &LockedScreen(Ok(false))).is_ok()
+    );
+    let unknown = LockedScreen(Err(AdapterError::not_supported("lock state")));
+    assert!(refuse_input_while_locked(&click(VALID_REF_ID), true, &unknown).is_ok());
+}

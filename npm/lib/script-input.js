@@ -6,6 +6,7 @@ const INPUT_USES = [
   [/\bvisible\.(click|hover|choose|type|scrollTo|scroll)\s*\(/g, m => 'visible.' + m[1]],
   [/\bhuman\(\s*['"`](natural|careful)['"`]/g, m => 'human("' + m[1] + '")'],
   [/\bdesktop\.type\s*\(/g, () => 'desktop.type'],
+  [/\bdesktop\.sequence\s*\(/g, () => 'desktop.sequence'],
   [/['"`]--headed['"`]/g, () => '"--headed"'],
   [/\bflow\(\s*['"`](tap|move)['"`]/g, m => 'flow("' + m[1] + '")'],
 ];

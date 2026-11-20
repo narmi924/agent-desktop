@@ -128,7 +128,7 @@ mod imp {
                         mouseData: event.mouse_data as u32,
                         dwFlags: event.flags,
                         time: 0,
-                        dwExtraInfo: 0,
+                        dwExtraInfo: crate::input::AGENT_INPUT_MARK,
                     },
                 },
             }

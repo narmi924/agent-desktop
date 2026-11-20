@@ -23,7 +23,11 @@ Requires Windows 10 1809+ / Windows Server 2019+ (x64 or ARM64). Run it in the
 interactive desktop session of the signed-in user. Session 0 (services and
 SYSTEM tasks), Server Core, the secure desktop (UAC prompts, the sign-in
 screen), a locked desktop and another user's session are not supported:
-observation, actions and capture there fail or return nothing.
+observation, actions and capture there fail or return nothing. While the screen
+is locked, a `--headed` command that changes something returns `POLICY_DENIED`
+before any key or mouse event is sent, because the input would reach the
+sign-in screen. `status` reports `input_locked` and `user_idle_ms` (time since
+the last keyboard or mouse input).
 
 ## Capability Table
 

@@ -100,7 +100,7 @@ fn post_shell_keys(edges: &[ShellKeyEdge]) {
                     wScan: 0,
                     dwFlags: if edge.up { KEYEVENTF_KEYUP } else { 0 },
                     time: 0,
-                    dwExtraInfo: 0,
+                    dwExtraInfo: crate::input::AGENT_INPUT_MARK,
                 },
             },
         })

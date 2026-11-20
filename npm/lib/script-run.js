@@ -87,6 +87,8 @@ const api = [
   '  await readTime(text)                    -> waits about as long as reading that text takes; returns at once while human() is off.',
   '                                             Use it instead of sleep(): a wait should follow what is on screen, not a fixed number.',
   '  await desktop.type(window, target, text, {multiline, at}) -> real keys into a field (desktop.fill writes the value directly and needs no keys)',
+  '  await desktop.sequence(window, [{click: name}, {type: [name, text]}, {press: "ctrl+s"}]) -> several of these in one go: the names are',
+  '                                             looked up once and the hand does not stop between them (about 0.4 s instead of 1 s)',
   '',
   'other:',
   '  await sleep(ms)   await waitFor(async () => condition, {timeout, interval})   log(...values)   expect(condition, message)',
@@ -124,8 +126,9 @@ function brief(subject) {
 }
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
-async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput = false,
-  args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false } = {}) {
+async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput: allowInputOption = false,
+  args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false, hands } = {}) {
+  const handsFree = () => (typeof allowInputOption === 'function' ? allowInputOption() : allowInputOption);
   let approvedOnce = false;
   const finalAllowed = () => {
     if (allowFinal) return true;
@@ -146,7 +149,8 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
    * --allow-input it is refused before anything is sent; with it, the step is marked.
    */
   const takeInput = what => {
-    if (!allowInput) throw inputRefused('This step needs the real mouse and keyboard' + (what ? ' (' + what + ')' : '') + ': the window comes to the front and the pointer moves.');
+    if (!handsFree()) throw inputRefused('This step needs the real mouse and keyboard' + (what ? ' (' + what + ')' : '') + ': the window comes to the front and the pointer moves.');
+    hands?.using();
     inputUsed = true;
     if (!notes.includes('real mouse and keyboard')) notes.push('real mouse and keyboard');
   };
@@ -197,7 +201,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
   });
   let pace;
   const desk = createDesktop({ call: need(native, 'agent-desktop', gate), step, warn: text => warnings.push(text), note, picture, pace: () => pace,
-    inputAllowed: () => allowInput, touch, watching });
+    inputAllowed: handsFree, touch, watching });
   const seen = createVisible({ step, warn: text => warnings.push(text), pace: () => pace, takeInput,
     flow: (command, options) => {
       if (!flow) throw new Error('The visible page helpers are not available here.');
@@ -216,10 +220,23 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
   };
   const surfaces = fix ? fixable(guarded, {
     fixes: fix.fixes,
+    waitHands: hands?.wait,
     allowOnce: () => { approvedOnce = true; },
     ask: async info => fix.ask({ ...info, scene: await sceneOf(info.surface) }),
     runPatch: patchSource => new AsyncFunction(...Object.keys(helpers), String(patchSource))(...Object.values(helpers)),
   }) : guarded;
+  /**
+   * A person took over: typing in progress is stopped, since their keys would mix into it; a pointer movement in
+   * progress stops by itself when the cursor is moved, and any other command is left to finish. Whether something
+   * was cut short is the answer.
+   */
+  hands?.bind?.({ abort: () => {
+    let cut = false;
+    for (const child of children) {
+      if (child.spawnargs?.includes('--headed') && child.spawnargs.includes('type')) { child.kill(); cut = true; }
+    }
+    return cut;
+  } });
   const helpers = {
     args: argsView(args),
     web: named('web', surfaces.web),
@@ -227,7 +244,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     visible: named('visible', surfaces.visible),
     human: value => {
       if (![false, undefined, 'natural', 'careful'].includes(value)) throw Object.assign(new Error('human() takes "natural", "careful" or false.'), { code: 'INVALID_ARGS' });
-      if (value && !allowInput) throw inputRefused('human("' + value + '") moves the real mouse and keyboard.');
+      if (value && !handsFree() && !hands) throw inputRefused('human("' + value + '") moves the real mouse and keyboard.');
       pace = value || undefined;
     },
     readTime: text => (pace ? delay(readingMs(text) * (pace === 'careful' ? 1.3 : 1)) : Promise.resolve()),
@@ -271,7 +288,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     throw Object.assign(finalRefused('This script has final steps (' + seenFinals.map(f => f.what + ': ' + f.why).join('; ') + '), so none of it ran.',
       { finals: seenFinals }), { report: report() });
   }
-  const uses = allowInput ? [] : inputUses(source);
+  const uses = handsFree() || hands ? [] : inputUses(source);
   if (uses.length) {
     throw Object.assign(inputRefused('This script uses the real mouse and keyboard (' + uses.join(', ') + '), so none of it ran.',
       'Ask the user first; when they agree, run it again with --allow-input.'), { report: report() });

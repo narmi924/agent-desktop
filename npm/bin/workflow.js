@@ -53,6 +53,7 @@ const usage = [
   'agent-desktop-workflow host start | host stop | host status',
   'agent-desktop-workflow watch add (--window TITLE [--gone] | --text TEXT --in WINDOW [--gone] | --notification TEXT | --file PATH) [--then ROUTINE [--args JSON]] | watch list | watch show ID | watch wait ID | watch remove ID   (the host watches; --then starts a saved routine as a job, which still stops before a final step)',
   'agent-desktop-workflow job approve ID   (a job started by a watch stopped before a final step: let that one step go, after the user agreed)',
+  'agent-desktop-workflow job grant (ID | --all) --for SECONDS   (a job waits with reason "hands" before a step that needs the real mouse and keyboard: let it, or every job, use them that long; a person touching them makes the job wait until they stop for 3 seconds; nothing goes on while the screen is locked)',
   'agent-desktop-workflow read --url URL   (the text of a web page: a plain request and a background browser run together and the first full answer is returned)',
   'agent-desktop-workflow space [--login URL | --close]   (the agent\'s own browser profile: --login shows its window so the user signs in once; later runs with --space keep that sign-in in the background)',
 ].join('\n');
@@ -281,7 +282,7 @@ async function main() {
     'drop-file': ['session', 'tab', 'input', 'file'],
     run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api', 'allow-input', 'allow-final', 'args', 'args-file', 'save', 'about', 'param', 'replace', 'detach'],
     routine: ['args', 'args-file', 'allow-input', 'allow-final', 'session', 'chrome', 'space', 'timeout-ms', 'for', 'detach'],
-    job: ['timeout-ms', 'target', 'options', 'file', 'value', 'force'],
+    job: ['timeout-ms', 'target', 'options', 'file', 'value', 'force', 'for', 'all'],
     host: [],
     'job-run': [],
     watch: ['window', 'text', 'in', 'gone', 'every-ms', 'notification', 'file', 'then', 'args', 'args-file', 'timeout-ms'],
@@ -290,7 +291,7 @@ async function main() {
   };
   if (!Object.hasOwn(commands, command)) throw new Error(usage);
   const names = commands[command];
-  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close','allow-input','allow-final','detach','force','gone'].includes(key) ? 'boolean' : 'string', ...(key === 'param' ? { multiple: true } : {}) }]));
+  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close','allow-input','allow-final','detach','force','gone','all'].includes(key) ? 'boolean' : 'string', ...(key === 'param' ? { multiple: true } : {}) }]));
   const { values, positionals } = parseArgs({ args: joinCoordinates(args), options, allowPositionals: ['routine', 'job', 'host', 'job-run', 'watch'].includes(command) });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   if (command === 'run' && values.api) { console.log(api); return; }

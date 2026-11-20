@@ -51,6 +51,12 @@ pub fn execute_with_report_with_context(
     if let Some(artifacts) = artifacts {
         body["artifacts"] = json!(artifacts);
     }
+    if let Ok(locked) = adapter.input_locked() {
+        body["input_locked"] = json!(locked);
+    }
+    if let Ok(idle) = adapter.user_idle_ms() {
+        body["user_idle_ms"] = json!(idle);
+    }
     if let Ok(state_root) = crate::storage::state_root::resolve_configured_state_root() {
         body["state_root"] = json!(state_root.to_string_lossy());
     }

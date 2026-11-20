@@ -90,6 +90,11 @@ pub trait InputOps: Send + Sync {
         Err(AdapterError::not_supported("user idle time"))
     }
 
+    /// Whether keyboard and mouse input now goes to the lock screen or another secure desktop.
+    fn input_locked(&self) -> Result<bool, AdapterError> {
+        Err(AdapterError::not_supported("lock state"))
+    }
+
     /// Whether `mouse_click_held` really keeps the button down.
     fn supports_held_click(&self) -> bool {
         false

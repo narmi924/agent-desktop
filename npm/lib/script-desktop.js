@@ -180,6 +180,13 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       ', and acting on the picture needs the real mouse and keyboard: the window comes to the front and the pointer moves.');
   }
 
+  /** A person clicks only the window in front: a human-paced click on a window behind others brings it forward first. */
+  async function bringForward(window) {
+    try {
+      await ad(['--headed', 'focus-window', '--window-id', await resolve(window)]);
+    } catch { /* the click itself reports a window that stayed behind */ }
+  }
+
   /** Windows that opened, closed or changed title while `run` ran, as notes on the step. */
   async function watchWindows(run) {
     const list = async () => {
@@ -280,7 +287,35 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     return after?.checked === wanted;
   });
 
+  /**
+   * Several real-input actions in one window, sent as one native batch: every name is looked up from one read of the
+   * window first, so nothing is read again between them. Steps are {click: name}, {type: [name, text]} or {press: keys}.
+   */
+  async function sequence(window, actions) {
+    if (!Array.isArray(actions) || !actions.length) throw Object.assign(new Error('desktop.sequence takes a window and a list like [{click: "保存"}, {type: ["备注", "文字"]}, {press: "enter"}].'), { code: 'INVALID_ARGS' });
+    const id = await resolve(window);
+    const { controls } = await view(id);
+    const ref = name => {
+      const hit = pick(controls, name);
+      if (!hit?.ref) throw Object.assign(new Error('No control is named "' + name + '" in this window.'), { code: 'ELEMENT_NOT_FOUND' });
+      return hit.ref;
+    };
+    const entries = actions.map(action => {
+      if (action.click !== undefined) return { command: 'click', args: { ref_id: ref(action.click) } };
+      if (action.type !== undefined) return { command: 'type', args: { ref_id: ref(action.type[0]), text: String(action.type[1]) } };
+      if (action.press !== undefined) return { command: 'press', args: { combo: String(action.press), window_id: id } };
+      throw Object.assign(new Error('Each step of desktop.sequence is {click}, {type} or {press}.'), { code: 'INVALID_ARGS' });
+    });
+    if (pace()) await bringForward(id);
+    const reply = await watchWindows(() => ad([...(pace() ? ['--headed', '--human', pace()] : ['--headed']), 'batch', JSON.stringify(entries)], { timeout: 30000 + 15000 * entries.length }));
+    views.clear();
+    const failed = (reply?.results ?? []).find(r => r.ok === false);
+    if (failed) throw Object.assign(new Error('desktop.sequence stopped at ' + failed.command + ': ' + (failed.error?.message ?? 'failed')), { code: failed.error?.code ?? 'ACTION_FAILED', disposition: failed.error?.disposition });
+    return reply?.completed_entries ?? entries.length;
+  }
+
   const desktop = {
+    sequence: (window, actions) => step('desktop.sequence', window, () => sequence(window, actions)),
     check: tick(true),
     uncheck: tick(false),
     windows: filter => step('desktop.windows', filter ?? '', () => windows(filter)),
@@ -317,7 +352,10 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       return [seen.text, '- picture (text read from the screen, not from controls):', renderLines(lines)].filter(Boolean).join('\n');
     }),
     click: (window, target, options) => step('desktop.click', target, async () => {
-      const done = await watchWindows(() => act(window, target, options, ref => ad([...asPerson(), 'click', ref]), id => clickPicture(id, target, options)));
+      const done = await watchWindows(() => act(window, target, options, async ref => {
+        if (pace()) await bringForward(window);
+        return ad([...asPerson(), 'click', ref]);
+      }, id => clickPicture(id, target, options)));
       views.clear();
       return done?.via === 'picture' ? done : undefined;
     }),

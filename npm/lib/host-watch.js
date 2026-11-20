@@ -71,7 +71,7 @@ function fill(template, found) {
  * notification whose text matches, a file that finishes growing. Window changes come from a WinEvent helper that costs
  * nothing while nothing changes; a window is read only after something in it changed, at most every five seconds.
  */
-function createWatches({ helperPath, readWindow, startJob, onChange, now = () => Date.now(),
+function createWatches({ helperPath, readWindow, startJob, onChange, now = () => Date.now(), onForeign = () => {},
   helperCommand = ['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', helperPath], notificationDb = NOTIFICATION_DB() }) {
   const watches = new Map();
   const windows = new Map();
@@ -140,6 +140,11 @@ function createWatches({ helperPath, readWindow, startJob, onChange, now = () =>
     }
     if (message.e === 'dirty') {
       for (const w of active()) if (w.kind === 'text' && titled(w.spec.in).some(win => win.pid === message.pid)) w.dirty = true;
+      return;
+    }
+    if (message.e === 'foreign') return onForeign(message.what);
+    if (message.e === 'lock') {
+      for (const resolve of lockWaiters.splice(0)) resolve(message.locked);
       return;
     }
     if (message.e === 'hash') {
@@ -312,10 +317,34 @@ function createWatches({ helperPath, readWindow, startJob, onChange, now = () =>
     return { ...summary(w), ...(w.kind === 'text' ? { reads: w.reads ?? 0, drawn: Boolean(w.drawn), pictures_compared: w.hashes ?? 0, ...(w.blankHashes ? { pictures_not_taken: w.blankHashes } : {}), ...(w.readMs ? { read_ms: w.readMs } : {}), ...(w.lastError ? { last_error: w.lastError } : {}) } : {}) };
   }
 
+  /** Whether input now goes to the lock screen; true when it cannot be told. */
+  let lockAsked;
+  const lockWaiters = [];
+  /** Callers at the same moment share one question to the helper; the answer is good for half a second. */
+  function locked() {
+    if (lockAsked && now() - lockAsked.at < 500) return lockAsked.answer;
+    const answer = startHelper().then(() => new Promise(resolve => {
+      lockWaiters.push(resolve);
+      send('lock');
+      setTimeout(() => {
+        const at = lockWaiters.indexOf(resolve);
+        if (at >= 0) { lockWaiters.splice(at, 1); resolve(true); }
+      }, 3000).unref();
+    }));
+    lockAsked = { at: now(), answer };
+    return answer;
+  }
+
+  async function guard(on) {
+    await startHelper();
+    send(on ? 'guard on' : 'guard off');
+  }
+
   return {
-    add, remove, get, summary,
+    add, remove, get, summary, locked, guard,
     list: () => ({ watches: [...watches.values()].map(summary) }),
     busy: () => active().length > 0,
+    stopHelperNow: () => stopHelper(),
     stopAll: () => { for (const w of active()) w.state = 'removed'; stopHelper(); },
   };
 }

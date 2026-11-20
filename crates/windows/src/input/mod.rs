@@ -28,6 +28,10 @@ macro_rules! define_input_fake_sink {
 }
 pub(crate) use define_input_fake_sink;
 
+/// Tag carried in `dwExtraInfo` by every keyboard and mouse event this tool sends, so a low-level hook can tell the
+/// tool's own input from a person's: input without it came from someone else.
+pub(crate) const AGENT_INPUT_MARK: usize = 0x4144_4B54;
+
 mod adapter;
 pub(crate) mod blocked_combo;
 #[cfg(target_os = "windows")]
@@ -40,6 +44,8 @@ pub(crate) mod elevation;
 #[cfg(target_os = "windows")]
 pub(crate) mod human_pointer;
 pub(crate) mod keyboard;
+#[cfg(target_os = "windows")]
+pub(crate) mod lock_state;
 pub(crate) mod mouse;
 #[cfg(target_os = "windows")]
 pub(crate) mod page_pointer;
