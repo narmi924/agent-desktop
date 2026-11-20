@@ -75,7 +75,7 @@ function guardFinals(surfaces, { allowed, mark, onFinal = () => {} }) {
         if (marked !== undefined || word) {
           const what = surface + '.' + name + ' ' + (typeof target === 'string' ? target : '');
           const why = marked !== undefined ? marked || 'marked final' : 'the name contains "' + word + '"';
-          if (!allowed) {
+          if (!(typeof allowed === 'function' ? allowed() : allowed)) {
             let picture;
             try { picture = await mark?.(surface, args, name); } catch { /* A step is refused even when its picture cannot be made. */ }
             throw finalRefused('This step is a final step (' + what.trim() + ': ' + why + '); it cannot be taken back.',

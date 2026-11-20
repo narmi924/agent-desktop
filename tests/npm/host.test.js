@@ -74,6 +74,28 @@ test('only one host runs per pipe, and a request with the wrong token is refused
   } finally { await stopHost(env); }
 });
 
+test('host stop returns once the host is gone, and a host leaves a newer host\'s token alone', async () => {
+  const env = isolated();
+  serve(env);
+  await until(async () => (await statusOf(env))?.pid);
+  const tokenFile = join(env.AGENT_DESKTOP_HOME, 'host', 'token');
+  const net = require('node:net');
+  const token = readFileSync(tokenFile, 'utf8');
+  writeFileSync(tokenFile, 'token-of-a-newer-host');
+  await new Promise(resolve => {
+    const socket = net.connect(env.AGENT_DESKTOP_HOST_PIPE, () => socket.write(JSON.stringify({ token, op: 'stop' }) + '\n'));
+    socket.on('data', () => { socket.end(); resolve(); });
+  });
+  await until(async () => (await statusOf(env)).running === false);
+  assert.equal(readFileSync(tokenFile, 'utf8'), 'token-of-a-newer-host');
+  writeFileSync(tokenFile, token);
+  serve(env);
+  await until(async () => (await statusOf(env))?.pid);
+  const stopped = (await stopHost(env)).reply.data;
+  assert.equal(stopped.stopped, true);
+  assert.equal((await statusOf(env)).running, false, 'gone by the time stop answered');
+});
+
 test('a host with nothing to do ends after its idle time and removes its token', async () => {
   const env = isolated(600);
   const child = serve(env);
@@ -162,6 +184,27 @@ test('a failed step retried with another name runs again with it; a patch runs f
   assert.equal(await wrapped.desktop.click('登记', '已发'), 1);
   assert.equal(asked[2].sent, true, 'an EFFECT_MISMATCH step was already sent');
   assert.deepEqual(fixes.map(f => f.action), ['do', 'retry', 'skip']);
+});
+
+test('a job without --allow-final runs up to a final step and waits there for an approval', async () => {
+  const env = isolated();
+  const { reply } = await cli(env, ['run', '--detach'], 'log("before"); await web.click("提交订单"); return "after";');
+  try {
+    const id = reply.data.id;
+    const waiting = (await cli(env, ['job', 'wait', id])).reply.data;
+    assert.equal(waiting.state, 'waiting');
+    assert.equal(waiting.reason, 'approval', 'the final click is held, not the whole script refused');
+    assert.equal(waiting.waiting.error.code, 'FINAL_NOT_ALLOWED');
+    const wrong = (await cli(env, ['job', 'retry', id])).reply;
+    assert.equal(wrong.error ? 'refused' : wrong.ok, 'refused');
+    assert.equal((await cli(env, ['job', 'approve', id])).reply.data.state, 'running');
+    const next = (await cli(env, ['job', 'wait', id])).reply.data;
+    assert.equal(next.reason, 'fix', 'approved, the click was sent on and failed only because no browser exists here');
+    assert.notEqual(next.waiting.error.code, 'FINAL_NOT_ALLOWED');
+    await cli(env, ['job', 'skip', id]);
+    const done = (await cli(env, ['job', 'wait', id])).reply.data;
+    assert.equal(done.result.result, 'after');
+  } finally { await stopHost(env); }
 });
 
 test('stop ends a job that waits for a fix', async () => {

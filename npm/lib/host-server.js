@@ -6,6 +6,8 @@ const { randomBytes } = require('node:crypto');
 const { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync, existsSync, statSync } = require('node:fs');
 const { join } = require('node:path');
 const { hostDir, pipePath, tokenPath, jobsDir } = require('./host-paths');
+const { createWatches } = require('./host-watch');
+const { runScript } = require('./script-run');
 
 const KEEP_JOBS = 50;
 const ACTIVE = new Set(['running', 'waiting']);
@@ -74,6 +76,22 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
   let closing = false;
   const lostOnStart = markLost();
   prune();
+  const watches = createWatches({
+    helperPath: join(__dirname, 'watch-helper.ps1'),
+    startJob: body => startJob(body),
+    readWindow: async win => {
+      const done = await runScript('return await desktop.read(args.id, { all: true });', { native: nativeBinary, args: { id: 'w-' + win.hwnd }, timeout: 60000 });
+      const text = String(done.result ?? '');
+      return { text, drawn: text.includes('- picture (text read from the screen') };
+    },
+    onChange: w => {
+      lastBusy = Date.now();
+      writeJson(join(hostDir(), 'watches.json'), watches?.list() ?? {});
+      const data = watches.get(w.id);
+      for (const reply of waiters.get(w.id) ?? []) reply(data);
+      waiters.delete(w.id);
+    },
+  });
 
   const save = job => writeJson(join(jobsDir(), job.id, 'job.json'), job);
   const native = args => new Promise(resolve => execFile(nativeBinary, args, { windowsHide: true, timeout: 15000 }, (err, out) => {
@@ -130,8 +148,12 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
 
   function fix(body) {
     const job = load(body.id);
-    if (job.state !== 'waiting' || job.reason !== 'fix') throw Object.assign(new Error('Job ' + job.id + ' is ' + job.state + ', not waiting for a fix.'), { code: 'JOB_NOT_WAITING' });
+    if (job.state !== 'waiting' || !['fix', 'approval'].includes(job.reason)) throw Object.assign(new Error('Job ' + job.id + ' is ' + job.state + ', not waiting for a fix.'), { code: 'JOB_NOT_WAITING' });
     const decision = body.decision ?? {};
+    if (job.reason === 'approval' && !['approve', 'skip', 'stop'].includes(decision.action)) {
+      throw Object.assign(new Error('Job ' + job.id + ' waits before a final step: job approve after the user agreed, job skip, or job stop.'), { code: 'JOB_NEEDS_APPROVAL' });
+    }
+    if (decision.action === 'approve' && job.reason !== 'approval') throw Object.assign(new Error('Job ' + job.id + ' is not waiting for an approval.'), { code: 'JOB_NOT_WAITING' });
     if (decision.action === 'retry' && job.waiting?.sent && !body.force) {
       throw Object.assign(new Error('This step was already sent (' + (job.waiting.error?.code ?? '') + '); doing it again could send it twice. Use job skip, or job do with steps that check first.'),
         { code: 'STEP_ALREADY_SENT' });
@@ -150,6 +172,19 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     setTimeout(() => { if (children.has(job.id)) child.kill(); }, 3000).unref();
     if (!child) change(job, { state: 'stopped', reason: undefined, waiting: undefined, ended: new Date().toISOString() });
     return { ...summary(job), state: job.state === 'stopped' ? 'stopped' : 'stopping', reason: undefined };
+  }
+
+  function waitWatch(body, reply) {
+    const w = watches.get(body.id);
+    if (w.state !== 'watching') return reply(w);
+    const list = waiters.get(w.id) ?? [];
+    list.push(reply);
+    waiters.set(w.id, list);
+    if (body.timeout_ms) setTimeout(() => {
+      const left = (waiters.get(w.id) ?? []).filter(r => r !== reply);
+      if (left.length) waiters.set(w.id, left); else waiters.delete(w.id);
+      reply(watches.get(w.id));
+    }, Number(body.timeout_ms)).unref();
   }
 
   function wait(body, reply) {
@@ -176,7 +211,8 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
 
   function status() {
     const list = [...jobs.values()];
-    return { pid: process.pid, started, pipe: pipePath(), jobs: list.filter(j => ACTIVE.has(j.state)).map(summary), lost_on_start: lostOnStart };
+    return { pid: process.pid, started, pipe: pipePath(), jobs: list.filter(j => ACTIVE.has(j.state)).map(summary),
+      watches: watches.list().watches.filter(w => w.state === 'watching'), lost_on_start: lostOnStart };
   }
 
   function listJobs() {
@@ -188,6 +224,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
   async function shutdown(why) {
     if (closing) return;
     closing = true;
+    watches.stopAll();
     for (const [id, child] of children) {
       const job = jobs.get(id);
       child.send({ type: 'stop' });
@@ -195,7 +232,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
       if (job && ACTIVE.has(job.state)) change(job, { state: 'lost', reason: undefined, waiting: undefined, ended: new Date().toISOString(), error: { code: 'HOST_ENDED', message: 'The host stopped (' + why + ') while this job ran.' } });
     }
     await native(['restore-cursor']);
-    rmSync(tokenPath(), { force: true });
+    try { if (readFileSync(tokenPath(), 'utf8').trim() === token) rmSync(tokenPath(), { force: true }); } catch { /* a newer host owns the token now */ }
     server.close();
     setTimeout(() => process.exit(0), 200).unref();
   }
@@ -209,6 +246,10 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     fix: body => fix(body),
     stop_job: body => stop(body),
     report: body => report(body),
+    watch_add: body => watches.add(body.spec ?? {}),
+    watch_list: () => watches.list(),
+    watch_show: body => watches.get(body.id),
+    watch_remove: body => watches.remove(body.id),
   };
 
   const server = net.createServer(socket => {
@@ -228,6 +269,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
       lastBusy = Date.now();
       try {
         if (body.op === 'wait') return wait(body, job => send({ ok: true, data: job }));
+        if (body.op === 'watch_wait') return waitWatch(body, w => send({ ok: true, data: w }));
         const handler = ops[body.op];
         if (!handler) throw Object.assign(new Error('Unknown host request "' + body.op + '".'), { code: 'INVALID_ARGS' });
         send({ ok: true, data: await handler(body) });
@@ -244,7 +286,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
       writeJson(tokenPath(), token);
       writeFileSync(tokenPath(), token);
       const idle = setInterval(() => {
-        const busy = [...jobs.values()].some(j => ACTIVE.has(j.state));
+        const busy = [...jobs.values()].some(j => ACTIVE.has(j.state)) || watches.busy();
         if (!busy && Date.now() - lastBusy >= idleMs) { clearInterval(idle); shutdown('idle'); }
       }, Math.min(30000, Math.max(200, idleMs / 4)));
       for (const signal of ['SIGINT', 'SIGTERM', 'SIGBREAK']) process.on(signal, () => shutdown(signal));

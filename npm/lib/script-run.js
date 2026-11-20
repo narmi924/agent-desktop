@@ -125,7 +125,14 @@ function brief(subject) {
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
 async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput = false,
-  args = {}, allowFinal = false, onStep, watch = false, fix } = {}) {
+  args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false } = {}) {
+  let approvedOnce = false;
+  const finalAllowed = () => {
+    if (allowFinal) return true;
+    if (!approvedOnce) return false;
+    approvedOnce = false;
+    return true;
+  };
   const watching = () => watch || Boolean(onStep);
   const started = Date.now();
   env = holding(env ?? process.env);
@@ -197,7 +204,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
       return flow(command, options, gate);
     } });
   const guarded = guardFinals({ web: page.web, desktop: desk.desktop, visible: seen.visible }, {
-    allowed: allowFinal,
+    allowed: finalAllowed,
     onFinal: final => finals.push(final),
     mark: (on, callArgs) => (on === 'web' ? page.markTarget(callArgs[0]) : on === 'desktop' ? desk.markTarget(callArgs[0], callArgs[1]) : undefined),
   });
@@ -209,6 +216,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
   };
   const surfaces = fix ? fixable(guarded, {
     fixes: fix.fixes,
+    allowOnce: () => { approvedOnce = true; },
     ask: async info => fix.ask({ ...info, scene: await sceneOf(info.surface) }),
     runPatch: patchSource => new AsyncFunction(...Object.keys(helpers), String(patchSource))(...Object.values(helpers)),
   }) : guarded;
@@ -258,7 +266,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     throw Object.assign(new Error('The script reads arguments that were not given: ' + missing.join(', ') + '. Pass them with --args JSON.'),
       { code: 'MISSING_ARGS', details: { needs: missing }, report: report() });
   }
-  const seenFinals = allowFinal ? [] : scanFinals(source);
+  const seenFinals = allowFinal || finalsAtRunTime ? [] : scanFinals(source);
   if (seenFinals.length) {
     throw Object.assign(finalRefused('This script has final steps (' + seenFinals.map(f => f.what + ': ' + f.why).join('; ') + '), so none of it ran.',
       { finals: seenFinals }), { report: report() });

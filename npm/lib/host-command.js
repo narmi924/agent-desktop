@@ -7,7 +7,7 @@ const { request, running, ensureHost } = require('./host-client');
 const { jobsDir } = require('./host-paths');
 
 const FIX_WAIT_MS = 10 * 60 * 1000;
-const usage = 'job list | job show ID | job wait ID [--timeout-ms MS] | job stop ID | job report ID | job retry ID [--target NAME] [--options JSON] | job do ID --file PATCH.js | job skip ID [--value JSON]';
+const usage = 'job list | job show ID | job wait ID [--timeout-ms MS] | job stop ID | job report ID | job retry ID [--target NAME] [--options JSON] | job do ID --file PATCH.js | job skip ID [--value JSON] | job approve ID';
 
 async function hostCommand([action], { workflowPath, nativeBinary }) {
   if (action === 'serve') {
@@ -19,7 +19,14 @@ async function hostCommand([action], { workflowPath, nativeBinary }) {
   if (action === 'status') return (await running()) ?? { running: false };
   if (action === 'stop') {
     const now = await running();
-    return now ? request('stop') : { running: false };
+    if (!now) return { running: false };
+    const stopping = await request('stop');
+    const until = Date.now() + 8000;
+    while (await running()) {
+      if (Date.now() > until) throw Object.assign(new Error('The host did not stop within 8 s.'), { code: 'TIMEOUT' });
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    return { ...stopping, stopped: true };
   }
   throw Object.assign(new Error('host start | host stop | host status'), { code: 'INVALID_ARGS' });
 }
@@ -71,6 +78,7 @@ async function job([action, id, ...rest], values, readText) {
       if (!values.file) throw Object.assign(new Error('job do ID --file PATCH.js'), { code: 'INVALID_ARGS' });
       return fix({ action: 'do', source: readText(values.file).replace(/^﻿/, '') });
     case 'skip': return fix({ action: 'skip', ...(values.value !== undefined ? { value: parseJson(values.value, '--value') } : {}) });
+    case 'approve': return fix({ action: 'approve' });
     default: throw Object.assign(new Error(usage), { code: 'INVALID_ARGS' });
   }
 }
@@ -93,7 +101,8 @@ async function runJob(start, { runner, routines, nativeBinary }) {
   });
   const fixes = [];
   const ask = info => new Promise(resolve => {
-    send({ type: 'waiting', reason: 'fix', info: { step: info.step, error: errorInfo(info.error), sent: info.sent, target: info.target, scene: info.scene,
+    send({ type: 'waiting', reason: info.approval ? 'approval' : 'fix', info: { step: info.step, error: errorInfo(info.error), sent: info.sent, target: info.target, scene: info.scene,
+      ...(info.approval ? { final: info.error.details, picture: info.error.details?.picture } : {}),
       until: new Date(Date.now() + FIX_WAIT_MS).toISOString() } });
     execFile(nativeBinary, ['restore-cursor'], { windowsHide: true }, () => {});
     const timer = setTimeout(() => { pending = undefined; resolve({ action: 'stop' }); }, FIX_WAIT_MS);
@@ -102,8 +111,8 @@ async function runJob(start, { runner, routines, nativeBinary }) {
   const fix = { ask, fixes };
   try {
     const done = start.routine
-      ? await routines.runRoutine(start.routine, start.args, (source, extra) => runner(source, { ...extra, fix }), { fixes })
-      : await runner(start.source, { args: start.args, fix });
+      ? await routines.runRoutine(start.routine, start.args, (source, extra) => runner(source, { ...extra, fix, finalsAtRunTime: true }), { fixes })
+      : await runner(start.source, { args: start.args, fix, finalsAtRunTime: true });
     send({ type: 'done', data: { ...done, ...(fixes.length ? { fixes, fixes_note: 'These steps needed a fix. If this was a routine, save the fixed script with run --save NAME --replace.' } : {}) } });
   } catch (err) {
     send({ type: 'failed', error: { ...errorInfo(err), ...(err.report ?? {}), ...(fixes.length ? { fixes } : {}) } });
@@ -112,4 +121,26 @@ async function runJob(start, { runner, routines, nativeBinary }) {
   return { keep: true };
 }
 
-module.exports = { hostCommand, job, detach, runJob };
+const watchUsage = 'watch add (--window TITLE [--gone] | --text TEXT --in WINDOW [--gone] [--every-ms MS] | --notification TEXT | --file PATH) [--then ROUTINE [--args JSON | --args-file FILE]] | watch list | watch show ID | watch wait ID [--timeout-ms MS] | watch remove ID';
+
+/** Watches live in the host: adding one starts the host if needed. */
+async function watch([action, id, ...rest], values, { workflowPath, readText }) {
+  if (rest.length) throw Object.assign(new Error(watchUsage), { code: 'INVALID_ARGS' });
+  if (action === 'add') {
+    await ensureHost(workflowPath);
+    const args = values['args-file'] !== undefined ? parseJson(readText(values['args-file']).replace(/^\uFEFF/, ''), '--args-file') : parseJson(values.args, '--args');
+    if (args !== undefined && !values.then) throw Object.assign(new Error('--args goes with --then ROUTINE.'), { code: 'INVALID_ARGS' });
+    return request('watch_add', { spec: { window: values.window, text: values.text, in: values.in, gone: values.gone, every: values['every-ms'],
+      notification: values.notification, file: values.file, then: values.then, args } });
+  }
+  if (action === 'list') {
+    try { return await request('watch_list'); } catch (err) { if (err.code === 'HOST_NOT_RUNNING') return { watches: [], host: 'not running' }; throw err; }
+  }
+  if (!id) throw Object.assign(new Error(watchUsage), { code: 'INVALID_ARGS' });
+  if (action === 'show') return request('watch_show', { id });
+  if (action === 'remove') return request('watch_remove', { id });
+  if (action === 'wait') return request('watch_wait', { id, ...(values['timeout-ms'] ? { timeout_ms: Number(values['timeout-ms']) } : {}) });
+  throw Object.assign(new Error(watchUsage), { code: 'INVALID_ARGS' });
+}
+
+module.exports = { hostCommand, job, detach, runJob, watch };

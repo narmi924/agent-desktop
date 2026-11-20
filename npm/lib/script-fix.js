@@ -1,7 +1,7 @@
 'use strict';
 
 /** Errors a fix cannot help with: the user has to decide, or the script itself is wrong. */
-const NOT_FIXABLE = new Set(['FINAL_NOT_ALLOWED', 'INPUT_NOT_ALLOWED', 'MISSING_ARGS', 'INVALID_ARGS', 'EXPECTATION_FAILED']);
+const NOT_FIXABLE = new Set(['INPUT_NOT_ALLOWED', 'MISSING_ARGS', 'INVALID_ARGS', 'EXPECTATION_FAILED']);
 /** A step that was sent: doing it again could send it twice. */
 const SENT = new Set(['EFFECT_MISMATCH']);
 
@@ -21,7 +21,7 @@ function withOptions(args, options) {
  * {action: "stop"}. A patch runs first and then the step is tried again, unless the step was already sent: then the
  * script goes on with the patch's value. The script's variables stay as they were; steps that already ran are not run again.
  */
-function fixable(surfaces, { ask, runPatch, fixes = [] }) {
+function fixable(surfaces, { ask, runPatch, fixes = [], allowOnce = () => {} }) {
   const wrapped = {};
   for (const [surface, helpers] of Object.entries(surfaces)) {
     wrapped[surface] = Object.fromEntries(Object.entries(helpers).map(([name, fn]) => {
@@ -33,9 +33,12 @@ function fixable(surfaces, { ask, runPatch, fixes = [] }) {
             return await fn(...current);
           } catch (err) {
             if (!err || NOT_FIXABLE.has(err.code)) throw err;
+            const approval = err.code === 'FINAL_NOT_ALLOWED';
             const at = targetIndex(surface, name);
-            const decision = await ask({ step: err.step ?? surface + '.' + name, surface, helper: name, target: current[at], error: err, sent: SENT.has(err.code) });
+            const decision = await ask({ step: err.step ?? surface + '.' + name, surface, helper: name, target: current[at], error: err, sent: SENT.has(err.code), approval });
             if (!decision || decision.action === 'stop') throw err;
+            if (approval && !['approve', 'skip'].includes(decision.action)) throw err;
+            if (decision.action === 'approve') allowOnce();
             fixes.push({ step: err.step ?? surface + '.' + name, ...decision, ...(decision.source ? { source: undefined, patch: true } : {}) });
             if (decision.action === 'skip') return decision.value ?? null;
             if (decision.action === 'do') {
