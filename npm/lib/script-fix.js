@@ -1,7 +1,7 @@
 'use strict';
 
 /** Errors a fix cannot help with: the user has to decide, or the script itself is wrong. */
-const NOT_FIXABLE = new Set(['MISSING_ARGS', 'INVALID_ARGS', 'EXPECTATION_FAILED']);
+const NOT_FIXABLE = new Set(['MISSING_ARGS', 'INVALID_ARGS', 'EXPECTATION_FAILED', 'SURFACE_PROTECTED']);
 /** A step the tool stopped itself because a person took the mouse or keyboard: not sent, safe to do again. */
 const YIELDED = /Cursor movement interrupted|stopped by Escape|held mouse button|left the foreground|PERSON_TOOK_OVER/;
 /** A step that was sent: doing it again could send it twice. */

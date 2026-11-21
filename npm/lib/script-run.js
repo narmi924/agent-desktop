@@ -10,6 +10,7 @@ const { inputUses, inputRefused } = require('./script-input');
 const { argsView, missingArgs } = require('./script-args');
 const { scanFinals, guardFinals, finalRefused } = require('./script-final');
 const { fixable } = require('./script-fix');
+const { surfaceRefused } = require('./routine-approvals');
 
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const SCENE_WAIT_MS = 8000;
@@ -127,7 +128,7 @@ function brief(subject) {
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
 async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput: allowInputOption = false,
-  args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false, hands } = {}) {
+  args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false, hands, approvedRoutine = false } = {}) {
   const handsFree = () => (typeof allowInputOption === 'function' ? allowInputOption() : allowInputOption);
   let approvedOnce = false;
   const finalAllowed = () => {
@@ -192,6 +193,10 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     if (effect) effects.push(effect);
   };
   const touch = ({ app, host }) => {
+    if (!approvedRoutine) {
+      const refused = surfaceRefused({ app, host });
+      if (refused) throw refused;
+    }
     if (app) touched.apps.add(app);
     if (host) touched.hosts.add(host);
   };

@@ -7,6 +7,8 @@ const { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, renameSync,
 const { join } = require('node:path');
 const { hostDir, pipePath, tokenPath, jobsDir } = require('./host-paths');
 const { createWatches } = require('./host-watch');
+const grants = require('./routine-approvals');
+const store = require('./routine-store');
 const { runScript } = require('./script-run');
 
 const KEEP_JOBS = 50;
@@ -138,7 +140,10 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     const child = fork(workflowPath, ['job-run', dir], { cwd: body.cwd && existsSync(body.cwd) ? body.cwd : undefined, env, stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true });
     children.set(id, child);
     child.on('message', message => {
-      if (message.type === 'waiting') change(job, { state: 'waiting', reason: message.reason, waiting: message.info });
+      if (message.type === 'waiting') {
+        change(job, { state: 'waiting', reason: message.reason, waiting: message.info });
+        if (message.reason === 'approval') confirm({ id }).catch(() => {});
+      }
       if (message.type === 'hands_used' && !job.holdsHands) { job.holdsHands = true; updateGuard(); }
       if (message.type === 'running') change(job, { state: 'running', reason: undefined, waiting: undefined });
       if (message.type === 'done') change(job, { state: 'done', reason: undefined, waiting: undefined, ended: new Date().toISOString(), result: message.data });
@@ -161,7 +166,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     if (job.reason === 'approval' && !['approve', 'skip', 'stop'].includes(decision.action)) {
       throw Object.assign(new Error('Job ' + job.id + ' waits before a final step: job approve after the user agreed, job skip, or job stop.'), { code: 'JOB_NEEDS_APPROVAL' });
     }
-    if (decision.action === 'approve' && job.reason !== 'approval') throw Object.assign(new Error('Job ' + job.id + ' is not waiting for an approval.'), { code: 'JOB_NOT_WAITING' });
+    if (decision.action === 'approve') throw Object.assign(new Error('A final step is let go only by the person clicking the confirmation window on screen.'), { code: 'POLICY_DENIED' });
     if (decision.action === 'retry' && job.waiting?.sent && !body.force) {
       throw Object.assign(new Error('This step was already sent (' + (job.waiting.error?.code ?? '') + '); doing it again could send it twice. Use job skip, or job do with steps that check first.'),
         { code: 'STEP_ALREADY_SENT' });
@@ -200,6 +205,34 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
       children.get(job.id)?.send({ type: job.reason === 'user' ? 'resume' : 'grant', until: job.grantUntil });
       change(job, { state: 'running', reason: undefined, waiting: undefined });
     }
+  }
+
+  /**
+   * Shows the confirmation window for a job that waits before a final step. Only a real click answers it: once lets
+   * this step go, always also approves the routine for good, deny or no answer in two minutes stops the job.
+   */
+  async function confirm(body) {
+    const job = load(body.id);
+    if (job.state !== 'waiting' || job.reason !== 'approval') throw Object.assign(new Error('Job ' + job.id + ' is not waiting before a final step.'), { code: 'JOB_NOT_WAITING' });
+    if (job.confirming) return { id: job.id, showing: true };
+    if (process.env.AGENT_DESKTOP_CONFIRM === 'off') return { id: job.id, showing: false };
+    job.confirming = true;
+    const start = readJson(join(jobsDir(), job.id, 'start.json')) ?? {};
+    const details = Object.entries(start.args ?? {}).map(([k, v]) => k + '：' + (typeof v === 'string' ? v : JSON.stringify(v))).join('，').slice(0, 300);
+    const why = String(job.waiting?.final?.why ?? '').replace(/^the name contains "(.*)"$/, '名字里有“$1”').replace(/^marked final$/, '脚本里标成了终点步');
+    const what = String(job.waiting?.final?.what ?? job.waiting?.step ?? '一个终点步').replace(/^(web|desktop|visible)\.click /, '点击 ') + (why ? '（' + why + '）' : '');
+    const answer = await new Promise(resolve => execFile('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', join(__dirname, 'confirm-window.ps1'),
+      '-What', what, '-Routine', start.routine ?? '', '-Details', details, '-Picture', job.waiting?.picture ?? '', '-Seconds', '120'],
+    { windowsHide: false, timeout: 180000 }, (err, out) => resolve(String(out ?? '').trim().split(/\r?\n/).at(-1) || 'timeout')));
+    job.confirming = false;
+    if (answer === 'always' && start.routine) {
+      try { grants.approve(start.routine, store.load(start.routine).script); } catch { /* the routine is gone: this step only */ }
+    }
+    const child = children.get(job.id);
+    if (['once', 'always'].includes(answer)) child?.send({ type: 'fix', decision: { action: 'approve' } });
+    else child?.send({ type: 'fix', decision: { action: 'stop' } });
+    change(job, { state: 'running', reason: undefined, waiting: undefined, confirmed: answer });
+    return { id: job.id, answer };
   }
 
   function stop(body) {
@@ -286,6 +319,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     stop_job: body => stop(body),
     report: body => report(body),
     grant: async body => { const granted = grant(body); await dispatchHands(); return granted; },
+    confirm: body => { const job = load(body.id); confirm(body).catch(() => {}); return { id: job.id, showing: true, note: 'The confirmation window is on screen; only the person clicking it lets the step go.' }; },
     watch_add: body => watches.add(body.spec ?? {}),
     watch_list: () => watches.list(),
     watch_show: body => watches.get(body.id),

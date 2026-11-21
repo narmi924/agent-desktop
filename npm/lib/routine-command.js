@@ -3,6 +3,7 @@
 const store = require('./routine-store');
 const { argNames, parseArgs } = require('./script-args');
 const { templateSteps, lacksResultCheck, effectChecker, learn, firstSeen, scrubber } = require('./routine-effects');
+const grants = require('./routine-approvals');
 
 const KNOWN_LIMIT = 5;
 
@@ -55,8 +56,9 @@ async function runRoutine(name, given, run, { fixes } = {}) {
       '. Pass them with --args JSON.'), { code: 'MISSING_ARGS', details: { needs: missing } });
   }
   const checker = effectChecker(routine, given);
+  const standing = grants.approved(name, routine.script);
   try {
-    const done = await run(routine.script, { args: given, onStep: record => checker.check(record) });
+    const done = await run(routine.script, { args: given, onStep: record => checker.check(record), ...(standing ? { allowFinal: true, approvedRoutine: true } : {}) });
     const next = fixes?.length
       ? store.update(name, current => ({ ...current, last_fixed: new Date().toISOString() }))
       : store.update(name, current => learn(current, checker.matched));
@@ -93,6 +95,19 @@ function show(name) {
   };
 }
 
+/** Routines a person approved for good in the confirmation window, and whether each is still the script they approved. */
+function permissions() {
+  return { approved: Object.entries(grants.approvals()).map(([name, entry]) => {
+    let current;
+    try { current = grants.approved(name, store.load(name).script); } catch { current = false; }
+    return { name, since: entry.at, current };
+  }), protected: grants.protectedSurfaces(), protected_file: grants.protectedPath() };
+}
+
+function revoke(name) {
+  return { revoked: name, had: grants.revoke(name) };
+}
+
 function remove(name) {
   store.remove(name);
   return { removed: name };
@@ -114,4 +129,4 @@ function readArgs({ args, 'args-file': file }, readText) {
   return parseArgs(file !== undefined ? readText(file).replace(/^﻿/, '') : args);
 }
 
-module.exports = { save, runRoutine, list, show, remove, knownRoutines, readArgs, parseParams, routineFrom };
+module.exports = { save, runRoutine, list, show, remove, knownRoutines, readArgs, parseParams, routineFrom, permissions, revoke };

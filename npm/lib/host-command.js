@@ -79,7 +79,7 @@ async function job([action, id, ...rest], values, readText) {
       if (!values.file) throw Object.assign(new Error('job do ID --file PATCH.js'), { code: 'INVALID_ARGS' });
       return fix({ action: 'do', source: readText(values.file).replace(/^﻿/, '') });
     case 'skip': return fix({ action: 'skip', ...(values.value !== undefined ? { value: parseJson(values.value, '--value') } : {}) });
-    case 'approve': return fix({ action: 'approve' });
+    case 'approve': return request('confirm', { id });
     case 'grant': return request('grant', { id, seconds: Number(values.for) });
     default: throw Object.assign(new Error(usage), { code: 'INVALID_ARGS' });
   }

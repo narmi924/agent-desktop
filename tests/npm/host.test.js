@@ -14,7 +14,7 @@ let pipes = 0;
 /** A host of its own: a fresh state folder and pipe, no native binary, and a short idle time when asked. */
 function isolated(idleMs = 600000) {
   const home = mkdtempSync(join(tmpdir(), 'ad-host-'));
-  const env = { ...process.env, AGENT_DESKTOP_HOME: home, AGENT_DESKTOP_HOST_PIPE: '\\\\.\\pipe\\ad-host-test-' + process.pid + '-' + (++pipes),
+  const env = { ...process.env, AGENT_DESKTOP_HOME: home, AGENT_DESKTOP_CONFIRM: 'off', AGENT_DESKTOP_HOST_PIPE: '\\\\.\\pipe\\ad-host-test-' + process.pid + '-' + (++pipes),
     AGENT_DESKTOP_BIN: join(home, 'no-native.exe'), AGENT_DESKTOP_HOST_IDLE_MS: String(idleMs) };
   delete env.AGENT_DESKTOP_POINTER_HOLDER;
   return env;
@@ -197,13 +197,20 @@ test('a job without --allow-final runs up to a final step and waits there for an
     assert.equal(waiting.waiting.error.code, 'FINAL_NOT_ALLOWED');
     const wrong = (await cli(env, ['job', 'retry', id])).reply;
     assert.equal(wrong.error ? 'refused' : wrong.ok, 'refused');
-    assert.equal((await cli(env, ['job', 'approve', id])).reply.data.state, 'running');
-    const next = (await cli(env, ['job', 'wait', id])).reply.data;
-    assert.equal(next.reason, 'fix', 'approved, the click was sent on and failed only because no browser exists here');
-    assert.notEqual(next.waiting.error.code, 'FINAL_NOT_ALLOWED');
+    const asked = (await cli(env, ['job', 'approve', id])).reply.data;
+    assert.equal(asked.showing, true, 'job approve only shows the confirmation window again');
+    assert.equal((await cli(env, ['job', 'show', id])).reply.data.reason, 'approval', 'nothing but a click in that window lets the step go');
+    const token = readFileSync(join(env.AGENT_DESKTOP_HOME, 'host', 'token'), 'utf8');
+    const net = require('node:net');
+    const direct = await new Promise(resolve => {
+      const socket = net.connect(env.AGENT_DESKTOP_HOST_PIPE, () => socket.write(JSON.stringify({ token, op: 'fix', id, decision: { action: 'approve' } }) + '\n'));
+      let text = '';
+      socket.on('data', d => { text += d; if (text.includes('\n')) { socket.end(); resolve(JSON.parse(text)); } });
+    });
+    assert.equal(direct.error.code, 'POLICY_DENIED', 'not even with the host token');
     await cli(env, ['job', 'skip', id]);
     const done = (await cli(env, ['job', 'wait', id])).reply.data;
-    assert.equal(done.result.result, 'after');
+    assert.equal(done.result.result, 'after', 'skipping the final step is the caller\'s other way out');
   } finally { await stopHost(env); }
 });
 

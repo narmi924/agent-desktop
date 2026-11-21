@@ -46,13 +46,13 @@ const usage = [
   'agent-desktop-workflow replay --file FLOW.jsonl [--window ID] [--speed N]   (record a flow by setting AGENT_DESKTOP_RECORD=FLOW.jsonl)',
   'agent-desktop-workflow run [--file SCRIPT.js] [--session NAME | --space | --chrome] [--allow-input] [--allow-final] [--timeout-ms MS] [--args JSON | --args-file FILE.json] [--save NAME --about TEXT [--param name="what it is"]... [--replace]]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers. Without --allow-input a step that needs the real mouse and keyboard is refused before anything is sent; without --allow-final a send, submit, pay or delete step is refused the same way. --save keeps a script that succeeded as a routine; argument values are not stored)',
   'agent-desktop-workflow routine run NAME [--args JSON | --args-file FILE.json] [--allow-input] [--allow-final] [--session NAME | --space | --chrome]   (runs a saved routine and stops at the first step whose effect differs from the saved runs: EFFECT_MISMATCH)',
-  'agent-desktop-workflow routine list [--for TEXT] | routine show NAME | routine remove NAME',
+  'agent-desktop-workflow routine list [--for TEXT] | routine show NAME | routine remove NAME | routine permissions | routine revoke NAME   (permissions lists the routines a person approved for good and the apps and sites protected.json under the state folder protects)',
   'agent-desktop-workflow run ... --detach | routine run NAME ... --detach   (hands the work to the resident host and answers at once with a job id)',
   'agent-desktop-workflow job list | job show ID | job wait ID [--timeout-ms MS] | job stop ID | job report ID',
   'agent-desktop-workflow job retry ID [--target NAME] [--options JSON] | job do ID --file PATCH.js | job skip ID [--value JSON]   (a job whose step failed waits up to 10 minutes for one of these)',
   'agent-desktop-workflow host start | host stop | host status',
   'agent-desktop-workflow watch add (--window TITLE [--gone] | --text TEXT --in WINDOW [--gone] | --notification TEXT | --file PATH) [--then ROUTINE [--args JSON]] | watch list | watch show ID | watch wait ID | watch remove ID   (the host watches; --then starts a saved routine as a job, which still stops before a final step)',
-  'agent-desktop-workflow job approve ID   (a job started by a watch stopped before a final step: let that one step go, after the user agreed)',
+  'agent-desktop-workflow job approve ID   (a job stopped before a final step: shows the confirmation window again; only the person clicking it lets the step go)',
   'agent-desktop-workflow job grant (ID | --all) --for SECONDS   (a job waits with reason "hands" before a step that needs the real mouse and keyboard: let it, or every job, use them that long; a person touching them makes the job wait until they stop for 3 seconds; nothing goes on while the screen is locked)',
   'agent-desktop-workflow read --url URL   (the text of a web page: a plain request and a background browser run together and the first full answer is returned)',
   'agent-desktop-workflow space [--login URL | --close]   (the agent\'s own browser profile: --login shows its window so the user signs in once; later runs with --space keep that sign-in in the background)',
@@ -342,10 +342,13 @@ function runnerValues(values) {
   return Object.fromEntries(['session', 'chrome', 'space', 'timeout-ms', 'allow-input', 'allow-final'].filter(k => values[k] !== undefined).map(k => [k, values[k]]));
 }
 
+/** A job may wait hours for a fix, the hands or a click in the confirmation window, so its own clock is long. */
+const JOB_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+
 /** One detached job: runs its script with the same runner, and a failed step waits for a fix sent through the host. */
 async function jobRun(dir) {
   const start = JSON.parse(readFileSync(join(dir, 'start.json'), 'utf8'));
-  return host.runJob(start, { runner: scriptRunner(start.values), routines, nativeBinary: nativeBinary() });
+  return host.runJob(start, { runner: scriptRunner({ 'timeout-ms': String(JOB_TIMEOUT_MS), ...start.values }), routines, nativeBinary: nativeBinary() });
 }
 
 /** The runner both `run` and `routine run` use: same helpers, same refusals, same reply. */
@@ -384,6 +387,8 @@ async function script(values) {
 async function routine([action, name, ...rest], values) {
   if (rest.length) throw new Error(usage);
   if (action === 'list') return routines.list(values.for);
+  if (action === 'permissions') return routines.permissions();
+  if (action === 'revoke' && name) return routines.revoke(name);
   if (!name) throw new Error('Name the routine: routine ' + (action ?? 'run') + ' NAME.');
   if (action === 'show') return routines.show(name);
   if (action === 'remove') return routines.remove(name);
