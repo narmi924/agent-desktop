@@ -7,6 +7,37 @@ const CONFIRM_MS = 2500;
 const MAX_READ_MS = 12000;
 const VIEW_LIMIT = 6000;
 const REBIND = /navigated|Read the selected page again|no longer selected/i;
+const OPEN_WAIT_MS = 15000;
+const TEXT_WAIT_MS = 10000;
+
+/** Only web addresses are opened, so a script cannot start a program through the browser's command line. */
+function checkedUrl(url) {
+  let parsed;
+  try { parsed = new URL(String(url)); } catch { parsed = undefined; }
+  if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || /["\s]/.test(String(url))) {
+    throw Object.assign(new Error('visible.open takes an http or https address.'), { code: 'INVALID_ARGS' });
+  }
+  return parsed.href;
+}
+
+/** The page a tab shows counts as the one asked for when it is the same address, or one the site redirected to on the same host. */
+function samePage(shown, asked) {
+  try {
+    const a = new URL(shown), b = new URL(asked);
+    return a.host === b.host && (a.pathname === b.pathname || a.pathname.startsWith(b.pathname.replace(/\/$/, '') + '/') || b.pathname === '/');
+  } catch { return false; }
+}
+
+/**
+ * Opens an address in a new tab of the user's Chrome; Chrome starts if it is not running. The address travels in an
+ * environment variable, so no shell ever parses it. The starter is not detached: started detached, Start-Process
+ * returned 0 and Chrome opened nothing (measured on Windows 11 26200 with Chrome running and with it closed).
+ */
+function openInChrome(address) {
+  const { spawn } = require('node:child_process');
+  spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Start-Process chrome -ArgumentList $env:AGENT_DESKTOP_OPEN_URL'],
+    { windowsHide: true, stdio: 'ignore', env: { ...process.env, AGENT_DESKTOP_OPEN_URL: address } }).on('error', () => {});
+}
 
 /** How long a person takes to read `text`: Chinese by the character, other text by the word. */
 function readingMs(text, random = Math.random) {
@@ -23,7 +54,7 @@ function readingMs(text, random = Math.random) {
  * text shows. `pace()` is the human pace the script asked for, if any. Every command is marked
  * `visible`, so none of them is handed to a background browser connection.
  */
-function createVisible({ flow, step, warn, pace, takeInput = () => {} }) {
+function createVisible({ flow, step, warn, pace, takeInput = () => {}, pressKey, openUrl = openInChrome }) {
   let handle, windowId;
   const human = () => ({ visible: true, ...(pace() ? { human: pace() } : {}) });
 
@@ -115,6 +146,66 @@ function createVisible({ flow, step, warn, pace, takeInput = () => {} }) {
       takeInput('visible.scroll');
       const report = await on(page => flow('wheel', { page, over, lines: String(lines), ...human() }));
       return Boolean(report.verified);
+    }),
+    open: url => step('visible.open', url, async () => {
+      const address = checkedUrl(url);
+      takeInput('visible.open');
+      openUrl(address);
+      const until = Date.now() + OPEN_WAIT_MS;
+      for (;;) {
+        try {
+          const page = await bind();
+          if (samePage(page.url, address)) return shown(page);
+        } catch { /* The new tab may not be readable yet. */ }
+        if (Date.now() >= until) throw Object.assign(new Error('Chrome did not show ' + address + ' within ' + OPEN_WAIT_MS / 1000 + ' s.'), { code: 'TIMEOUT' });
+        await delay(250);
+      }
+    }),
+    select: (field, value) => step('visible.select', field, async () => {
+      takeInput('visible.select');
+      return on(page => flow('choose', { page, field, value: String(value) }));
+    }),
+    press: key => step('visible.press', key, async () => {
+      if (!pressKey) throw new Error('visible.press is not available here.');
+      takeInput('visible.press');
+      if (!windowId) await bind();
+      await pressKey(windowId, String(key));
+      return true;
+    }),
+    waitText: (text, timeout = TEXT_WAIT_MS) => step('visible.waitText', text, async () => {
+      const until = Date.now() + timeout;
+      for (;;) {
+        const page = await bind();
+        const line = [...page.text.split('\n'), ...page.controls.map(c => c.name)].find(l => l.includes(text));
+        if (line) return line;
+        if (Date.now() >= until) throw Object.assign(new Error('"' + text + '" did not show on the screen page within ' + timeout + ' ms.'), { code: 'TIMEOUT' });
+        await delay(300);
+      }
+    }),
+    waitFor: (name, { timeout = TEXT_WAIT_MS } = {}) => step('visible.waitFor', name, async () => {
+      const until = Date.now() + timeout;
+      for (;;) {
+        const page = await bind();
+        if (page.controls.some(c => c.name === name)) return true;
+        if (Date.now() >= until) throw Object.assign(new Error('"' + name + '" did not show on the screen page within ' + timeout + ' ms.'), { code: 'TIMEOUT' });
+        await delay(300);
+      }
+    }),
+    waitIdle: ({ timeout = TEXT_WAIT_MS, quiet = 600 } = {}) => step('visible.waitIdle', '', async () => {
+      const until = Date.now() + timeout;
+      let last, since = Date.now();
+      for (;;) {
+        const page = shown(await bind());
+        const now = JSON.stringify(page);
+        if (now !== last) { last = now; since = Date.now(); }
+        else if (Date.now() - since >= quiet) return page;
+        if (Date.now() >= until) { warn('visible.waitIdle: the screen page was still changing after ' + timeout + ' ms.'); return page; }
+        await delay(200);
+      }
+    }),
+    has: name => step('visible.has', name, async () => {
+      const page = await bind();
+      return page.controls.some(c => c.name === name) || page.text.includes(name);
     }),
   };
 

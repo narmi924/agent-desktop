@@ -9,6 +9,7 @@ const { readPage } = require('./page-read');
 const { inputUses, inputRefused } = require('./script-input');
 const { argsView, missingArgs } = require('./script-args');
 const { scanFinals, guardFinals, finalRefused } = require('./script-final');
+const { screenWeb } = require('./script-screen');
 const { fixable } = require('./script-fix');
 const { surfaceRefused } = require('./routine-approvals');
 
@@ -81,6 +82,12 @@ const api = [
   '                                             nobody clicked has its caret at the start: {at: "end"} appends, {multiline: true} lets a line break press Enter',
   '  await visible.scrollTo(text)            -> turns the wheel until the text is on screen; {over: "text inside a panel"} scrolls that panel',
   '  await visible.scroll(lines = 3, {over}) -> positive is down',
+  '  await visible.open(url)                 -> opens the address in a new tab of the user\'s Chrome and binds it; never reuses an open tab',
+  '  await visible.select(field, option)     -> picks one option of a dropdown on the screen page',
+  '  await visible.press(keys)               -> presses keys in that Chrome window, for example "enter" or "ctrl+a"',
+  '  await visible.waitText(text) / waitFor(name) / waitIdle() / has(name) -> the same waits and checks as web.*, on the screen page',
+  'With --mode watch or record, web.* runs here on screen: the same script that runs in the background browser runs where the',
+  'user can follow it. web.eval, table, fetch, cmd, selection, value and {near} work in the background browser only.',
   '',
   'acting like a person (for a recording or a demonstration; slower, takes the mouse and keyboard, needs --allow-input):',
   '  human("natural")                        -> from here on visible.*, desktop.click and desktop.type move and type like a person;',
@@ -128,7 +135,7 @@ function brief(subject) {
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
 async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput: allowInputOption = false,
-  args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false, hands, approvedRoutine = false, startPace } = {}) {
+  args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false, hands, approvedRoutine = false, startPace, screen = false, openUrl } = {}) {
   const handsFree = () => (typeof allowInputOption === 'function' ? allowInputOption() : allowInputOption);
   let approvedOnce = false;
   const finalAllowed = () => {
@@ -208,18 +215,21 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
   const desk = createDesktop({ call: need(native, 'agent-desktop', gate), step, warn: text => warnings.push(text), note, picture, pace: () => pace,
     inputAllowed: handsFree, touch, watching, interrupted: () => Boolean(hands?.cutShort?.()) });
   const seen = createVisible({ step, warn: text => warnings.push(text), pace: () => pace, takeInput,
+    pressKey: (window, key) => desk.desktop.sequence(window, [{ press: key }]),
+    ...(openUrl ? { openUrl } : {}),
     flow: (command, options) => {
       if (!flow) throw new Error('The visible page helpers are not available here.');
       return flow(command, options, gate);
     } });
-  const guarded = guardFinals({ web: page.web, desktop: desk.desktop, visible: seen.visible }, {
+  const webSurface = screen ? screenWeb(seen.visible) : page.web;
+  const guarded = guardFinals({ web: webSurface, desktop: desk.desktop, visible: seen.visible }, {
     allowed: finalAllowed,
     onFinal: final => finals.push(final),
-    mark: (on, callArgs) => (on === 'web' ? page.markTarget(callArgs[0]) : on === 'desktop' ? desk.markTarget(callArgs[0], callArgs[1]) : undefined),
+    mark: (on, callArgs) => (on === 'web' && !screen ? page.markTarget(callArgs[0]) : on === 'desktop' ? desk.markTarget(callArgs[0], callArgs[1]) : undefined),
   });
   const sceneOf = async on => {
     try {
-      const look = on === 'desktop' ? desk.scene() : on === 'web' ? page.scene() : on === 'visible' ? seen.scene() : undefined;
+      const look = on === 'desktop' ? desk.scene() : on === 'web' && !screen ? page.scene() : on === 'visible' || on === 'web' ? seen.scene() : undefined;
       return await Promise.race([look, delay(SCENE_WAIT_MS)]);
     } catch { return undefined; }
   };

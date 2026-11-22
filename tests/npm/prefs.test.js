@@ -70,6 +70,9 @@ test('each way turns into the runner options it stands for, and the caller\'s ow
   const direct = prefs.runnerOptions(settingsFor('direct'), {});
   assert.equal(direct['allow-input'], true);
   assert.equal(direct.pace, undefined);
+  assert.equal(record.screen, true, 'a recording shows web steps on screen');
+  assert.equal(watch.screen, true, 'watching shows web steps on screen');
+  assert.equal(direct.screen, undefined, 'direct keeps web steps in the faster background browser');
   assert.equal(prefs.runnerOptions(settingsFor('background', 'chrome'), {}).chrome, true);
   assert.equal(prefs.runnerOptions(settingsFor('background', 'space'), {}).space, true);
   const own = prefs.runnerOptions(settingsFor('background', 'chrome'), { session: 'work' });

@@ -318,7 +318,7 @@ async function replay({ file, window, speed = '1' }) {
 
 /** The runner options a detached job carries to its own process. */
 function runnerValues(values) {
-  return Object.fromEntries(['session', 'chrome', 'space', 'timeout-ms', 'allow-input', 'allow-final', 'pace', 'pointer'].filter(k => values[k] !== undefined).map(k => [k, values[k]]));
+  return Object.fromEntries(['session', 'chrome', 'space', 'timeout-ms', 'allow-input', 'allow-final', 'pace', 'pointer', 'screen'].filter(k => values[k] !== undefined).map(k => [k, values[k]]));
 }
 
 /** A job may wait hours for a fix, the hands or the user's word before a final step, so its own clock is long. */
@@ -331,14 +331,14 @@ async function jobRun(dir) {
 }
 
 /** The runner both `run` and `routine run` use: same helpers, same refusals, same reply. */
-function scriptRunner({ session, chrome, space: own, 'timeout-ms': wait = '120000', 'allow-input': allowInput = false, 'allow-final': allowFinal = false, pace, pointer }) {
+function scriptRunner({ session, chrome, space: own, 'timeout-ms': wait = '120000', 'allow-input': allowInput = false, 'allow-final': allowFinal = false, pace, pointer, screen = false }) {
   const timeout = Number(wait);
   if (!(timeout > 0)) throw new Error('--timeout-ms takes a positive number.');
   if ([session, chrome, own].filter(Boolean).length > 1) throw new Error('Choose one of --session NAME, --space and --chrome.');
   process.env.AGENT_DESKTOP_POINTER_HOLDER ??= String(process.pid);
   if (pointer) process.env.AGENT_DESKTOP_POINTER ??= pointer;
   return (source, extra) => runScript(source, {
-    browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform, allowInput, allowFinal, startPace: pace,
+    browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform, allowInput, allowFinal, startPace: pace, screen,
     flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? 'work'],
     env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env, ...extra,
   });

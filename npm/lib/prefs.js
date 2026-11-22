@@ -12,10 +12,10 @@ const { stateDir } = require('./routine-store');
 const WAYS = {
   background: { input: false, pace: undefined, pointer: 'amber',
     about: 'Works in the background: no window comes to the front, the mouse and keyboard stay with the user. The default and usually the fastest.' },
-  watch: { input: true, pace: 'natural', pointer: 'amber',
-    about: 'Works on the screen at a human pace with the amber agent pointer, so the user can follow every step and knows not to touch.' },
-  record: { input: true, pace: 'natural', pointer: 'off',
-    about: 'Works on the screen at a human pace with the user\'s own pointer, for recordings and shared screens.' },
+  watch: { input: true, pace: 'natural', pointer: 'amber', screen: true,
+    about: 'Works on the screen at a human pace with the amber agent pointer, web steps included, so the user can follow every step and knows not to touch.' },
+  record: { input: true, pace: 'natural', pointer: 'off', screen: true,
+    about: 'Works on the screen at a human pace with the user\'s own pointer, web steps included, for recordings and shared screens.' },
   direct: { input: true, pace: undefined, pointer: 'amber',
     about: 'Uses the real mouse and keyboard whenever a step needs them, without asking again and without a human pace.' },
 };
@@ -143,6 +143,7 @@ function runnerOptions(settings, values) {
     ...values,
     ...(way.input ? { 'allow-input': true } : {}),
     ...(way.pace ? { pace: way.pace } : {}),
+    ...(way.screen ? { screen: true } : {}),
     ...(settings.pointer.from !== 'built-in' ? { pointer: settings.pointer.value } : {}),
     ...(!own && settings.browser.value === 'chrome' ? { chrome: true } : {}),
     ...(!own && settings.browser.value === 'space' ? { space: true } : {}),
