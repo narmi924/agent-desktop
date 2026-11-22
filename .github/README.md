@@ -55,14 +55,15 @@ these tasks:
 
 ## Quick start
 
-You need Windows 10 or 11 and [Node.js](https://nodejs.org) 22 or later. In PowerShell:
+You need Windows 10 or 11. In PowerShell:
 
 ```powershell
 irm https://github.com/narmi924/slipwing/releases/latest/download/install.ps1 | iex
 ```
 
-It replaces the official `agent-desktop` and `agent-browser` npm packages, adds the `slipwing` command, and adds a
-short `slipwing` skill for Claude Code and Codex. Then tell your agent:
+It installs the [Node.js](https://nodejs.org) LTS with winget when Node.js 22 or later is missing, replaces the
+official `agent-desktop` and `agent-browser` npm packages, adds the `slipwing` command, and adds a short `slipwing`
+skill for Claude Code and Codex. Then tell your agent:
 
 > Use the slipwing skill. Copy the tracking number of order D6182 from my Chrome into the open Customer register
 > window and save it. Don't touch my mouse.

@@ -45,14 +45,15 @@ Linux 请用官方版。
 
 ## 快速开始
 
-需要 Windows 10 或 11，以及 [Node.js](https://nodejs.org) 22 或更新的版本。在 PowerShell 里运行：
+需要 Windows 10 或 11。在 PowerShell 里运行：
 
 ```powershell
 irm https://github.com/narmi924/slipwing/releases/latest/download/install.ps1 | iex
 ```
 
-它会替换官方的 `agent-desktop` 和 `agent-browser` 两个 npm 包，装上 `slipwing` 命令，并给 Claude Code 和 Codex
-各加一个很短的 `slipwing` skill。然后对你的 agent 说：
+没有 Node.js 22 或更新版本时，它先用 winget 装上 [Node.js](https://nodejs.org) 长期支持版；然后替换官方的
+`agent-desktop` 和 `agent-browser` 两个 npm 包，装上 `slipwing` 命令，并给 Claude Code 和 Codex 各加一个很短的
+`slipwing` skill。然后对你的 agent 说：
 
 > 用 slipwing 这个 skill。把我 Chrome 里订单 D6182 的物流单号填进开着的客户登记窗口并保存，别动我的鼠标。
 

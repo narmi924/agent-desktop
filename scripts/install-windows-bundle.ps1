@@ -20,11 +20,24 @@ function Invoke-Npm([string[]]$words) {
     if ($LASTEXITCODE -ne 0) { throw "npm $($words -join ' ') failed" }
 }
 
+function Get-NodeMajor {
+    $found = Get-Command node -ErrorAction SilentlyContinue
+    if (-not $found) { return 0 }
+    try { return [int]((& $found.Source --version).TrimStart('v').Split('.')[0]) } catch { return 0 }
+}
+
 if ([Environment]::Is64BitOperatingSystem -ne $true) { throw 'Slipwing needs 64-bit Windows.' }
-$node = Get-Command node -ErrorAction SilentlyContinue
-if (-not $node) { throw 'Node.js 22 or later is needed. Install it from https://nodejs.org or with: winget install OpenJS.NodeJS.LTS' }
-$major = [int]((& node --version).TrimStart('v').Split('.')[0])
-if ($major -lt 22) { throw "Node.js 22 or later is needed; this computer has $(& node --version)." }
+$had = Get-NodeMajor
+if ($had -lt 22) {
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    $found = if ($had) { "; this computer has Node.js $had" } else { '' }
+    if (-not $winget) { throw "Slipwing needs Node.js 22 or later$found. Install the LTS from https://nodejs.org and run this again." }
+    Say "Slipwing needs Node.js 22 or later$found. Installing the Node.js LTS with winget; Windows may ask for permission ..."
+    $verb = if ($had) { 'upgrade' } else { 'install' }
+    & $winget.Source $verb --id OpenJS.NodeJS.LTS --exact --silent --accept-package-agreements --accept-source-agreements
+    $env:Path = @([Environment]::GetEnvironmentVariable('Path', 'Machine'), [Environment]::GetEnvironmentVariable('Path', 'User')) -join ';'
+    if ((Get-NodeMajor) -lt 22) { throw 'Node.js 22 or later could not be installed. Install the LTS from https://nodejs.org and run this again.' }
+}
 
 $work = Join-Path $env:LOCALAPPDATA 'slipwing'
 New-Item -ItemType Directory -Force $work | Out-Null
