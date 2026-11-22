@@ -26,6 +26,7 @@ const prefs = require('../lib/prefs');
 const { COMMAND_OPTIONS, POSITIONAL_COMMANDS, parseOptions } = require('../lib/cli-options');
 const mcp = require('../lib/mcp-server');
 const schedule = require('../lib/routine-schedule');
+const skill = require('../lib/skill-command');
 
 const usage = [
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
@@ -60,6 +61,7 @@ const usage = [
   'agent-desktop-workflow job approve ID   (a job stopped before a final step, reason "approval": ask the user in the chat first; job approve lets that one step go, job skip passes it, job stop ends the job)',
   'agent-desktop-workflow job grant (ID | --all) --for SECONDS   (a job waits with reason "hands" before a step that needs the real mouse and keyboard: let it, or every job, use them that long; a person touching them makes the job wait until they stop for 3 seconds; nothing goes on while the screen is locked)',
   'agent-desktop-workflow prefs [--dir FOLDER] | prefs set KEY=VALUE... (--project | --dir FOLDER | --always | --routine NAME) | prefs unset KEY... SCOPE   (how scripts work here: mode is background, watch, record or direct; pointer is amber, red, green, off or a PNG; browser is background, chrome or space. The most specific wins: --mode for this run, the routine, the project folder, everywhere. Set them only when the user asks for it)',
+  'agent-desktop-workflow skill [NAME] | skill --list | skill --install [--dir FOLDER] [--force]   (the working guide for agents; --install puts a short entry that points here into the Claude Code and Codex skill folders)',
   'agent-desktop-workflow mcp   (serves run, routines, preferences, jobs and watches as MCP tools over stdio, for any MCP client)',
   'agent-desktop-workflow read --url URL   (the text of a web page: a plain request and a background browser run together and the first full answer is returned)',
   'agent-desktop-workflow space [--login URL | --close]   (the agent\'s own browser profile: --login shows its window so the user signs in once; later runs with --space keep that sign-in in the background)',
@@ -274,6 +276,7 @@ async function main() {
   const { values, positionals } = parseArgs({ args: joinCoordinates(args), options: parseOptions(command), allowPositionals: POSITIONAL_COMMANDS.includes(command) });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   if (command === 'run' && values.api) { console.log(api); return; }
+  if (command === 'skill' && !values.list && !values.install) { console.log(skill.read(positionals[0])); return; }
   const own = {
     replay: () => replay(values),
     run: () => script(values),
@@ -284,6 +287,7 @@ async function main() {
     watch: () => host.watch(positionals, values, { workflowPath: __filename, readText: path => readFileSync(path, 'utf8'),
       settle: routine => runnerValues(prefs.runnerOptions(prefs.resolveSettings({ routine }), {})) }),
     prefs: () => prefs.prefsCommand(positionals, values),
+    skill: () => (values.list ? { parts: skill.parts() } : skill.install({ dir: values.dir, force: Boolean(values.force) })),
     space: () => space(browserBinary(), values),
     read: () => readPage(browserBinary(), values.url ?? ''),
   };

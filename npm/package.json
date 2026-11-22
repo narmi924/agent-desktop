@@ -18,7 +18,8 @@
   "files": [
     "bin",
     "lib",
-    "scripts"
+    "scripts",
+    "skills"
   ],
   "engines": {
     "node": ">=18"

@@ -111,6 +111,7 @@ test('the guide carries the routes, the ways of working and the script helpers',
   const replies = await session([call(1, 'workflow_guide', {})]);
   const text = replies[1].result.content[0].text;
   assert.match(text, /fastest route/);
-  assert.match(text, /\| record \|/);
+  assert.match(text, /--mode record/);
+  assert.ok(!text.startsWith('---'), 'the frontmatter is left out');
   assert.match(text, /body of an async function/, 'the helper list from run --api follows the guide');
 });

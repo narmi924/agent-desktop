@@ -30,11 +30,12 @@ const COMMAND_OPTIONS = {
   space: ['login', 'close'],
   read: ['url'],
   mcp: [],
+  skill: ['list', 'install', 'dir', 'force'],
 };
 
-const BOOLEAN_OPTIONS = ['stdin', 'multiline', 'replace', 'visible', 'popups', 'chrome', 'api', 'space', 'close', 'allow-input', 'allow-final', 'detach', 'force', 'gone', 'all', 'project', 'always'];
+const BOOLEAN_OPTIONS = ['stdin', 'multiline', 'replace', 'visible', 'popups', 'chrome', 'api', 'space', 'close', 'allow-input', 'allow-final', 'detach', 'force', 'gone', 'all', 'project', 'always', 'list', 'install'];
 const MULTIPLE_OPTIONS = ['param'];
-const POSITIONAL_COMMANDS = ['routine', 'job', 'host', 'job-run', 'watch', 'prefs'];
+const POSITIONAL_COMMANDS = ['routine', 'job', 'host', 'job-run', 'watch', 'prefs', 'skill'];
 
 /** The `node:util` parseArgs options for one command. */
 function parseOptions(command) {
