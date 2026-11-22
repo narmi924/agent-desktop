@@ -84,7 +84,9 @@ await web.fill("Name", args.who);
 await web.select("Province", "Xinjiang");
 await web.check("I confirm the details");
 await web.click("Place order");
-const order = (await web.waitText("Order number")).match(/D\d+/)[0];
+const placed = await web.waitText("Order number");
+const order = placed.match(/D\d+/)?.[0];
+expect(order, "No order number in: " + placed);
 await desktop.fill("Customer register", "Order", order);
 await desktop.select("Customer register", "Customer type", "Business");
 await desktop.click("Customer register", "Save");
@@ -99,7 +101,11 @@ slipwing run --file task.js --args '{"who":"Gulnar"}' --allow-final
 
 1. Unsure what a page or window holds: run a read-only script first (`return await web.read()` or `desktop.read("Notepad")`).
 2. Use the names in quotes from `read()`. For repeated names add `{near: "text in the same row"}`, `{nth: 2}` or `{role: "button"}`.
-3. Every step waits up to 4 s. Wait for results with `waitText` (returns the sentence) or `waitIdle`, never fixed sleeps.
+3. A step that acts waits up to 4 s for its control; `waitText`, `waitFor` and `waitIdle` wait up to 10 s
+   (`waitText("Saved", 30000)` for longer). Wait for results with them, never fixed sleeps. `waitText` returns the whole
+   line or sentence the text is in. Text already on the page counts at once, so wait for text only the result shows,
+   not a label that was there before. An action that can end two ways: `web.waitText(["Order number", "not found"])`
+   returns the first that shows.
 4. Windows: an id from `desktop.windows()`, or part of the title or program name.
 5. Do a submit, order or send step once. Without a visible result, read again; never run the whole script again.
 6. Scripts go through files. A PowerShell pipe turns Chinese into question marks; a bash heredoc eats backslashes.

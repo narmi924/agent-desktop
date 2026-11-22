@@ -4,6 +4,7 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { pick } = require('./script-match');
 const { markedPicture } = require('./final-picture');
 const { waitArgs } = require('./script-wait');
+const { lineAround } = require('./page-line');
 
 const LINE = /^(\s*)- (\S+?)(?: "((?:[^"\\]|\\.)*)")?(?: \[(.*)\])?(?:: (.*))?$/;
 const WRITABLE = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider'];
@@ -51,14 +52,15 @@ function parseControls(snapshot) {
 
 /**
  * Finds text in a full page read, also when it sits in a frame or spans several
- * text nodes. Returns the text that holds it, or the text itself. Plain text
- * wins over a control's name, so a wait for "Save" after saving returns the
- * status line "Saved at 10:42" and not the Save button.
+ * text nodes. Returns the whole line or sentence that holds it, or the text
+ * itself. Plain text wins over a control's name, so a wait for "Save" after
+ * saving returns the status line "Saved at 10:42" and not the Save button.
  */
 function shows(snapshot, text) {
-  const lines = parseControls(snapshot).filter(line => line.name.includes(text));
-  const holder = lines.find(line => !line.ref) ?? lines[0];
-  if (holder) return holder.name.trim();
+  const line = lineAround(snapshot, text);
+  if (line) return line;
+  const named = parseControls(snapshot).find(control => control.name.includes(text));
+  if (named) return named.name.trim();
   const quoted = Array.from(snapshot.matchAll(/"((?:[^"\\]|\\.)*)"/g), m => unquote(m[1]));
   const squeeze = value => value.replace(/\s+/g, '');
   return squeeze(quoted.join('')).includes(squeeze(text)) || snapshot.includes(text) ? text : undefined;
@@ -244,10 +246,12 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage, t
     waitText: (text, limit) => step('web.waitText', text, async () => {
       const { timeout } = waitArgs(limit, {}, TEXT_WAIT_MS);
       const until = Date.now() + timeout;
+      const texts = (Array.isArray(text) ? text : [text]).map(String);
       for (;;) {
-        const found = shows((await ab(['snapshot', '-c'])).snapshot, String(text));
+        const { snapshot } = await ab(['snapshot', '-c']);
+        const found = texts.map(one => shows(snapshot, one)).find(Boolean);
         if (found) { changed(); return found; }
-        if (Date.now() >= until) throw Object.assign(new Error('The text "' + text + '" did not appear within ' + timeout + ' ms.'), { code: 'TIMEOUT' });
+        if (Date.now() >= until) throw Object.assign(new Error('The text ' + texts.map(one => '"' + one + '"').join(' or ') + ' did not appear within ' + timeout + ' ms.'), { code: 'TIMEOUT' });
         await delay(120);
       }
     }),

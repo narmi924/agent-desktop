@@ -179,11 +179,12 @@ function createVisible({ flow, step, warn, pace, takeInput = () => {}, pressKey,
     waitText: (text, limit) => step('visible.waitText', text, async () => {
       const { timeout } = waitArgs(limit, {}, TEXT_WAIT_MS);
       const until = Date.now() + timeout;
+      const texts = (Array.isArray(text) ? text : [text]).map(String);
       for (;;) {
         const page = await bind();
-        const line = [...page.text.split('\n'), ...page.controls.map(c => c.name)].find(l => l.includes(text));
+        const line = [...page.text.split('\n'), ...page.controls.map(c => c.name)].find(l => texts.some(one => l.includes(one)));
         if (line) return line;
-        if (Date.now() >= until) throw Object.assign(new Error('"' + text + '" did not show on the screen page within ' + timeout + ' ms.'), { code: 'TIMEOUT' });
+        if (Date.now() >= until) throw Object.assign(new Error(texts.map(one => '"' + one + '"').join(' or ') + ' did not show on the screen page within ' + timeout + ' ms.'), { code: 'TIMEOUT' });
         await delay(300);
       }
     }),
