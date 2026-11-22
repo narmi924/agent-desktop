@@ -120,6 +120,19 @@ test('a script fills and clicks by name in one run and reports every step', asyn
   assert.match(data.steps[1], /^web\.fill 姓名 \d+ms$/);
 });
 
+test('web.open opens a new bound tab when the user closed the tab the session was bound to', async () => {
+  const tools = fakeTools({
+    'browser open': () => { throw new Error('tab_gone: bound tab is gone (target T1, last url https://www.youtube.com/watch).'); },
+    'browser tab': { tabId: 't2', url: 'https://example.com' },
+  });
+  const data = await tools.run(`return await web.open('https://example.com');`);
+  assert.deepEqual(tools.calls.map(c => c.words.join(' ')), ['open https://example.com', 'tab new https://example.com']);
+  assert.equal(data.result.url, 'https://example.com');
+  const refused = fakeTools({ 'browser open': () => { throw new Error('net::ERR_NAME_NOT_RESOLVED'); } });
+  await assert.rejects(refused.run(`await web.open('https://nowhere.invalid');`), /ERR_NAME_NOT_RESOLVED/);
+  assert.equal(refused.calls.filter(c => c.words[0] === 'tab').length, 0, 'only a closed tab opens a new one');
+});
+
 test('a ref that went stale is looked up again by name and the step is retried once', async () => {
   let reads = 0;
   const tools = fakeTools({

@@ -9,6 +9,7 @@ const WRITABLE = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider'];
 const CHOICES = ['combobox', 'listbox'];
 const TICKS = ['checkbox', 'radio', 'switch', 'menuitemcheckbox', 'menuitemradio'];
 const STALE = /unknown ref|stale|not found in the ref map/i;
+const TAB_GONE = /^tab_gone\b/;
 const MISS = /not found|no element|no match|did not match|could not find|unable to find|found 0|none match/i;
 const HIDDEN = /cannot take focus/i;
 const NOT_READY = /would not reach it|is covered by|cannot take focus|No option matched/i;
@@ -176,7 +177,11 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage, t
   const web = {
     open: url => step('web.open', url, async () => {
       changed();
-      const { url: at, title } = await ab(['open', String(url)], { timeout: 60000 });
+      // A session stays bound to the tab it opened; once the user closes that tab, open in a new one and bind it instead.
+      const { url: at, title } = await ab(['open', String(url)], { timeout: 60000 }).catch(err => {
+        if (!TAB_GONE.test(err.message)) throw err;
+        return ab(['tab', 'new', String(url)], { timeout: 60000 });
+      });
       host = hostOf(at ?? url);
       modalsSeen = undefined;
       if (host) touch({ host });
