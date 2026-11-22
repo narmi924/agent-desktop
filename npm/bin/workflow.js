@@ -27,8 +27,10 @@ const { COMMAND_OPTIONS, POSITIONAL_COMMANDS, parseOptions } = require('../lib/c
 const mcp = require('../lib/mcp-server');
 const schedule = require('../lib/routine-schedule');
 const skill = require('../lib/skill-command');
+const { versionReport } = require('../lib/bundle-version');
 
 const usage = [
+  'agent-desktop-workflow --version   (the version of this bundle, and for each program the installed version and the official release it is built on)',
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
   'agent-desktop-workflow disconnect',
   'agent-desktop-workflow current [--window ID | --page PAGE] [--visible]   (--visible binds the tab for the real mouse and keyboard only and skips the background connection)',
@@ -268,6 +270,7 @@ function joinCoordinates(args) {
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes('--help')) { console.log(usage); return; }
+  if (args[0] === '--version') { console.log(JSON.stringify({ ok: true, data: versionReport({ nativeBinary: nativeBinary(), browserBinary: optionalBrowserBinary() }) })); return; }
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('The workflow commands require Node.js 22 or later.');
   const command = args.shift();
   if (!Object.hasOwn(COMMAND_OPTIONS, command)) throw new Error(usage);

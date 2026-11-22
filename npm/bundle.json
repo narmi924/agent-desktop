@@ -1,0 +1,18 @@
+{
+  "version": "0.1.0",
+  "platform": "windows",
+  "upstream": {
+    "agent-desktop": {
+      "repository": "https://github.com/vercel-labs/agent-desktop",
+      "tag": "v1.3.1",
+      "commits_after_tag": 6,
+      "commit": "e8934a5e95e1d212c74ead95cd3e4701c04eca31"
+    },
+    "agent-browser": {
+      "repository": "https://github.com/vercel-labs/agent-browser",
+      "tag": "v0.43.0",
+      "commits_after_tag": 38,
+      "commit": "d2dfc782ccdd79d25a9b4f0acced9321789cecb8"
+    }
+  }
+}

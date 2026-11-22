@@ -19,7 +19,8 @@
     "bin",
     "lib",
     "scripts",
-    "skills"
+    "skills",
+    "bundle.json"
   ],
   "engines": {
     "node": ">=18"
