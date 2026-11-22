@@ -97,6 +97,9 @@ not asking the model again.
 Everything it keeps is in `%USERPROFILE%\.agent-desktop`: routines, preferences, job records. Delete the folder to
 start over. Routines store parameter names, not the values you passed.
 
+The agent-desktop changes and the `slipwing` command are in this repository. The agent-browser changes are in
+[narmi924/agent-browser](https://github.com/narmi924/agent-browser) on its `personal` branch.
+
 ## License
 
 Apache-2.0, as the two upstream projects. The upstream license files are kept.

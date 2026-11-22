@@ -83,6 +83,9 @@ agent 把整件事写成一段 JavaScript，用 `slipwing run` 跑一次。网�
 
 它留下的东西都在 `%USERPROFILE%\.agent-desktop`：动作、偏好、任务记录。删掉这个文件夹就回到初始状态。动作只存参数名，不存你传过的值。
 
+agent-desktop 的改动和 `slipwing` 命令在这个仓库里；agent-browser 的改动在
+[narmi924/agent-browser](https://github.com/narmi924/agent-browser) 的 `personal` 分支。
+
 ## 许可证
 
 Apache-2.0，和两个上游项目一致，保留了上游的许可证文件。
