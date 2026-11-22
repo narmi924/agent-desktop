@@ -80,6 +80,48 @@ fn a_control_that_changed_its_name_state_or_number_makes_the_page_stale() {
     assert!(confirm_page_capture(&grown, &saved, None).is_err());
 }
 
+fn window_listing(copies: Vec<AccessibilityNode>) -> AccessibilityNode {
+    let mut window: AccessibilityNode = serde_json::from_value(json!({"role":"window"})).unwrap();
+    for (depth, copy) in copies.into_iter().enumerate() {
+        let mut holder = copy;
+        for _ in 0..depth * 3 {
+            let mut group: AccessibilityNode =
+                serde_json::from_value(json!({"role":"group"})).unwrap();
+            group.children.push(holder);
+            holder = group;
+        }
+        window.children.push(holder);
+    }
+    window
+}
+
+#[test]
+fn a_page_listed_twice_is_one_page_and_the_copy_holding_the_target_is_used() {
+    let drawn = page();
+    let mut ghost = page();
+    for (index, child) in ghost.children.iter_mut().enumerate() {
+        child.identity.retained_object = Some(format!("choice-instance:ghost-{index}"));
+    }
+    let saved = captured(&drawn);
+    let option = target(&drawn, 3);
+    let root = window_listing(vec![ghost, drawn]);
+    let live = confirm_page_capture(&root, &saved, Some(&option)).unwrap();
+    assert_eq!(
+        live.children[3].identity.retained_object.as_deref(),
+        Some("choice-instance:3")
+    );
+    assert!(confirm_page_capture(&root, &saved, None).is_ok());
+}
+
+#[test]
+fn two_different_pages_in_one_window_are_still_refused() {
+    let saved = captured(&page());
+    let mut other = page();
+    other.identity.value = Some("https://example.invalid/other".into());
+    let root = window_listing(vec![page(), other]);
+    assert!(confirm_page_capture(&root, &saved, None).is_err());
+}
+
 #[test]
 fn another_address_makes_the_page_stale_even_with_the_same_controls() {
     let mut doc = page();

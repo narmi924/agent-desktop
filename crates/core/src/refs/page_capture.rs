@@ -95,20 +95,60 @@ pub(crate) fn confirm_document(
     confirm_page_capture(root, document, Some(target)).map(|_| ())
 }
 
+/// The web documents under `root`, one per page. A browser can list the page it draws twice, once under the window's
+/// own child window with bounds at the window corner and once inside its view. Documents with the same title and
+/// address are one page: the copy that `holds` the target is used, otherwise the copy deepest in the tree, whose
+/// bounds are where the page is drawn.
+fn pages<'a>(
+    root: &'a AccessibilityNode,
+    holds: &dyn Fn(&AccessibilityNode) -> bool,
+) -> Vec<&'a AccessibilityNode> {
+    fn docs<'a>(
+        node: &'a AccessibilityNode,
+        depth: usize,
+        found: &mut Vec<(usize, &'a AccessibilityNode)>,
+    ) {
+        if web_document(node) {
+            found.push((depth, node));
+            return;
+        }
+        for child in &node.children {
+            docs(child, depth + 1, found);
+        }
+    }
+    let mut found = Vec::new();
+    docs(root, 0, &mut found);
+    let mut copies: Vec<Vec<(usize, &AccessibilityNode)>> = Vec::new();
+    for entry in found {
+        let same_page = |group: &&mut Vec<(usize, &AccessibilityNode)>| {
+            group.first().is_some_and(|(_, first)| {
+                first.identity.name == entry.1.identity.name
+                    && first.identity.value == entry.1.identity.value
+            })
+        };
+        match copies.iter_mut().find(same_page) {
+            Some(group) => group.push(entry),
+            None => copies.push(vec![entry]),
+        }
+    }
+    copies
+        .iter()
+        .filter_map(|group| {
+            group
+                .iter()
+                .filter(|(_, node)| holds(node))
+                .max_by_key(|(depth, _)| *depth)
+                .or_else(|| group.iter().max_by_key(|(depth, _)| *depth))
+                .map(|(_, node)| *node)
+        })
+        .collect()
+}
+
 pub(crate) fn confirm_page_capture<'a>(
     root: &'a AccessibilityNode,
     document: &RefEntry,
     target: Option<&RefEntry>,
 ) -> Result<&'a AccessibilityNode, AdapterError> {
-    fn docs<'a>(node: &'a AccessibilityNode, found: &mut Vec<&'a AccessibilityNode>) {
-        if web_document(node) {
-            found.push(node);
-            return;
-        }
-        for child in &node.children {
-            docs(child, found);
-        }
-    }
     fn matches(node: &AccessibilityNode, entry: &RefEntry, instance: &str) -> usize {
         usize::from(
             node.identity.retained_object.as_deref() == Some(instance)
@@ -125,18 +165,26 @@ pub(crate) fn confirm_page_capture<'a>(
             "The captured form, choice or document changed; inspect it before acting",
         )
     };
-    let mut found = Vec::new();
-    docs(root, &mut found);
+    let instance = match target {
+        Some(target) => Some(
+            target
+                .identity
+                .retained_object
+                .as_deref()
+                .filter(|s| s.starts_with("choice-instance:"))
+                .ok_or_else(fail)?,
+        ),
+        None => None,
+    };
+    let holds = |node: &AccessibilityNode| match (target, instance) {
+        (Some(target), Some(instance)) => matches(node, target, instance) == 1,
+        _ => false,
+    };
+    let found = pages(root, &holds);
     let [doc] = found.as_slice() else {
         return Err(fail());
     };
-    if let Some(target) = target {
-        let instance = target
-            .identity
-            .retained_object
-            .as_deref()
-            .filter(|s| s.starts_with("choice-instance:"))
-            .ok_or_else(fail)?;
+    if let (Some(target), Some(instance)) = (target, instance) {
         if matches(doc, target, instance) != 1 {
             return Err(fail());
         }
