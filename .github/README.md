@@ -46,7 +46,7 @@ On these tasks the official build does as well as this one. What this build adds
 | final-step guard | send, submit, pay and delete steps are refused until you agree in the chat |
 | sharing the mouse | when you touch the mouse or keyboard the agent stops typing and waits; nothing is sent on a locked screen |
 | routines | a task done once is saved by name and runs again without the model reading the screen |
-| jobs, watches, schedules | long work in the background, "tell me when the export finishes", "every weekday at nine" |
+| jobs and watches | long work in the background; "tell me when the export finishes"; "upload it once it downloads" |
 
 ## Quick start
 
@@ -75,7 +75,7 @@ the connection after each restart. Back to the official packages: `npm install -
 | "this is for a recording" | the same, with your own pointer |
 | "just use the mouse" | uses real input where a step needs it, at full speed |
 | "from now on in this project …" | remembers that way for the project folder |
-| "save this" / "every weekday at nine" | keeps the task as a routine, or runs it on a schedule |
+| "save this" | keeps the task as a routine to run again by name |
 
 Agents that cannot run commands can use `agent-desktop-workflow mcp` as an MCP server with the same tools.
 
@@ -91,8 +91,7 @@ Measured on this machine (Windows 11, min of 7 runs): reading a page's text 0.27
 not asking the model again.
 
 Everything it keeps is in `%USERPROFILE%\.agent-desktop`: routines, preferences, job records. Delete the folder to
-start over. Routines store parameter names, not the values you passed; a schedule keeps its arguments so it can run
-alone.
+start over. Routines store parameter names, not the values you passed.
 
 ## License
 

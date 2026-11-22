@@ -43,24 +43,11 @@ agent-desktop-workflow run --file order.js --args-file args.json --allow-final \
   fixed script under the same name with `--replace`.
 - `--mode watch` (or another way) on the saving run is remembered for the routine.
 
-## Run at set times
+## Every day at nine
 
-When the user says "export the orders every morning at nine" or "每天九点导出订单":
-
-```bash
-agent-desktop-workflow routine schedule weekly-orders --at 09:00 --every weekdays --args-file args.json
-agent-desktop-workflow routine unschedule weekly-orders
-```
-
-- `--every` is `day` (default), `weekdays`, `hour`, or days such as `mon,wed,fri`.
-- It runs through the Windows Task Scheduler, only while the user is signed in, without a window. `routine list` ends
-  with the `schedules`.
-- Nobody is in a chat when it fires, so the arguments are kept in the state folder for it (saved routines otherwise keep
-  none). Each run shows the user a notification with the job id when it finishes, fails, stops before a final step,
-  needs the mouse and keyboard, or waits for a fix. When the user comes back, `job show ID` first.
-- A routine with a final step: ask when you set the schedule. With the user's yes add `--allow-final`; without it the
-  run stops before that step and waits for approval.
-- Schedule only on the user's words. `routine remove` drops the routine's schedule too.
+This tool does not schedule. For "export the orders every morning at nine", use the scheduler of the agent or platform
+you run in (scheduled tasks in Claude Code, automations in Codex) and have it call `routine run NAME` at that time.
+The agent is then there when the page has changed.
 
 ## Final steps
 
@@ -74,7 +61,7 @@ It guards against slips only: Enter to submit, or a `css:` selector, cannot be s
 ## Routines the user trusts, and protected apps and sites
 
 - When the user says in the chat "this routine may always send", run `routine allow NAME`: its final steps no longer
-  ask, in the foreground, in jobs and when started by a watch or schedule. Never run it without those words. Saving the
+  ask, in the foreground, in jobs and when started by a watch. Never run it without those words. Saving the
   routine again with `--replace` cancels it.
 - `routine permissions` lists trusted routines and protected apps and sites; `routine revoke NAME` takes trust back.
 - The user can write `{"apps": ["app.exe"], "hosts": ["example.com"]}` into `protected.json` in the state folder. Only

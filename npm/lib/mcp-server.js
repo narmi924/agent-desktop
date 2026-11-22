@@ -46,9 +46,6 @@ const TOOLS = [
   { name: 'workflow_routine_list', command: ['routine', 'list'], description: 'List saved routines, one line each, optionally filtered by app, site or words. Check this before writing a new script.', properties: { for: text('Filter text: a site host, window name or words.') } },
   { name: 'workflow_routine_show', command: ['routine', 'show'], positional: ['name'], description: 'Show a saved routine: its arguments, steps and script.', properties: { name: text('Routine name.') }, required: ['name'] },
   { name: 'workflow_routine_run', command: ['routine', 'run'], positional: ['name'], description: 'Run a saved routine. It stops at the first step whose effect differs from the saved runs (EFFECT_MISMATCH); then finish the rest with workflow_run.', properties: { name: text('Routine name.'), ...RUN_SHARED }, required: ['name'] },
-  { name: 'workflow_routine_schedule', command: ['routine', 'schedule'], positional: ['name'], description: 'Run a saved routine at set times through the Windows Task Scheduler, only when the user asked for that. The arguments are kept for the runs; allow_final only when the user agreed now that the routine may send or submit unattended. A notification tells the user how each run ended.',
-    properties: { name: text('Routine name.'), at: text('Time of day, HH:MM.'), every: text('day (default), weekdays, hour, or days such as mon,wed,fri.'), args: json('Arguments for every run.'), allow_final: flag('The user agreed now to the routine\'s final steps on unattended runs.') }, required: ['name', 'at'] },
-  { name: 'workflow_routine_unschedule', command: ['routine', 'unschedule'], positional: ['name'], description: 'Stop the scheduled runs of a routine.', properties: { name: text('Routine name.') }, required: ['name'] },
   { name: 'workflow_prefs', command: ['prefs'], description: 'Show how scripts work here and where each setting comes from: mode, pointer and browser, by this run, the routine, the project folder and everywhere.', properties: { dir: text('Show it for this folder instead of the server\'s working folder.') } },
   { name: 'workflow_prefs_set', command: ['prefs', 'set'], description: 'Remember how the user wants to work, only when the user said so ("from now on in this project ...", "from now on ...", "this routine always ..."). Tell the user what changed and how to undo it.',
     properties: { mode: { type: 'string', enum: MODES }, pointer: text('amber, red, green, off, or the path of a square PNG.'), browser: { type: 'string', enum: BROWSERS },
@@ -75,7 +72,7 @@ const TOOLS = [
 const OPTION_OF = {
   allow_input: 'allow-input', allow_final: 'allow-final', timeout_ms: 'timeout-ms', detach: 'detach', session: 'session', mode: 'mode', save: 'save', about: 'about',
   replace: 'replace', for: 'for', dir: 'dir', target: 'target', all: 'all', window: 'window', text: 'text', in: 'in', gone: 'gone', notification: 'notification',
-  file: 'file', then: 'then', url: 'url', visible: 'visible', cdp: 'cdp', at: 'at', every: 'every',
+  file: 'file', then: 'then', url: 'url', visible: 'visible', cdp: 'cdp',
 };
 
 function invalid(message) {

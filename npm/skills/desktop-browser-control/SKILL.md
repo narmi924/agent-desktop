@@ -1,12 +1,12 @@
 ---
 name: desktop-browser-control
-description: Operate Windows desktop apps and web pages for the user, in the background by default: read windows, click, type exactly under any input method (Chinese, Japanese, Korean included), drag, read self-drawn windows from their picture, work in the user's signed-in Chrome, move like a person for recordings, save tasks as routines, run long jobs and schedules. Use when the user asks to click, type, open an app, fill a form, use their browser, look at a window, record a demo, or automate anything with a graphical interface on Windows. 操作电脑和浏览器、点一下、打开软件、在 Chrome 里填表、用我的浏览器、看看这个窗口、录屏演示时使用。
+description: Operate Windows desktop apps and web pages for the user, in the background by default: read windows, click, type exactly under any input method (Chinese, Japanese, Korean included), drag, read self-drawn windows from their picture, work in the user's signed-in Chrome, move like a person for recordings, save tasks as routines, run long jobs and wait for windows. Use when the user asks to click, type, open an app, fill a form, use their browser, look at a window, record a demo, or automate anything with a graphical interface on Windows. 操作电脑和浏览器、点一下、打开软件、在 Chrome 里填表、用我的浏览器、看看这个窗口、录屏演示时使用。
 ---
 
 # Working on the user's computer
 
 Three commands do the work: `agent-desktop` (desktop apps), `agent-browser` (web pages) and `agent-desktop-workflow`
-(one script across both, saved routines, jobs, schedules). Use them for desktop and browser work on this computer
+(one script across both, saved routines, jobs, watches). Use them for desktop and browser work on this computer
 instead of screenshot-and-click tools: they read controls, keep the user's mouse free and type exactly under input
 methods that turn English into other scripts.
 
@@ -37,7 +37,7 @@ A document an app holds open is changed through that app, never by editing its f
 | a task that will come back | save it: values as `args.NAME`, then `--save NAME --about TEXT` (`routines.md`) |
 | "keep talking to me while it runs", or work that takes minutes | `run` or `routine run` with `--detach`, then `job wait` in the background (`jobs.md`) |
 | "tell me when the render finishes", "upload it once it downloads" | `watch add`, then `watch wait`; `--then ROUTINE` to act (`watches.md`) |
-| "every morning at nine", "每天九点" | `routine schedule NAME --at 09:00` (`routines.md`) |
+| "every morning at nine", "每天九点" | not this tool: your own scheduler calls `routine run NAME` (`routines.md`) |
 | "use my browser", "用我的浏览器", "I'm signed in" | `run --chrome`: their own Chrome, in its own tab, staying behind; read `chrome.md` first |
 | "use a private window", "无痕" | the default clean browser: no sign-ins, never the user's own |
 | a sign-in, but not in their Chrome | `space --login` once, later `run --space` (`chrome.md`) |
@@ -153,7 +153,7 @@ Always:
 - `chrome.md`: the user's Chrome, the agent's own signed-in browser, single web commands.
 - `human.md`: moving like a person, recordings, the Chrome page on screen (`visible.*`).
 - `desktop.md`: single desktop commands, windows without controls, acting by picture.
-- `routines.md`: saving, running and scheduling routines, final steps, standing approvals.
+- `routines.md`: saving and running routines, final steps, standing approvals.
 - `jobs.md`: detached jobs, waiting, fixing a step in place, reports.
 - `watches.md`: watching windows, text, notifications and files.
 
