@@ -20,30 +20,32 @@ The agent must not take my mouse while I type. It must type exactly, and my inpu
 not do a send or submit twice when something goes wrong halfway.
 
 The official agent-desktop reads controls through UI Automation and works in the background, which is the right base.
-Under Microsoft Pinyin in Chinese mode, the build I started from reported `hello` as typed while the field stayed
-empty, and `abc中文def` arrived as `abc'de'f中文`. Most other tools I tried work on the screen itself.
+Most other tools I tried work on the screen itself.
 
-On four local test tasks (two forms on a web page, a desktop register window, a self-drawn chat window), measured on
-2026-11-22. Claude Sonnet drove the first four tools; the Codex and Claude apps used their own models.
+I measured four local test tasks on 2026-11-22: two forms on a web page, a desktop register window and a self-drawn
+chat window. Claude Sonnet drove each tool in a fresh session; the Codex and Claude apps used their own models. For the
+first three tools a note window stayed in front and received a character every 150 ms for the whole run, and recorded
+when it lost the foreground and any key press that did not come from my keyboard. The other four were measured earlier
+without the note, counting the tasks where they used the real mouse and keyboard.
 
-<!-- Sidehand row goes in after the head-to-head run -->
-
-| Tool | Done right | Tasks that took the mouse and keyboard | Notes |
+| Tool | Done right | While it worked | Time per task |
 |---|---|---|---|
-| Slipwing 0.1.0 | 4 of 4 | 0 | 7 to 28 s per task |
-| official agent-desktop 1.3.1 and agent-browser 0.43.0 | 4 of 4 | 0 | 11 to 20 s per task |
-| [Windows-MCP](https://github.com/CursorTouch/Windows-MCP) 0.9.0 | 4 of 4 | 4 | 20 to 70 s |
-| [Hybrid Computer Use](https://github.com/microsoft/Hybrid-Computer-Use) 1.0.1 | 4 of 4 | 3 | 8 to 46 s |
-| Codex Computer Use (Codex app) | 2 of 4 | 3 | both web tasks stopped because it could not confirm the browser address |
-| Claude desktop computer use | 2 of 4 | at least 1; the app does not show the rest | read-only in browsers; its built-in browser did not open the local address |
+| Slipwing 0.1.0 | 4 of 4 | the note stayed in front | 7 to 20 s |
+| [Sidehand](https://github.com/Blue-B/sidehand) 0.5.2 | 4 of 4; the web sign-up failed once in two runs | the note stayed in front | 6 to 28 s |
+| official agent-desktop 1.3.1 and agent-browser 0.43.0 | 4 of 4 | on the register task the register came to the front at a `set-value` and stayed there for the rest of the run (14 s and 21 s in two runs), with two key presses from outside the keyboard | 12 to 35 s |
+| [Windows-MCP](https://github.com/CursorTouch/Windows-MCP) 0.9.0 | 4 of 4 | used the real mouse and keyboard on 4 tasks | 20 to 70 s |
+| [Hybrid Computer Use](https://github.com/microsoft/Hybrid-Computer-Use) 1.0.1 | 4 of 4 | used the real mouse and keyboard on 3 tasks | 8 to 46 s |
+| Codex Computer Use (Codex app) | 2 of 4 | used the real mouse and keyboard on 3 tasks | both web tasks stopped because it could not confirm the browser address |
+| Claude desktop computer use | 2 of 4 | at least 1 task; the app does not show the rest | read-only in browsers; its built-in browser did not open the local address |
 
-On these tasks the official build does as well as Slipwing. What Slipwing adds is around them:
+Sidehand is the closest: it also leaves the window in front alone, and it was faster on the two desktop tasks. Slipwing
+was faster on the two web forms, which it fills in a browser that stays out of sight. What Slipwing adds is around
+these tasks:
 
 | Added | What you get |
 |---|---|
 | web and desktop in one task | read an order in a browser tab and register it in a desktop app in one call; web steps use the page's own controls, native drop-downs included, without the foreground |
 | a browser you pick | your signed-in Chrome in its own tab, a clean browser, or your Chrome on screen so you can watch |
-| real keys under Microsoft Pinyin | when a page needs real keystrokes and Pinyin is in Chinese mode, English text still lands as typed, and the step reads the field back |
 | four ways of working | background, watch, record, direct; watch and record move the pointer and type at a human pace; set per request, per routine, per project folder or everywhere |
 | step reports | each step says which windows opened and which controls changed, so a click that did nothing shows |
 | a stop before final steps | send, submit, pay and delete steps it recognizes by name wait until you agree in the chat |
