@@ -21,7 +21,7 @@ await visible.click("Submit");
 return await visible.read();
 ```
 
-Save it as `task.js` and run `agent-desktop-workflow run --file task.js --allow-input --allow-final` (it clicks Submit,
+Save it as `task.js` and run `slipwing run --file task.js --allow-input --allow-final` (it clicks Submit,
 a final step).
 
 ```
@@ -59,5 +59,5 @@ While the agent uses the real mouse and keyboard the pointer turns into an arrow
 to touch. It changes back within a second after the last command; a script keeps it from its first real input to its end.
 
 - Errors, timeouts and killed commands all change it back. If it ever stays, run `agent-desktop restore-cursor`.
-- Turn it off for good when the user asks: `agent-desktop-workflow prefs set pointer=off --always`; for one run set
+- Turn it off for good when the user asks: `slipwing prefs set pointer=off --always`; for one run set
   `AGENT_DESKTOP_POINTER=off`. Other looks: `red`, `green`, or the path of a square PNG with the arrow tip at 32%.

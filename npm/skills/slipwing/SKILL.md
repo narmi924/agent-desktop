@@ -1,11 +1,11 @@
 ---
-name: desktop-browser-control
-description: Operate Windows desktop apps and web pages for the user, in the background by default: read windows, click, type exactly under any input method (Chinese, Japanese, Korean included), drag, read self-drawn windows from their picture, work in the user's signed-in Chrome, move like a person for recordings, save tasks as routines, run long jobs and wait for windows. Use when the user asks to click, type, open an app, fill a form, use their browser, look at a window, record a demo, or automate anything with a graphical interface on Windows. 操作电脑和浏览器、点一下、打开软件、在 Chrome 里填表、用我的浏览器、看看这个窗口、录屏演示时使用。
+name: slipwing
+description: Operate Windows desktop apps and web pages for the user, in the background by default: read windows, click, type exactly under input methods such as Microsoft Pinyin, drag, read self-drawn windows from their picture, work in the user's signed-in Chrome, move like a person for recordings, save tasks as routines, run long jobs and wait for windows. Use when the user asks to click, type, open an app, fill a form, use their browser, look at a window, record a demo, or automate anything with a graphical interface on Windows. 操作电脑和浏览器、点一下、打开软件、在 Chrome 里填表、用我的浏览器、看看这个窗口、录屏演示时使用。
 ---
 
 # Working on the user's computer
 
-Three commands do the work: `agent-desktop` (desktop apps), `agent-browser` (web pages) and `agent-desktop-workflow`
+Three commands do the work: `agent-desktop` (desktop apps), `agent-browser` (web pages) and `slipwing`
 (one script across both, saved routines, jobs, watches). Use them for desktop and browser work on this computer
 instead of screenshot-and-click tools: they read controls, keep the user's mouse free and type exactly under input
 methods that turn English into other scripts.
@@ -13,7 +13,7 @@ methods that turn English into other scripts.
 ## 0. A saved routine, for tasks that come back
 
 For a task of several steps on a site or app the user works with often, run
-`agent-desktop-workflow routine list --for WORD` first, with the site host or window name as WORD. A routine whose
+`slipwing routine list --for WORD` first, with the site host or window name as WORD. A routine whose
 description fits: `routine run NAME --args-file ARGS.json`, with no reading and no script (`routines.md`). Skip this
 for a quick look, a single read or a one-off.
 
@@ -22,7 +22,7 @@ for a quick look, a single read or a one-off.
 Fewer round trips matter most: a routine beats a script, a script beats single commands. Then, in order:
 
 1. No interface at all: a file no app holds open, or an app with a command line, export or API. Use your shell.
-2. Web pages: `run` with `web.*`, in a clean browser by default. Only the text: `agent-desktop-workflow read --url URL`.
+2. Web pages: `run` with `web.*`, in a clean browser by default. Only the text: `slipwing read --url URL`.
 3. Desktop apps with controls: `run` with `desktop.*`; values are set and buttons pressed without the mouse.
 4. On screen with the real mouse and keyboard: only for what the background cannot do. Ask first.
 5. Windows that draw their own interface: `desktop.read` adds the text from their picture.
@@ -56,10 +56,10 @@ A document an app holds open is changed through that app, never by editing its f
 | "just use the mouse", "直接操作" | `--mode direct` | real input whenever a step needs it, no human pace; web stays in the background |
 
 - Put the mode on `run` or `routine run`. If the user did not say it and you think the screen is needed, ask first.
-- "From now on in this project …" is `agent-desktop-workflow prefs set mode=record --project`; "from now on …" is
+- "From now on in this project …" is `slipwing prefs set mode=record --project`; "from now on …" is
   `--always`; "this routine always …" is `--routine NAME`. `pointer=off` keeps the user's pointer, `browser=chrome` or
   `browser=space` picks where web steps run. Set them only on the user's words; say what changed and that
-  `prefs unset mode --project` undoes it. `agent-desktop-workflow prefs` shows what applies here and why.
+  `prefs unset mode --project` undoes it. `slipwing prefs` shows what applies here and why.
 - The reply's `mode` says which way ran and where it came from. When `from` is not `built-in`, tell the user before you
   start: "Recording mode from this project's settings, about a minute, Esc stops it." A project or routine set to an
   on-screen way is the user's standing agreement to use the mouse and keyboard there.
@@ -88,10 +88,10 @@ return order;
 ```
 
 ```bash
-agent-desktop-workflow run --file task.js --args '{"who":"Gulnar"}' --allow-final
+slipwing run --file task.js --args '{"who":"Gulnar"}' --allow-final
 ```
 
-`agent-desktop-workflow run --api` lists every helper.
+`slipwing run --api` lists every helper.
 
 1. Unsure what a page or window holds: run a read-only script first (`return await web.read()` or `desktop.read("Notepad")`).
 2. Use the names in quotes from `read()`. For repeated names add `{near: "text in the same row"}`, `{nth: 2}` or `{role: "button"}`.
@@ -157,4 +157,4 @@ Always:
 - `jobs.md`: detached jobs, waiting, fixing a step in place, reports.
 - `watches.md`: watching windows, text, notifications and files.
 
-Read one with `agent-desktop-workflow skill NAME`, for example `agent-desktop-workflow skill chrome`.
+Read one with `slipwing skill NAME`, for example `slipwing skill chrome`.

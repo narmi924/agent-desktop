@@ -20,6 +20,7 @@ test('the version report says the base as tag, commits after it and the commit',
   assert.equal(base({ tag: 'v1.3.1', commits_after_tag: 6, commit: 'e8934a5e95e1d212c74ead95cd3e4701c04eca31' }), 'v1.3.1+6 (e8934a5e)');
   assert.equal(base({ tag: 'v1.4.0', commits_after_tag: 0, commit: 'abcdef0123456789abcdef0123456789abcdef01' }), 'v1.4.0 (abcdef01)');
   const report = versionReport({});
+  assert.equal(report.name, 'Slipwing');
   assert.equal(report.version, bundle().version);
   assert.equal(report['agent-desktop'].installed, undefined, 'a missing program is left out, not guessed');
   assert.match(report['agent-browser'].based_on, /^v\d+\.\d+\.\d+/);

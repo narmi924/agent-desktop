@@ -10,7 +10,7 @@ const { INSTRUCTIONS, GUIDE } = require('./mcp-guide');
 
 /**
  * Stdio MCP server for the workflow layer. It is not a second command surface: every tool builds the argument
- * list of one `agent-desktop-workflow` command and runs that command as a child process, so the refusals, the
+ * list of one `slipwing` command and runs that command as a child process, so the refusals, the
  * preferences and the reply are the same as on the command line.
  */
 const MODERN_VERSION = '2026-07-28';
@@ -180,7 +180,7 @@ function initialize(params) {
 }
 
 function serverInfo() {
-  return { name: 'agent-desktop-workflow', version: require('../package.json').version };
+  return { name: 'slipwing', version: require('../package.json').version };
 }
 
 /**

@@ -4,9 +4,9 @@ const { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } = requ
 const { homedir } = require('node:os');
 const { join } = require('node:path');
 
-const NAME = 'desktop-browser-control';
+const NAME = 'slipwing';
 const SKILL_DIR = join(__dirname, '..', 'skills', NAME);
-const STUB_MARK = 'generated-by: agent-desktop-workflow';
+const STUB_MARK = 'generated-by: slipwing';
 
 const invalid = message => Object.assign(new Error(message), { code: 'INVALID_ARGS' });
 
@@ -48,8 +48,8 @@ function stub() {
     '',
     '# Working on the user\'s computer',
     '',
-    'Run `agent-desktop-workflow skill` and follow it. It names further parts; read one with',
-    '`agent-desktop-workflow skill NAME`, for example `agent-desktop-workflow skill chrome`.',
+    'Run `slipwing skill` and follow it. It names further parts; read one with',
+    '`slipwing skill NAME`, for example `slipwing skill chrome`.',
     '',
   ].join('\n');
 }

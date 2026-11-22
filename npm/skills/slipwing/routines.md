@@ -6,9 +6,9 @@ new script. A routine runs without the model in the loop, so it is fast and work
 ## Look for one first
 
 ```bash
-agent-desktop-workflow routine list                # one line each: name (params): about [input] [final] [runs]
-agent-desktop-workflow routine list --for orders   # filtered by name, description, app or site
-agent-desktop-workflow routine show weekly-orders  # parameters, steps and the script
+slipwing routine list                # one line each: name (params): about [input] [final] [runs]
+slipwing routine list --for orders   # filtered by name, description, app or site
+slipwing routine show weekly-orders  # parameters, steps and the script
 ```
 
 A `run` reply with `known_routines` means saved routines already work on this app or site; use them next time.
@@ -16,7 +16,7 @@ A `run` reply with `known_routines` means saved routines already work on this ap
 ## Run
 
 ```bash
-agent-desktop-workflow routine run weekly-orders --args-file args.json --allow-final
+slipwing routine run weekly-orders --args-file args.json --allow-final
 ```
 
 - Arguments go in `--args '{"who":"Gulnar"}'` or `--args-file ARGS.json` (a file for non-ASCII text). A missing one
@@ -32,7 +32,7 @@ agent-desktop-workflow routine run weekly-orders --args-file args.json --allow-f
 Only a script that finished is saved. Values go in as `args.NAME`, never into the script:
 
 ```bash
-agent-desktop-workflow run --file order.js --args-file args.json --allow-final \
+slipwing run --file order.js --args-file args.json --allow-final \
   --save weekly-orders --about "export this week's orders and register them" --param who="recipient" --param shop="shop name"
 ```
 

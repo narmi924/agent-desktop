@@ -10,6 +10,7 @@
   "homepage": "https://github.com/vercel-labs/agent-desktop",
   "bin": {
     "agent-desktop": "bin/agent-desktop",
+    "slipwing": "bin/workflow.js",
     "agent-desktop-workflow": "bin/workflow.js"
   },
   "scripts": {

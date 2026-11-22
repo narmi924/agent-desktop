@@ -7,7 +7,7 @@ Whichever browser is used, the background way never brings it to the front. Two 
 
 Use it only when the user asks you to work in their browser or on a page they have open.
 
-- The first time, run `agent-desktop-workflow connect` and tell the user that Chrome will show a prompt they must allow.
+- The first time, run `slipwing connect` and tell the user that Chrome will show a prompt they must allow.
   Remote debugging has to be switched on at `chrome://inspect/#remote-debugging`; only the user can do that.
 - The prompt waits 20 seconds. When `connect` reports "waiting for remote-debugging approval", ask the user to bring
   Chrome to the front and run `connect` again.
@@ -24,19 +24,19 @@ await web.click("Save");
 return await web.waitText("Saved");
 ```
 
-Save it as `task.js` and run `agent-desktop-workflow run --file task.js --chrome`.
+Save it as `task.js` and run `slipwing run --file task.js --chrome`.
 
-The address and text of the page in one of the user's Chrome windows: `agent-desktop-workflow current --window ID`.
+The address and text of the page in one of the user's Chrome windows: `slipwing current --window ID`.
 `route: "web"` means the background connection reaches it; `route: "desktop"` means it does not, and later steps would
 need the real mouse and keyboard, so ask the user first.
 
 Single commands, with `page` from `current` (a page that navigated needs the value `follow` returns, or `current` again):
 
 ```powershell
-$p = (agent-desktop-workflow current --window w-1234 | ConvertFrom-Json).data.page
-agent-desktop-workflow edit --page $p --field "Email" --value "a@example.com"
-agent-desktop-workflow click --page $p --on "Save" --role button --expect-text "Saved"
-agent-desktop-workflow follow --page $p --link "Next"
+$p = (slipwing current --window w-1234 | ConvertFrom-Json).data.page
+slipwing edit --page $p --field "Email" --value "a@example.com"
+slipwing click --page $p --on "Save" --role button --expect-text "Saved"
+slipwing follow --page $p --link "Next"
 ```
 
 ## The agent's own browser (`--space`): sign in once, work in the background later
@@ -45,9 +45,9 @@ The user's Chrome asks for approval after every restart. When a site needs a sig
 untouched:
 
 ```powershell
-agent-desktop-workflow space --login https://example.com/login   # opens a window; the user signs in there
-agent-desktop-workflow space --close                              # after they signed in
-agent-desktop-workflow run --space --file task.js                 # later runs keep that sign-in, in the background
+slipwing space --login https://example.com/login   # opens a window; the user signs in there
+slipwing space --close                              # after they signed in
+slipwing run --space --file task.js                 # later runs keep that sign-in, in the background
 ```
 
 It is separate from the user's Chrome and cannot see their tabs. `--login` opens a window, so tell the user first. A few

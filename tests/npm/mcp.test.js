@@ -54,7 +54,7 @@ function sample(schema) {
 test('initialize answers with a version the client knows and the working rules', async () => {
   const replies = await session([{ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } }, { id: 2, method: 'ping' }]);
   assert.equal(replies[1].result.protocolVersion, '2025-06-18');
-  assert.equal(replies[1].result.serverInfo.name, 'agent-desktop-workflow');
+  assert.equal(replies[1].result.serverInfo.name, 'slipwing');
   assert.match(replies[1].result.instructions, /workflow_guide/);
   assert.deepEqual(replies[2].result, { resultType: 'complete' });
 });

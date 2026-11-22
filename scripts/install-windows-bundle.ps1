@@ -1,11 +1,11 @@
-# Installs the agent-desktop Windows bundle: agent-desktop with the workflow, and agent-browser, both built from the
-# personal branches, plus a short skill entry for Claude Code and Codex.
-#   irm https://github.com/narmi924/agent-desktop/releases/latest/download/install.ps1 | iex
+# Installs Slipwing: agent-desktop with the slipwing command, and agent-browser, both built from the personal
+# branches, plus a short slipwing skill entry for Claude Code and Codex.
+#   irm https://github.com/narmi924/slipwing/releases/latest/download/install.ps1 | iex
 # It replaces the official agent-desktop and agent-browser npm packages; to go back: npm install -g agent-desktop agent-browser
 # Test switches: -Zip PATH (a local bundle), -Prefix DIR (an npm prefix instead of the global one), -SkillDir DIR, -NoSkill.
 param(
     [string]$Zip,
-    [string]$Release = 'https://github.com/narmi924/agent-desktop/releases/latest/download',
+    [string]$Release = 'https://github.com/narmi924/slipwing/releases/latest/download',
     [string]$Prefix,
     [string]$SkillDir,
     [switch]$NoSkill
@@ -20,13 +20,13 @@ function Invoke-Npm([string[]]$words) {
     if ($LASTEXITCODE -ne 0) { throw "npm $($words -join ' ') failed" }
 }
 
-if ([Environment]::Is64BitOperatingSystem -ne $true) { throw 'This bundle needs 64-bit Windows.' }
+if ([Environment]::Is64BitOperatingSystem -ne $true) { throw 'Slipwing needs 64-bit Windows.' }
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) { throw 'Node.js 22 or later is needed. Install it from https://nodejs.org or with: winget install OpenJS.NodeJS.LTS' }
 $major = [int]((& node --version).TrimStart('v').Split('.')[0])
 if ($major -lt 22) { throw "Node.js 22 or later is needed; this computer has $(& node --version)." }
 
-$work = Join-Path $env:LOCALAPPDATA 'agent-desktop-windows'
+$work = Join-Path $env:LOCALAPPDATA 'slipwing'
 New-Item -ItemType Directory -Force $work | Out-Null
 if (-not $Zip) {
     Say 'Downloading the bundle ...'
@@ -57,7 +57,7 @@ foreach ($folder in 'skill-data', 'skills') {
     Copy-Item (Join-Path $stage "agent-browser-$folder") (Join-Path $browser $folder) -Recurse -Force
 }
 
-Say "Installing agent-desktop with the workflow ..."
+Say "Installing agent-desktop with the slipwing command ..."
 $env:AGENT_DESKTOP_BINARY_PATH = Join-Path $stage 'agent-desktop-win32-x64.exe'
 try { Invoke-Npm @('install', '-g', (Join-Path $stage 'agent-desktop.tgz')) } finally { Remove-Item Env:AGENT_DESKTOP_BINARY_PATH -ErrorAction SilentlyContinue }
 $desktop = Join-Path $root 'agent-desktop'
@@ -74,5 +74,5 @@ if (-not $NoSkill) {
     & node @skillArgs
 }
 Say ''
-Say "Installed bundle $($bundle.version). Tell your agent: use the desktop-browser-control skill."
+Say "Installed Slipwing $($bundle.version). Tell your agent: use the slipwing skill."
 Say 'Back to the official packages: npm install -g agent-desktop agent-browser'

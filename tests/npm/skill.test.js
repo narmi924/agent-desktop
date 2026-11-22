@@ -15,7 +15,7 @@ const files = readdirSync(skill.SKILL_DIR).filter(f => f.endsWith('.md'));
 const text = Object.fromEntries(files.map(f => [f, readFileSync(join(skill.SKILL_DIR, f), 'utf8')]));
 
 test('the skill command prints the guide and each part, and names the parts on a wrong one', () => {
-  assert.match(cli(['skill']).stdout, /^---\nname: desktop-browser-control/);
+  assert.match(cli(['skill']).stdout, /^---\nname: slipwing/);
   assert.match(cli(['skill', 'jobs']).stdout, /^# Jobs/);
   assert.deepEqual(JSON.parse(cli(['skill', '--list']).stdout).data.parts, ['chrome', 'desktop', 'human', 'jobs', 'main', 'routines', 'watches']);
   const wrong = cli(['skill', 'nope']);
@@ -33,7 +33,7 @@ test('every workflow command and flag the guide shows exists, so the guide canno
   const unknown = [];
   for (const [file, body] of Object.entries(text)) {
     for (const line of body.split('\n')) {
-      const segments = line.split('agent-desktop-workflow ').slice(1);
+      const segments = line.split('slipwing ').slice(1);
       for (const segment of segments) {
         const command = segment.match(/^([a-z-]+)/)?.[1];
         if (!command) continue;
@@ -51,18 +51,18 @@ test('every workflow command and flag the guide shows exists, so the guide canno
 test('installing writes a short entry that points to the guide and never replaces a skill it did not write', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ad-skill-'));
   const first = skill.install({ dir });
-  const entry = join(dir, 'desktop-browser-control', 'SKILL.md');
-  assert.deepEqual(first.installed, [join(dir, 'desktop-browser-control')]);
+  const entry = join(dir, 'slipwing', 'SKILL.md');
+  assert.deepEqual(first.installed, [join(dir, 'slipwing')]);
   const written = readFileSync(entry, 'utf8');
-  assert.match(written, /agent-desktop-workflow skill/);
+  assert.match(written, /slipwing skill/);
   assert.equal(written.match(/^description: (.+)$/m)[1], text['SKILL.md'].match(/^description: (.+)$/m)[1], 'it triggers on the same words as the guide');
   assert.deepEqual(skill.install({ dir }).installed.length, 1, 'its own entry is refreshed');
 
   const own = mkdtempSync(join(tmpdir(), 'ad-skill-own-'));
-  mkdirSync(join(own, 'desktop-browser-control'));
-  writeFileSync(join(own, 'desktop-browser-control', 'SKILL.md'), '# the user\'s own notes');
+  mkdirSync(join(own, 'slipwing'));
+  writeFileSync(join(own, 'slipwing', 'SKILL.md'), '# the user\'s own notes');
   const kept = skill.install({ dir: own });
   assert.deepEqual(kept.installed, []);
-  assert.equal(readFileSync(join(own, 'desktop-browser-control', 'SKILL.md'), 'utf8'), '# the user\'s own notes');
+  assert.equal(readFileSync(join(own, 'slipwing', 'SKILL.md'), 'utf8'), '# the user\'s own notes');
   assert.equal(skill.install({ dir: own, force: true }).installed.length, 1);
 });

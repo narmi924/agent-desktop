@@ -104,7 +104,7 @@ const api = [
   '',
   'other:',
   '  await sleep(ms)   await waitFor(async () => condition, {timeout, interval})   log(...values)   expect(condition, message)',
-  '  await flow(command, options)            -> any other agent-desktop-workflow command, for example flow("view", {window, output})',
+  '  await flow(command, options)            -> any other slipwing command, for example flow("view", {window, output})',
   '',
   'Example:',
   '  await web.open("https://example.com/login");',

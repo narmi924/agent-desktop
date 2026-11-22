@@ -6,15 +6,15 @@ Work that takes longer than about 20 seconds (a routine of dozens of steps, a pa
 to the resident host, so you can keep talking with the user:
 
 ```bash
-agent-desktop-workflow routine run NAME --args-file ARGS.json --allow-final --detach
-agent-desktop-workflow run --file task.js --detach
+slipwing routine run NAME --args-file ARGS.json --allow-final --detach
+slipwing run --file task.js --detach
 ```
 
 The reply is a job `id` at once. The host starts itself when needed, without a window, and leaves after 30 idle minutes.
 
 ## Waiting
 
-Run `agent-desktop-workflow job wait ID` in the background (in Claude Code, Bash with `run_in_background`). It returns
+Run `slipwing job wait ID` in the background (in Claude Code, Bash with `run_in_background`). It returns
 when the job ends or needs you, and you are woken. Keep answering the user meanwhile.
 
 | state | meaning | you |
@@ -37,12 +37,12 @@ waiting on it shows the user a notification that sends them back to the chat; wh
 input. Read `waiting.scene`, then choose:
 
 ```bash
-agent-desktop-workflow job retry ID --target "the name it has now"     # redo the step with another name
-agent-desktop-workflow job retry ID --options '{"timeout": 15000}'     # a slow page: wait longer, then redo
-agent-desktop-workflow job do ID --file patch.js                        # do a few more steps first (close a dialog), then this one
-agent-desktop-workflow job approve ID                                   # reason "approval": the user agreed in the chat
-agent-desktop-workflow job skip ID --value '"what the step returns"'    # skip the step
-agent-desktop-workflow job stop ID                                      # only when the user gives up: a stopped job cannot be fixed
+slipwing job retry ID --target "the name it has now"     # redo the step with another name
+slipwing job retry ID --options '{"timeout": 15000}'     # a slow page: wait longer, then redo
+slipwing job do ID --file patch.js                        # do a few more steps first (close a dialog), then this one
+slipwing job approve ID                                   # reason "approval": the user agreed in the chat
+slipwing job skip ID --value '"what the step returns"'    # skip the step
+slipwing job stop ID                                      # only when the user gives up: a stopped job cannot be fixed
 ```
 
 An extra confirmation dialog ("Confirm order?"): `do` with a patch that clicks its Continue or OK.

@@ -2,7 +2,7 @@
 
 /** Sent with `initialize`: what an agent needs before its first call. */
 const INSTRUCTIONS = [
-  'agent-desktop-workflow operates Windows desktop apps and web pages for the user, in the background by default.',
+  'Slipwing operates Windows desktop apps and web pages for the user, in the background by default.',
   'Call workflow_guide once before the first workflow_run. Then check workflow_routine_list for a saved routine;',
   'otherwise write the whole task as one script for workflow_run instead of many small calls.',
   'Leave mode, allow_input and allow_final out unless the user asked for them in this request or agreed in this chat.',

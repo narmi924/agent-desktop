@@ -6,15 +6,15 @@ watches while you keep talking with the user.
 ## Adding one
 
 ```bash
-agent-desktop-workflow watch add --window "Export progress"                       # a window with this in its title opens
-agent-desktop-workflow watch add --window "Export progress" --gone                # that window was seen, then closed
-agent-desktop-workflow watch add --text "Render complete" --in "Render progress"  # this text shows in the window (controls, then picture)
-agent-desktop-workflow watch add --text "Working" --in "Render progress" --gone   # the text was seen, then went away
-agent-desktop-workflow watch add --notification "Download complete"               # a notification with this text arrives
-agent-desktop-workflow watch add --file "D:/Downloads/report.pdf"                 # the file finished downloading and stopped growing
+slipwing watch add --window "Export progress"                       # a window with this in its title opens
+slipwing watch add --window "Export progress" --gone                # that window was seen, then closed
+slipwing watch add --text "Render complete" --in "Render progress"  # this text shows in the window (controls, then picture)
+slipwing watch add --text "Working" --in "Render progress" --gone   # the text was seen, then went away
+slipwing watch add --notification "Download complete"               # a notification with this text arrives
+slipwing watch add --file "D:/Downloads/report.pdf"                 # the file finished downloading and stopped growing
 ```
 
-The reply is an `id` at once. Run `agent-desktop-workflow watch wait ID` in the background (Bash `run_in_background`); it
+The reply is an `id` at once. Run `slipwing watch wait ID` in the background (Bash `run_in_background`); it
 returns when the watch fires, with the line it saw in `fired.match`.
 
 - Name windows by a specific part of their title. Watch only windows and notifications the user named.
@@ -24,8 +24,8 @@ returns when the watch fires, with the line it saw in `fired.match`.
 ## Running a routine when it fires
 
 ```bash
-agent-desktop-workflow watch add --file "D:/Downloads/report.pdf" --then upload-report --args '{"path": "{file}"}'
-agent-desktop-workflow watch add --notification "Gulnar" --then log-message --args '{"text": "{match}"}'
+slipwing watch add --file "D:/Downloads/report.pdf" --then upload-report --args '{"path": "{file}"}'
+slipwing watch add --notification "Gulnar" --then log-message --args '{"text": "{match}"}'
 ```
 
 - `--then` takes one saved routine (from `routine list`). `{match}`, `{file}` and `{title}` in `--args` become what was

@@ -1,4 +1,4 @@
-# Packs the Windows bundle: both programs built from the personal branches, the agent-desktop npm package with the
+# Packs Slipwing for Windows: both programs built from the personal branches, the agent-desktop npm package with the
 # workflow and its guide, the agent-browser guide files, bundle.json and install.ps1, into one zip with SHA256SUMS.
 # Usage: pwsh scripts/pack-windows-bundle.ps1 [-BrowserRepo ..\agent-browser] [-Out dist] [-DesktopExe PATH] [-BrowserExe PATH]
 # Without -DesktopExe and -BrowserExe both are built here with cargo (Visual Studio C++ build tools required).
@@ -39,7 +39,7 @@ if (-not $BrowserExe) {
     $BrowserExe = Join-Path $BrowserRepo 'cli\target\release\agent-browser.exe'
 }
 
-$name = "agent-desktop-windows-$($bundle.version)"
+$name = "slipwing-$($bundle.version)"
 $stage = Join-Path $Out $name
 Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $stage | Out-Null

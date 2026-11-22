@@ -52,10 +52,10 @@ only control is its title bar is read from its picture straight away.
 Single commands:
 
 ```powershell
-agent-desktop-workflow view --window w-1234 --output a.png   # without --output it names a file; the reply has the path
+slipwing view --window w-1234 --output a.png   # without --output it names a file; the reply has the path
 agent-desktop ocr --image a.png --find "Save"
-agent-desktop-workflow tap --frame a.png --text "Save"
-agent-desktop-workflow tap --frame a.png --at 812,604
+slipwing tap --frame a.png --text "Save"
+slipwing tap --frame a.png --at 812,604
 agent-desktop --headed type --window-id w-1234 "Build 1482 received"
 ```
 
