@@ -15,7 +15,7 @@ const files = readdirSync(skill.SKILL_DIR).filter(f => f.endsWith('.md'));
 const text = Object.fromEntries(files.map(f => [f, readFileSync(join(skill.SKILL_DIR, f), 'utf8')]));
 
 test('the skill command prints the guide and each part, and names the parts on a wrong one', () => {
-  assert.match(cli(['skill']).stdout, /^---\nname: slipwing/);
+  assert.match(cli(['skill']).stdout, /^---\r?\nname: slipwing/, 'a checkout with Windows line ends prints them');
   assert.match(cli(['skill', 'jobs']).stdout, /^# Jobs/);
   assert.deepEqual(JSON.parse(cli(['skill', '--list']).stdout).data.parts, ['chrome', 'desktop', 'human', 'jobs', 'main', 'routines', 'watches']);
   const wrong = cli(['skill', 'nope']);
@@ -36,7 +36,7 @@ test('every workflow command and flag the guide shows exists, so the guide canno
       const segments = line.split('slipwing ').slice(1);
       for (const segment of segments) {
         const command = segment.match(/^([a-z-]+)/)?.[1];
-        if (!command) continue;
+        if (!command || ['--help', '--version'].includes(command)) continue;
         if (!Object.hasOwn(COMMAND_OPTIONS, command)) { unknown.push(file + ': command ' + command); continue; }
         const words = segment.split(/[`|]/)[0];
         for (const [, flag] of words.matchAll(/(?:^|\s)--([a-z][a-z-]*)/g)) {

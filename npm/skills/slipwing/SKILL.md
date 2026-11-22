@@ -25,7 +25,8 @@ for a quick look, a single read or a one-off.
 Fewer round trips matter most: a routine beats a script, a script beats single commands. Then, in order:
 
 1. No interface at all: a file no app holds open, or an app with a command line, export or API. Use your shell.
-2. Web pages: `run` with `web.*`, in a clean browser by default. Only the text: `slipwing read --url URL`.
+2. Web pages: `run` with `web.*`, in a clean browser by default. Only the text: `slipwing read --url URL`
+   (`thin: true`: under 600 characters came back, so the page may need a script, a sign-in or `run`).
 3. Desktop apps with controls: `run` with `desktop.*`; values are set and buttons pressed without the mouse.
 4. On screen with the real mouse and keyboard: only for what the background cannot do. Ask first.
 5. Windows that draw their own interface: `desktop.read` adds the text from their picture.
@@ -59,10 +60,11 @@ A document an app holds open is changed through that app, never by editing its f
 | "just use the mouse", "直接操作" | `--mode direct` | real input whenever a step needs it, no human pace; web stays in the background |
 
 - Put the mode on `run` or `routine run`. If the user did not say it and you think the screen is needed, ask first.
-- "From now on in this project …" is `slipwing prefs set mode=record --project`; "from now on …" is
-  `--always`; "this routine always …" is `--routine NAME`. `pointer=off` keeps the user's pointer, `browser=chrome` or
-  `browser=space` picks where web steps run. Set them only on the user's words; say what changed and that
-  `prefs unset mode --project` undoes it. `slipwing prefs` shows what applies here and why.
+- "From now on in this project …" is `slipwing prefs set mode=record --project`: the folder the command runs in and
+  every folder below it. "From now on …" is `--always`; "this routine always …" is `--routine NAME`. `pointer=off`
+  keeps the user's pointer, `browser=chrome` or `browser=space` picks where web steps run. Set them only on the user's
+  words; say what changed and that `prefs unset mode --project` undoes it. `slipwing prefs` shows what applies here
+  and why.
 - The reply's `mode` says which way ran and where it came from. When `from` is not `built-in`, tell the user before you
   start: "Recording mode from this project's settings, about a minute, Esc stops it." A project or routine set to an
   on-screen way is the user's standing agreement to use the mouse and keyboard there.
@@ -123,14 +125,20 @@ pointer turns into an amber arrow; the user touching the mouse or keyboard pause
 ## 6. Reading the reply
 
 - `data.result` is what the script returned. `ok: true` only means it ran; wait for results with `waitText`.
-- Each line of `data.steps` says what the step changed: windows that opened or closed, a page that moved on, and on the
-  desktop which controls changed (`"Total" value "0.00" -> "231.00"`, `"Invoice" checked`). A value the step itself
+- Each line of `data.steps` says what the step changed. A web step names a page that went to another address, a new tab
+  or a dialog, not the text that appeared: read that with `waitText`. A desktop step names windows that opened or
+  closed and which controls changed (`"Total" value "0.00" -> "231.00"`, `"Invoice" checked`). A value the step itself
   wrote shows only as `value changed`. `no control changed` covers controls only. After a click it is followed by the
   text the window shows that no control holds (`the window shows, in no control: "Saved C301"`), which is often where
   an app puts its result. Without that, read the window or `waitText` before calling a step failed, and never repeat a
   final step on `no control changed` alone.
 - `data.warnings` lists actions the app did not confirm; read again to check them.
 - A failed step stops the script; `step` names it and `scene` shows the window or page after it. Continue from `scene`.
+- A refusal or failure prints `{"ok": false, "error": "what happened", "code": "...", ...}` with exit code 1. The codes
+  to act on: `FINAL_NOT_ALLOWED`, `INPUT_NOT_ALLOWED` (nothing was sent; ask), `MISSING_ARGS`, `EFFECT_MISMATCH`,
+  `ELEMENT_NOT_FOUND`, `AMBIGUOUS_TARGET`, `TIMEOUT`, `ACTION_FAILED` (the app, page or tool refused the step; read
+  `error`), `SCRIPT_ERROR` (the script itself threw), `INVALID_ARGS`, `FILE_NOT_FOUND`, `ROUTINE_NOT_FOUND`,
+  `BROWSER_BUSY`. `agent-desktop` commands answer `{"ok": false, "error": {"code", "message", ...}}` instead.
 - Two runs at once never share a page. `browser_session` means another run was using the background browser, so this
   run had one of its own; a next script continues on that page with `run --session NAME` within 10 minutes.
 
@@ -171,4 +179,7 @@ Always:
 - `jobs.md`: detached jobs, waiting, fixing a step in place, reports.
 - `watches.md`: watching windows, text, notifications and files.
 
-Read one with `slipwing skill NAME`, for example `slipwing skill chrome`.
+Read one with `slipwing skill NAME`, for example `slipwing skill chrome`. `slipwing --help` lists every command and
+flag, also the rarer ones this guide leaves out (`routine remove`, `watch show`, `host status`, `replay`). Saved
+routines, jobs and settings live in the state folder, `%USERPROFILE%\.agent-desktop` unless `AGENT_DESKTOP_HOME`
+names another.

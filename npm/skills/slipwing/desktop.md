@@ -10,9 +10,10 @@ Unsure of the name: `agent-desktop list-apps --installed --app WORD`. A name wit
 
 ## Single commands
 
-In PowerShell, quote refs with single quotes, for example `'@s8f3k2p9:e1'`, or the argument disappears.
+Quote refs with single quotes, for example `'@s8f3k2p9:e1'`: PowerShell drops an unquoted one, and Bash keeps it either
+way, so the lines below work in both.
 
-```powershell
+```bash
 agent-desktop list-windows
 agent-desktop snapshot --window-id w-1234 -i --compact
 agent-desktop click '@s8f3k2p9:e5'
@@ -51,7 +52,7 @@ only control is its title bar is read from its picture straight away.
 
 Single commands:
 
-```powershell
+```bash
 slipwing view --window w-1234 --output a.png   # without --output it names a file; the reply has the path
 agent-desktop ocr --image a.png --find "Save"
 slipwing tap --frame a.png --text "Save"
@@ -69,7 +70,7 @@ agent-desktop --headed type --window-id w-1234 "Build 1482 received"
 
 ## More
 
-```powershell
+```bash
 agent-desktop skills get desktop
 agent-desktop skills get platform
 ```

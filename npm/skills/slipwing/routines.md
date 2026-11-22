@@ -6,12 +6,14 @@ new script. A routine runs without the model in the loop, so it is fast and work
 ## Look for one first
 
 ```bash
-slipwing routine list                # one line each: name (params): about [input] [final] [runs]
-slipwing routine list --for orders   # filtered by name, description, app or site
+slipwing routine list                # one line each: name (params): about, then [real mouse and keyboard], [final steps], [status, N ok, M failed]
+slipwing routine list --for orders   # filtered by name, description, app, site or an address it opens
 slipwing routine show weekly-orders  # parameters, steps and the script
 ```
 
-A `run` reply with `known_routines` means saved routines already work on this app or site; use them next time.
+The status is `candidate` until a routine has finished three times, then `proven`; both run the same way, and a proven
+one has shown its steps hold. A `run` reply with `known_routines` means saved routines already work on this app or
+site; use them next time.
 
 ## Run
 
@@ -64,7 +66,8 @@ It guards against slips only: Enter to submit, or a `css:` selector, cannot be s
   ask, in the foreground, in jobs and when started by a watch. Never run it without those words. Saving the
   routine again with `--replace` cancels it.
 - `routine permissions` lists trusted routines and protected apps and sites; `routine revoke NAME` takes trust back.
-- The user can write `{"apps": ["app.exe"], "hosts": ["example.com"]}` into `protected.json` in the state folder. Only
+- The user can write `{"apps": ["app.exe"], "hosts": ["example.com"]}` into `protected.json` in the state folder
+  (`%USERPROFILE%\.agent-desktop`; `routine permissions` shows the file's path as `protected_file`). Only
   routines the user trusts may act there; other scripts are refused with `SURFACE_PROTECTED` before anything is sent.
   Only the user edits that file.
 - For agents that can run a shell these are guards against slips, since such an agent can edit files.

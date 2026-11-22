@@ -33,13 +33,14 @@ The address and text of the page in one of the user's Chrome windows: `slipwing 
 `route: "web"` means the background connection reaches it; `route: "desktop"` means it does not, and later steps would
 need the real mouse and keyboard, so ask the user first.
 
-Single commands, with `page` from `current` (a page that navigated needs the value `follow` returns, or `current` again):
+Single commands take the page handle `data.page` from the reply of `slipwing current --window w-1234`; put it in
+place of PAGE (a page that navigated needs the value `follow` returns, or `current` again). These lines work the same in
+Bash and PowerShell:
 
-```powershell
-$p = (slipwing current --window w-1234 | ConvertFrom-Json).data.page
-slipwing edit --page $p --field "Email" --value "a@example.com"
-slipwing click --page $p --on "Save" --role button --expect-text "Saved"
-slipwing follow --page $p --link "Next"
+```bash
+slipwing edit --page PAGE --field "Email" --value "a@example.com"
+slipwing click --page PAGE --on "Save" --role button --expect-text "Saved"
+slipwing follow --page PAGE --link "Next"
 ```
 
 ## The agent's own browser (`--space`): sign in once, work in the background later
@@ -47,7 +48,7 @@ slipwing follow --page $p --link "Next"
 The user's Chrome asks for approval after every restart. When a site needs a sign-in and the user's Chrome should stay
 untouched:
 
-```powershell
+```bash
 slipwing space --login https://example.com/login   # opens a window; the user signs in there
 slipwing space --close                              # after they signed in
 slipwing run --space --file task.js                 # later runs keep that sign-in, in the background
