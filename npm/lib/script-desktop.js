@@ -264,7 +264,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
   async function act(window, target, options, run, byPicture) {
     const until = Date.now() + (options?.timeout ?? PATIENCE_MS);
     const usePicture = byPicture && pictureAllowed(target, options);
-    const tryPicture = id => (inputAllowed() ? byPicture(id) : refuseByPicture(id, target, options));
+    const tryPicture = id => (inputAllowed() || byPicture.behind ? byPicture(id) : refuseByPicture(id, target, options));
     for (;;) {
       const id = usePicture ? await resolve(window) : undefined;
       if (usePicture && drawnWindows.has(id)) {
@@ -366,8 +366,29 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     return running;
   }
 
-  /** Clicks where the picture shows the text: the window comes to the front and the real mouse moves. */
-  async function clickPicture(id, target, options) {
+  /**
+   * Clicks where the picture shows the text. With `behind`, and unless steps move like a person, the click is first
+   * posted to the window as window messages, so the window stays where it is and the pointer stays with the person.
+   * When the window then shows no change, the window comes to the front and the real mouse clicks, which needs the
+   * input permission. A step refused for that and tried again once input is allowed goes straight to the real mouse.
+   */
+  const postedInVain = new Set();
+  async function clickPicture(id, target, options, behind = false) {
+    const key = id + '\n' + target;
+    if (behind && !pace() && !postedInVain.delete(key)) {
+      const spot = await picture.find(id, target, options);
+      if (!spot) return undefined;
+      const tried = await clickBehind(id, spot);
+      if (tried.done) return tried.done;
+      const { x, y } = spot.hit.center;
+      const why = tried.sent ? 'a click posted there in the background changed nothing in the window' : 'the window did not take a click posted in the background';
+      if (!inputAllowed()) {
+        postedInVain.add(key);
+        throw inputRefused('No control is named "' + target + '" in this window. Its picture shows it at ' + x + ',' + y + '; ' + why +
+          ', and clicking with the real mouse brings the window to the front and moves the pointer.', 'Ask the user first; when they agree, run the steps that are left with run --allow-input.');
+      }
+      note(why);
+    }
     await ad(['--headed', 'focus-window', '--window-id', id]);
     const spot = await picture.find(id, target, options);
     if (!spot) return undefined;
@@ -375,6 +396,75 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     const report = await ad(['--headed', '--when-idle', '600', ...asPerson().slice(1), 'mouse-click', '--frame', spot.shot.path, '--xy', x + ',' + y]);
     note('by picture at ' + x + ',' + y);
     return { via: 'picture', text: spot.hit.text, x, y, delivery: report?.disposition?.delivery ?? report?.delivery };
+  }
+
+  /**
+   * Posts a click at the spot and says whether the window then shows an effect: a window of the same app opened,
+   * closed or changed title, a control changed, or the text in the picture changed. Controls and picture text that
+   * already change on their own (a clock, a progress bar) are not taken as evidence: each counts only when two reads
+   * before the click agree.
+   */
+  async function clickBehind(id, spot) {
+    const { x, y } = spot.hit.center;
+    const before = { windows: await appWindows(id), controls: (await controlChanges(id))?.length === 0, texts: pictureLines(spot.lines) };
+    before.picture = pictureLines(await pictureText(id).catch(() => [])) === before.texts;
+    let report;
+    try {
+      report = await ad(['mouse-click', '--post', '--frame', spot.shot.path, '--xy', x + ',' + y]);
+    } catch (err) {
+      if (err.disposition?.delivery === 'not_delivered' || err.code === 'INVALID_ARGS') return { sent: false };
+      if (!String(err.disposition?.delivery).startsWith('delivered')) throw err;
+    }
+    if (!(await shownBehind(id, before))) return { sent: true };
+    note('by picture in the background at ' + x + ',' + y);
+    return { sent: true, done: { via: 'picture', background: true, text: spot.hit.text, x, y, delivery: report?.disposition?.delivery ?? 'delivered_unverified' } };
+  }
+
+  const pictureLines = lines => (lines ?? []).map(line => line.text).sort().join('\n');
+
+  /** The visible windows of the app that owns window `id`, by id and title; undefined when that window is gone. */
+  async function appWindows(id) {
+    const all = await ad(['list-windows']);
+    const own = all.find(w => w.id === id);
+    if (!own) return undefined;
+    const owner = w => w.pid ?? w.app_name;
+    return all.filter(w => owner(w) === owner(own) && w.visible !== false && !w.minimized).map(w => w.id + ' ' + w.title).sort().join('\n');
+  }
+
+  /** Control changes since the window's last read, which becomes the new last read; undefined when they cannot be compared. */
+  async function controlChanges(id) {
+    const since = readIds.get(id);
+    if (!since || drawnWindows.has(id)) return undefined;
+    let snapshot;
+    try { snapshot = await ad(['snapshot', '--window-id', id, '--compact', '--max-depth', '50', '-i', '--since', since]); } catch { return undefined; }
+    views.set(id, renderTree(snapshot).controls);
+    if (snapshot?.snapshot_id) readIds.set(id, snapshot.snapshot_id);
+    return snapshot?.changes ? describeChanges(snapshot.changes) : undefined;
+  }
+
+  async function shownBehind(id, before) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await delay(CHANGE_SETTLE_MS);
+      const windows = await appWindows(id);
+      if (windows !== before.windows) return true;
+      const lines = before.controls ? await controlChanges(id) : undefined;
+      if (lines?.length) {
+        lines.forEach(([text, effect], index) => note(index < EFFECT_LIMIT ? text : undefined, effect));
+        return true;
+      }
+      if (before.picture && await pictureChanged(id, before.texts)) return true;
+    }
+    return false;
+  }
+
+  /** Whether the window's picture shows other text now; a window that closed or changed size while captured has changed. */
+  async function pictureChanged(id, texts) {
+    try {
+      return pictureLines(await pictureText(id)) !== texts;
+    } catch (err) {
+      if (err.code === 'STALE_REF' || err.code === 'WINDOW_NOT_FOUND') return true;
+      throw err;
+    }
   }
 
   /** Whether a fresh picture of the window shows the text, waiting briefly for it to be drawn. */
@@ -511,7 +601,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       const done = await watchWindows(() => act(window, target, options, async ref => {
         if (pace()) await bringForward(window);
         return ad([...asPerson(), 'click', ref]);
-      }, id => clickPicture(id, target, options)));
+      }, Object.assign(id => clickPicture(id, target, options, true), { behind: true })));
       views.clear();
       if (done?.via !== 'picture') await controlEffects(window, { pictureText: true });
       return done?.via === 'picture' ? done : undefined;

@@ -42,11 +42,15 @@ only control is its title bar is read from its picture straight away.
 
 - Reading: `desktop.read(WINDOW)` lists the picture's text as `- text "..." [picture x,y]`; `{picture: true}` adds it for
   ordinary windows too. Reading moves nothing.
-- Clicking and filling by picture bring the window forward and use the real mouse and keyboard, so without
-  `--allow-input` the step returns `INPUT_NOT_ALLOWED` with where the picture shows the name. Ask, then run the rest
-  with `--allow-input`.
-- `desktop.click` by picture returns `{via: "picture", text, x, y}`. `desktop.fill` by picture clicks the text and types,
-  then checks the picture; it does not clear the field first and returns `false` with a warning when the text does not show.
+- `desktop.click` by picture first posts the click to the window in the background: the window stays where it is and
+  the pointer stays with the user. It counts when the window then shows a change (its text, a control, or a window of
+  the same app opening, closing or changing title) and returns `{via: "picture", background: true, text, x, y}`. When
+  nothing changes, the window comes forward and the real mouse clicks the same place, which needs `--allow-input`;
+  without it the step returns `INPUT_NOT_ALLOWED`, says the background click changed nothing, and gives where the
+  picture shows the name. A click whose effect does not show in the window therefore reaches it more than once.
+- `desktop.fill` by picture brings the window forward, clicks the text with the real mouse and types, then checks the
+  picture; it needs `--allow-input`, does not clear the field first and returns `false` with a warning when the text
+  does not show.
 - The same text in several places is refused with `AMBIGUOUS_TARGET` and the places; pick one with
   `{near: "text beside it"}` or `{nth: 2}` (top to bottom). `{picture: false}` keeps a step to controls.
 
@@ -61,6 +65,8 @@ agent-desktop --headed type --window-id w-1234 "Build 1482 received"
 ```
 
 - `tap` and `type --window-id` use the real mouse and keyboard; ask first.
+- `agent-desktop mouse-click --post --frame a.png --xy X,Y` posts one click to the window in the background, with no
+  `--headed`. It reports `delivered_unverified`: compare the window before and after to know whether the app took it.
 - Coordinates are picture pixels. A closed, resized or retitled window, or a changed patch around the point, refuses the
   action with `STALE_REF`; take a new `view`. Several matches need `--nth N`.
 - `ocr --find` prefers a line that is exactly the text over the text inside a longer line, so "Send" lands on the button,

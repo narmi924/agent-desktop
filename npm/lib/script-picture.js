@@ -88,14 +88,14 @@ function createPicture({ ad, dir = sceneDir() }) {
     return { lines: reply.lines ?? [], matches: reply.matches ?? [] };
   }
 
-  /** Where `text` shows in a fresh capture, narrowed by {nth} or {near}. */
+  /** Where `text` shows in a fresh capture, narrowed by {nth} or {near}, with every line that capture shows. */
   async function find(id, text, options = {}) {
     const shot = await capture(id);
-    const { matches } = await read(shot, text);
+    const { matches, lines } = await read(shot, text);
     if (!matches.length) return undefined;
     const near = options.near === undefined ? [] : (await read(shot, options.near)).matches;
     const hit = choose(matches, text, options, near);
-    return hit && { shot, hit };
+    return hit && { shot, hit, lines };
   }
 
   return { capture, read, find };

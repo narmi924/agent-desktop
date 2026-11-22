@@ -421,6 +421,7 @@ function drawnTools(places, { tree = DRAWN, typed } = {}) {
     'desktop list-windows': [{ id: 'w-7', app_name: 'pwsh.exe', title: '自绘窗口示例', visible: true, process_instance: 'p-7', bounds: { width: 100, height: 80 } }],
     'desktop snapshot': tree,
     'desktop click': { disposition: { delivery: 'delivered_verified' } },
+    'desktop mouse-click': { disposition: { delivery: 'delivered_unverified' } },
     'desktop screenshot': { data: tinyPng().toString('base64'), width: 1, height: 1, scale_factor: 2.25 },
     'desktop ocr': words => {
       const find = words.indexOf('--find');
@@ -437,7 +438,7 @@ function drawnTools(places, { tree = DRAWN, typed } = {}) {
   });
 }
 
-test('a window with nothing but a title bar is clicked by its picture, with the real mouse', async () => {
+test('a window with nothing but a title bar is clicked by its picture: posted first, then with the real mouse when nothing changed', async () => {
   const tools = drawnTools({ 发送: [SPOT('发送', 1012, 716)] });
   const data = await tools.run(`return await desktop.click('自绘', '发送');`);
   assert.deepEqual(data.result, { via: 'picture', text: '发送', x: 1012, y: 716, delivery: 'delivered_unverified' });
@@ -448,7 +449,7 @@ test('a window with nothing but a title bar is clicked by its picture, with the 
   assert.match(click.words[click.words.indexOf('--frame') + 1], /scene-.*\.png$/);
   const ocr = tools.calls.find(c => c.words[0] === 'ocr');
   assert.equal(ocr.words[ocr.words.indexOf('--scale') + 1], '2.25', 'the picture is read at the scale it was captured at');
-  assert.match(data.steps[0], /^desktop\.click 发送 \(real mouse and keyboard, by picture at 1012,716\) \d+ms$/);
+  assert.match(data.steps[0], /^desktop\.click 发送 \(a click posted there in the background changed nothing in the window, real mouse and keyboard, by picture at 1012,716\) \d+ms$/);
   assert.equal(data.input_used, true);
 });
 

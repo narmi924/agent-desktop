@@ -90,6 +90,7 @@ test('a name only the picture shows is refused with where it shows, and the wind
     'desktop snapshot': DRAWN,
     'desktop screenshot': { data: tinyPng().toString('base64'), width: 1, height: 1, scale_factor: 1 },
     'desktop ocr': words => ({ lines: [], matches: words.includes('发送') ? [{ text: '发送', bounds: { x: 1000, y: 700, width: 24, height: 32 }, center: { x: 1012, y: 716 } }] : [] }),
+    'desktop mouse-click': { disposition: { delivery: 'delivered_unverified' } },
   });
   const err = await run(`await desktop.click('自绘', '发送');`).catch(e => e);
   assert.equal(err.code, 'INPUT_NOT_ALLOWED');
@@ -97,6 +98,7 @@ test('a name only the picture shows is refused with where it shows, and the wind
   assert.match(err.message, /run the steps that are left with run --allow-input/);
   assert.equal(err.report.step, 'desktop.click 发送');
   assert.ok(!calls.some(words => words.includes('--headed')), 'no real input and no focus change was sent');
+  assert.ok(calls.some(words => words[0] === 'mouse-click' && words.includes('--post')), 'the click was posted in the background first');
 });
 
 test('a real-input command built at run time is refused when it is sent, and allowed with allowInput', async () => {
