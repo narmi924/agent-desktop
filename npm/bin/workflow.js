@@ -19,6 +19,7 @@ const { connect, disconnect, webPerform, withRoute, chromeFlags } = require('../
 const { runScript, api } = require('../lib/script-run');
 const { space, spaceFlags } = require('../lib/space');
 const { readPage } = require('../lib/page-read');
+const { pageLease } = require('../lib/page-lease');
 const { markRepeat, clearRepeat } = require('../lib/script-repeat');
 const routines = require('../lib/routine-command');
 const host = require('../lib/host-command');
@@ -351,9 +352,10 @@ function scriptRunner({ session, chrome, space: own, 'timeout-ms': wait = '12000
   if ([session, chrome, own].filter(Boolean).length > 1) throw new Error('Choose one of --session NAME, --space and --chrome.');
   process.env.AGENT_DESKTOP_POINTER_HOLDER ??= String(process.pid);
   if (pointer) process.env.AGENT_DESKTOP_POINTER ??= pointer;
+  const flags = own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? BACKGROUND_SESSION];
   return (source, extra) => runScript(source, {
     browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform, allowInput, allowFinal, startPace: pace, screen,
-    flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? BACKGROUND_SESSION],
+    flags, lease: pageLease(flags, { own: !own && !chrome && !session }),
     env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env, ...extra,
   });
 }

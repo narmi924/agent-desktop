@@ -139,7 +139,7 @@ function brief(subject) {
 }
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
-async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput: allowInputOption = false,
+async function runScript(source, { browser, native, flags = [], lease, env, timeout = 120000, flow, call = invoke, picture, allowInput: allowInputOption = false,
   args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false, hands, approvedRoutine = false, startPace, screen = false, openUrl } = {}) {
   const handsFree = () => (typeof allowInputOption === 'function' ? allowInputOption() : allowInputOption);
   let approvedOnce = false;
@@ -213,7 +213,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     if (host) touched.hosts.add(host);
   };
   const page = createWeb({
-    call: need(browser, 'agent-browser'), step, warn: text => warnings.push(text), note, flags, touch, watching,
+    call: need(browser, 'agent-browser'), step, warn: text => warnings.push(text), note, flags: lease ? () => lease.flags() : flags, touch, watching,
     fetchPage: url => readPage(browser, url, (binary, args, options) => need(binary, 'agent-browser')(args, options)),
   });
   let pace = startPace;
@@ -290,8 +290,13 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
 
   const report = () => ({
     ...(warnings.length ? { warnings } : {}), ...(logs.length ? { logs } : {}), steps,
-    ...(inputUsed ? { input_used: true } : {}), ...(finals.length ? { finals } : {}), elapsed_ms: Date.now() - started,
+    ...(inputUsed ? { input_used: true } : {}), ...(finals.length ? { finals } : {}), ...browserOfItsOwn(), elapsed_ms: Date.now() - started,
   });
+  const browserOfItsOwn = () => {
+    const name = lease?.own();
+    return name ? { browser_session: name, browser_note: 'Another run was using the shared browser, so this run had a browser of its own. ' +
+      'It stays 10 minutes after its last step; a next script continues on its page with run --session ' + name + '.' } : {};
+  };
   const trail = () => ({ records, apps: [...touched.apps], hosts: [...touched.hosts] });
   const withTrail = (target, value = trail()) => Object.defineProperty(target, 'trail', { value, enumerable: false });
   let body;
@@ -333,6 +338,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     throw err;
   } finally {
     clearTimeout(timer);
+    await lease?.release();
   }
 }
 

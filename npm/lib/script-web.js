@@ -97,7 +97,7 @@ function extractTable(selector) {
 /** Page helpers for a script: every target is a visible name, a ref or `css:SELECTOR`. */
 function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage, touch = () => {}, watching = () => false }) {
   let known, host, modalsSeen;
-  const ab = (args, options) => call([...flags, '--json', ...args], options);
+  const ab = async (args, options) => call([...(typeof flags === 'function' ? await flags() : flags), '--json', ...args], options);
   const controls = async fresh => {
     if (!known || fresh) known = parseControls((await ab(['snapshot', '-i'])).snapshot);
     return known;

@@ -1,6 +1,7 @@
 'use strict';
 
 const { invoke } = require('./script-call');
+const { pageLease } = require('./page-lease');
 
 const SESSION = 'reader';
 const ENOUGH_CHARS = 600;
@@ -16,16 +17,21 @@ const WAIT_MS = 30000;
 async function readPage(binary, address, call = invoke) {
   let url;
   try { url = new URL(address); } catch { /* reported below */ }
-  if (!url || !['http:', 'https:'].includes(url.protocol)) throw new Error('read takes an http or https address.');
+  if (!url || !['http:', 'https:'].includes(url.protocol)) throw Object.assign(new Error('read takes an http or https address.'), { code: 'INVALID_ARGS' });
   const settle = (via, work) => work.then(
     text => ({ via, text: String(text ?? '').trim() }),
     error => ({ via, text: '', error: error.message }));
   const plain = settle('request', call(binary, ['--json', 'read', url.href, '--timeout', '15000'], { timeout: WAIT_MS })
     .then(data => data.content));
+  const lease = pageLease(['--session', SESSION], { own: true, close: name => call(binary, ['--session', name, '--json', 'close'], { timeout: WAIT_MS }) });
   const rendered = settle('browser', (async () => {
-    const flags = ['--session', SESSION, '--json'];
-    await call(binary, [...flags, 'open', url.href], { timeout: WAIT_MS });
-    return (await call(binary, [...flags, 'read'], { timeout: WAIT_MS })).content;
+    try {
+      const flags = [...await lease.flags(), '--json'];
+      await call(binary, [...flags, 'open', url.href], { timeout: WAIT_MS });
+      return (await call(binary, [...flags, 'read'], { timeout: WAIT_MS })).content;
+    } finally {
+      await lease.release();
+    }
   })());
   const first = await Promise.race([plain, rendered]);
   if (first.text.length >= ENOUGH_CHARS) return { url: url.href, via: first.via, text: first.text };

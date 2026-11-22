@@ -122,6 +122,8 @@ pointer turns into an amber arrow; the user touching the mouse or keyboard pause
   final step on `no control changed` alone.
 - `data.warnings` lists actions the app did not confirm; read again to check them.
 - A failed step stops the script; `step` names it and `scene` shows the window or page after it. Continue from `scene`.
+- Two runs at once never share a page. `browser_session` means another run was using the background browser, so this
+  run had one of its own; a next script continues on that page with `run --session NAME` within 10 minutes.
 
 ## 7. Stuck
 

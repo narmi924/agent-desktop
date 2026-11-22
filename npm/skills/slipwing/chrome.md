@@ -26,6 +26,9 @@ return await web.waitText("Saved");
 
 Save it as `task.js` and run `slipwing run --file task.js --chrome`.
 
+One run at a time works in the user's Chrome, and one in `--space`: a second run started meanwhile is refused with
+`BROWSER_BUSY` before it touches a page. Wait for the first (`job wait ID`), then run it.
+
 The address and text of the page in one of the user's Chrome windows: `slipwing current --window ID`.
 `route: "web"` means the background connection reaches it; `route: "desktop"` means it does not, and later steps would
 need the real mouse and keyboard, so ask the user first.
