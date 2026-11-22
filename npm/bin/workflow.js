@@ -25,6 +25,7 @@ const host = require('../lib/host-command');
 const prefs = require('../lib/prefs');
 const { COMMAND_OPTIONS, POSITIONAL_COMMANDS, parseOptions } = require('../lib/cli-options');
 const mcp = require('../lib/mcp-server');
+const schedule = require('../lib/routine-schedule');
 
 const usage = [
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
@@ -49,6 +50,7 @@ const usage = [
   'agent-desktop-workflow replay --file FLOW.jsonl [--window ID] [--speed N]   (record a flow by setting AGENT_DESKTOP_RECORD=FLOW.jsonl)',
   'agent-desktop-workflow run [--file SCRIPT.js] [--mode background|watch|record|direct] [--session NAME | --space | --chrome] [--allow-input] [--allow-final] [--timeout-ms MS] [--args JSON | --args-file FILE.json] [--save NAME --about TEXT [--param name="what it is"]... [--replace]]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers. Without --allow-input a step that needs the real mouse and keyboard is refused before anything is sent; without --allow-final a send, submit, pay or delete step is refused the same way. --save keeps a script that succeeded as a routine; argument values are not stored)',
   'agent-desktop-workflow routine run NAME [--mode WAY] [--args JSON | --args-file FILE.json] [--allow-input] [--allow-final] [--session NAME | --space | --chrome]   (runs a saved routine and stops at the first step whose effect differs from the saved runs: EFFECT_MISMATCH)',
+  'agent-desktop-workflow routine schedule NAME --at HH:MM [--every day|weekdays|hour|mon,wed,fri] [--args JSON | --args-file FILE.json] [--allow-final] | routine unschedule NAME   (runs a saved routine at set times through the Windows Task Scheduler while the user is signed in; the arguments are kept for it; a notification says how each run ended. Set it only when the user asked for it)',
   'agent-desktop-workflow routine list [--for TEXT] | routine show NAME | routine remove NAME | routine allow NAME | routine permissions | routine revoke NAME   (allow: the user said in the chat that this routine may always do its final steps; permissions lists those routines and the apps and sites protected.json under the state folder protects)',
   'agent-desktop-workflow run ... --detach | routine run NAME ... --detach   (hands the work to the resident host and answers at once with a job id)',
   'agent-desktop-workflow job list | job show ID | job wait ID [--timeout-ms MS] | job stop ID | job report ID',
@@ -378,13 +380,34 @@ async function script(values) {
 
 async function routine([action, name, ...rest], values) {
   if (rest.length) throw new Error(usage);
-  if (action === 'list') return routines.list(values.for);
+  if (action === 'list') {
+    const listed = routines.list(values.for);
+    const planned = Object.entries(schedule.schedules()).map(([routineName, s]) => ({ routine: routineName, at: s.at, every: s.every, ...(s.allow_final ? { allow_final: true } : {}) }));
+    return planned.length ? { ...listed, schedules: planned } : listed;
+  }
   if (action === 'permissions') return routines.permissions();
   if (action === 'allow' && name) return routines.allow(name);
   if (action === 'revoke' && name) return routines.revoke(name);
   if (!name) throw new Error('Name the routine: routine ' + (action ?? 'run') + ' NAME.');
   if (action === 'show') return routines.show(name);
-  if (action === 'remove') return routines.remove(name);
+  if (action === 'remove') {
+    const removed = routines.remove(name);
+    return schedule.schedules()[name] ? { ...removed, ...schedule.unschedule(name) } : removed;
+  }
+  if (action === 'schedule') {
+    return schedule.schedule(name, { at: values.at, every: values.every, args: routines.readArgs(values, path => readFileSync(path, 'utf8')), allowFinal: Boolean(values['allow-final']) }, { workflowPath: __filename });
+  }
+  if (action === 'unschedule') return schedule.unschedule(name);
+  if (action === 'run-scheduled') {
+    return schedule.runScheduled(name, {
+      start: ({ args: stored, allowFinal }) => {
+        const settings = prefs.resolveSettings({ routine: name });
+        const options = prefs.runnerOptions(settings, allowFinal ? { 'allow-final': true } : {});
+        return host.detach({ routine: name, args: stored, values: runnerValues(options) }, { workflowPath: __filename });
+      },
+      wait: (id, ms) => host.job(['wait', id], { 'timeout-ms': String(ms) }, path => readFileSync(path, 'utf8')),
+    });
+  }
   if (action !== 'run') throw new Error(usage);
   const args = routines.readArgs(values, path => readFileSync(path, 'utf8'));
   const settings = prefs.resolveSettings({ routine: name, request: { mode: values.mode } });

@@ -21,7 +21,7 @@ const COMMAND_OPTIONS = {
   'browser-move': ['session', 'tab', 'surface', 'from', 'to', 'object', 'after'],
   'drop-file': ['session', 'tab', 'input', 'file'],
   run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api', 'allow-input', 'allow-final', 'args', 'args-file', 'save', 'about', 'param', 'replace', 'detach', 'mode'],
-  routine: ['args', 'args-file', 'allow-input', 'allow-final', 'session', 'chrome', 'space', 'timeout-ms', 'for', 'detach', 'mode'],
+  routine: ['args', 'args-file', 'allow-input', 'allow-final', 'session', 'chrome', 'space', 'timeout-ms', 'for', 'detach', 'mode', 'at', 'every'],
   prefs: ['project', 'always', 'routine', 'dir'],
   job: ['timeout-ms', 'target', 'options', 'file', 'value', 'force', 'for', 'all'],
   host: [],
