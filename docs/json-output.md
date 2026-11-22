@@ -189,6 +189,29 @@ When a ref action returns `delivery_uncertain` with a post-action wait selector,
 | `checks[].size` | Its size in bytes, when it exists. |
 | `checks[].changed` | Whether it was created or its size or modified time differs from before the action. |
 
+## Foreground during headless actions
+
+On Windows, a ref action without `--headed` leaves the window that was in front where it was. Some applications activate their own window when a value changes or a button is pressed. When a window of the target's process holds the foreground once the action returns, agent-desktop puts the previous window back without sending any keyboard or mouse input and adds `details.foreground` to the result, or to the error of an action that failed after it was sent:
+
+```json
+"foreground": {
+  "outcome": "restored",
+  "taken_by": { "window_id": "w-3934710", "pid": 18044 },
+  "returned_to": { "window_id": "w-1771212", "pid": 9020 },
+  "away_ms": 41
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `outcome` | `restored` when the previous window is in front again, `taken` when the target's window stayed in front. |
+| `taken_by` | The target's window that took the foreground: its `list-windows` id and process id. |
+| `returned_to` | The window put back in front, with `restored` only. |
+| `away_ms` | At most how long the previous window was out of the foreground, counted from the start of the action, with `restored` only. |
+| `reason` | Why the foreground stayed with the target, with `taken` only: `cursor_on_target` (the pointer is over a window of the target and moved during the action, or was over one already, so the user may have clicked it), `no_previous_window`, `previous_window_gone`, or `return_refused` (Windows refused three attempts, for example because the target runs elevated). |
+
+The field is omitted when the target did not take the foreground, when the window in front already belonged to the target's process, for `--headed` actions, and for `press`, which may focus its target. The foreground is read once when the action returns, so an action that moved nothing waits for nothing. After a return it is read once more 30 ms later, in case the application activates itself again. An application that activates itself later than that keeps the foreground. On macOS and Linux the field is never present.
+
 ## Snapshot changes
 
 `snapshot --since SNAPSHOT_ID` adds `data.changes`, compared with that earlier snapshot in the same session.

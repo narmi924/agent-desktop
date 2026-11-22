@@ -1,3 +1,4 @@
+pub(crate) mod foreground_return;
 pub(crate) mod frame_identity;
 pub(crate) mod listing_retry;
 pub(crate) mod window_activate;

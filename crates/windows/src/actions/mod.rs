@@ -4,6 +4,8 @@ pub(crate) mod disclosure;
 pub(crate) mod dispatch;
 pub(crate) mod envelope_parity;
 pub(crate) mod focus;
+pub(crate) mod foreground_desk;
+pub(crate) mod foreground_keep;
 pub(crate) mod input_envelope_parity;
 pub(crate) mod mutation;
 pub(crate) mod physical_click;

@@ -251,7 +251,7 @@ impl ActionOps for WindowsAdapter {
         request: agent_desktop_core::actions::action_request::ActionRequest,
         lease: &InteractionLease,
     ) -> Result<agent_desktop_core::ActionResult, AdapterError> {
-        crate::actions::dispatch::execute_action_impl(handle, request, lease)
+        crate::actions::foreground_desk::execute_action_keeping_foreground(handle, request, lease)
     }
 
     fn scroll_into_view(
