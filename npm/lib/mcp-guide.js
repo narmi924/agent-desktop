@@ -61,7 +61,10 @@ return await web.waitText("Order number");
 - Every step waits up to 4 seconds by itself. Wait for results with waitText or waitIdle, never with fixed sleeps.
 - Do a submit, order or send step once. Without a visible result, read the page again; do not run the script again.
 - A step that failed stops the script: the reply has step and scene. Continue from scene with a new script.
-- data.steps says what each step changed; data.warnings lists actions that were not confirmed.
+- data.steps says what each step changed: windows and pages, and on the desktop the controls ("Total" value "0.00" ->
+  "231.00", "Invoice" checked). "no control changed" covers controls only; text a window merely draws is not compared, so
+  read the window or wait for the result text before calling a step failed, and never repeat a final step on that alone.
+  data.warnings lists actions that were not confirmed.
 - Same step failing the same way twice (repeat and advice in the reply): change approach, do not retry.
 - Work longer than about 20 seconds: detach, then workflow_job with action wait.
 

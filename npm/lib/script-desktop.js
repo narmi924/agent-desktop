@@ -5,6 +5,7 @@ const { pick } = require('./script-match');
 const { createPicture, renderLines } = require('./script-picture');
 const { inputRefused } = require('./script-input');
 const { markedPicture } = require('./final-picture');
+const { describeChanges } = require('./control-changes');
 
 const WRITABLE = ['textfield', 'combobox', 'incrementor', 'slider'];
 const TICKS = ['checkbox', 'radiobutton', 'switch'];
@@ -17,6 +18,7 @@ const TYPE_WAIT_MS = 30000;
 const TYPE_KEY_MS = 700;
 const QUIET_MS = 400;
 const EFFECT_LIMIT = 3;
+const CHANGE_SETTLE_MS = 250;
 const BLOCKED_AFTER_MS = 1500;
 const BLOCKED_POLL_MS = 600;
 
@@ -88,8 +90,8 @@ function typedSoFar(before, after, keys) {
 }
 
 function createDesktop({ call, step, warn, note = () => {}, picture: makePicture = createPicture, pace = () => undefined, inputAllowed = () => true, touch = () => {}, watching = () => false, interrupted = () => false }) {
-  const views = new Map(), found = new Map(), drawnWindows = new Set(), apps = new Map();
-  let last, listed, pending;
+  const views = new Map(), found = new Map(), drawnWindows = new Set(), apps = new Map(), readIds = new Map(), written = new Set();
+  let last, listed, pending, windowEffects = 0;
   const ad = (args, options) => call(args.map(String), pending ? { signal: pending, ...options } : options);
   const picture = makePicture({ ad });
   const asPerson = () => (pace() ? ['--headed', '--human', pace()] : []);
@@ -132,9 +134,55 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     const snapshot = await ad(['snapshot', '--window-id', id, '--compact', '--max-depth', '50', ...(all ? [] : ['-i'])]);
     const rendered = renderTree(snapshot);
     views.set(id, rendered.controls);
+    if (snapshot?.snapshot_id) readIds.set(id, snapshot.snapshot_id);
+    written.delete(id);
     if (rendered.drawn) drawnWindows.add(id); else drawnWindows.delete(id);
     last = id;
     return { id, ...rendered };
+  }
+
+  /**
+   * What a step changed inside its window: controls whose value or state changed, controls that appeared or went
+   * away, or that no control changed. Text that is only drawn, such as a status label with no accessible name, is not
+   * compared, so "no control changed" never means the step had no effect. The window is read once more against the
+   * read the step acted on
+   * (snapshot --since); that read is kept, so the next step in the same window starts from it instead of reading
+   * again. When nothing changed yet, it looks once more after a short wait, since apps update a moment later.
+   */
+  /**
+   * Values written into a window since it was last read make that read an unfair base for the next comparison: the
+   * next step that reports changes reads the window first, so it reports only what it changed itself.
+   */
+  function fromFreshRead(window) {
+    const id = knownId(window);
+    if (id && written.has(id)) { views.delete(id); written.delete(id); }
+  }
+
+  /** The id of a window this script already found, without listing windows again. */
+  function knownId(window) {
+    return /^w-\d+$/.test(String(window)) ? String(window) : found.get(window);
+  }
+
+  async function controlEffects(window, { hidden, written: sent, settle = true } = {}) {
+    let id;
+    try { id = await resolve(window); } catch { return false; }
+    const since = readIds.get(id);
+    if (!since || drawnWindows.has(id)) return false;
+    for (let attempt = 0; ; attempt++) {
+      let snapshot;
+      try { snapshot = await ad(['snapshot', '--window-id', id, '--compact', '--max-depth', '50', '-i', '--since', since]); } catch { return false; }
+      views.set(id, renderTree(snapshot).controls);
+      if (snapshot?.snapshot_id) readIds.set(id, snapshot.snapshot_id);
+      const lines = describeChanges(snapshot?.changes, { hidden, written: sent });
+      if (lines.length) {
+        lines.forEach(([text, effect], index) => note(index < EFFECT_LIMIT ? text : undefined, effect));
+        if (lines.length > EFFECT_LIMIT) note((lines.length - EFFECT_LIMIT) + ' more control changes');
+        return true;
+      }
+      if (windowEffects > 0 || !snapshot?.changes) return true;
+      if (attempt >= 1 || !settle) { note('no control changed', { kind: 'no_change' }); return true; }
+      await delay(CHANGE_SETTLE_MS);
+    }
   }
 
   async function locate(window, target, options) {
@@ -210,6 +258,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     const list = async () => {
       try { return await ad(['list-windows']); } catch { return undefined; }
     };
+    windowEffects = 0;
     const before = await list();
     listed = before;
     const shown = w => w.visible !== false && !w.minimized;
@@ -230,6 +279,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       ...[...now.values()].filter(w => was.has(w.id) && was.get(w.id).title !== w.title)
         .map(w => ['window title "' + was.get(w.id).title + '" -> "' + w.title + '"', { kind: 'window_title', app: w.app_name, title: w.title }]),
     ];
+    windowEffects = effects.length;
     effects.forEach(([text, effect], index) => note(index < EFFECT_LIMIT ? text : undefined, effect));
     if (effects.length > EFFECT_LIMIT) note((effects.length - EFFECT_LIMIT) + ' more window changes');
     return result;
@@ -296,11 +346,16 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
   const tick = wanted => (window, target, options) => step(wanted ? 'desktop.check' : 'desktop.uncheck', target, async () => {
     const kind = { roles: TICKS, ...options };
     views.clear();
+    fromFreshRead(window);
+    let clicked = false;
     await act(window, target, kind, async ref => {
       const box = views.get(await resolve(window))?.find(control => control.ref === ref);
-      if (!box || box.checked !== wanted) await ad(['click', ref]);
+      if (!box || box.checked !== wanted) { await ad(['click', ref]); clicked = true; }
     });
-    const after = pick((await view(window)).controls, target, kind);
+    windowEffects = 0;
+    const fresh = clicked && await controlEffects(window, { settle: false });
+    const kept = views.get(await resolve(window));
+    const after = pick((clicked && !fresh) || !kept ? (await view(window)).controls : kept, target, kind);
     if (after?.checked !== wanted) warn((wanted ? 'desktop.check' : 'desktop.uncheck') + ' "' + target + '" was sent, but the box did not change.');
     return after?.checked === wanted;
   });
@@ -327,6 +382,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     if (pace()) await bringForward(id);
     const reply = await watchWindows(() => ad([...(pace() ? ['--headed', '--human', pace()] : ['--headed']), 'batch', JSON.stringify(entries)], { timeout: 30000 + 15000 * entries.length }));
     views.clear();
+    await controlEffects(id, { written: actions.filter(action => action.type !== undefined).map(action => String(action.type[1])) });
     const failed = (reply?.results ?? []).find(r => r.ok === false);
     if (failed) throw Object.assign(new Error('desktop.sequence stopped at ' + failed.command + ': ' + (failed.error?.message ?? 'failed')), { code: failed.error?.code ?? 'ACTION_FAILED', disposition: failed.error?.disposition });
     return reply?.completed_entries ?? entries.length;
@@ -370,11 +426,13 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       return [seen.text, '- picture (text read from the screen, not from controls):', renderLines(lines)].filter(Boolean).join('\n');
     }),
     click: (window, target, options) => step('desktop.click', target, async () => {
+      fromFreshRead(window);
       const done = await watchWindows(() => act(window, target, options, async ref => {
         if (pace()) await bringForward(window);
         return ad([...asPerson(), 'click', ref]);
       }, id => clickPicture(id, target, options)));
       views.clear();
+      if (done?.via !== 'picture') await controlEffects(window);
       return done?.via === 'picture' ? done : undefined;
     }),
     fill: (window, target, value, options) => step('desktop.fill', target, async () => {
@@ -387,7 +445,11 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
         return false;
       };
       const reply = await act(window, target, { roles: WRITABLE, ...options }, ref => ad(['set-value', ref, '--stdin'], { input: String(value) }), typed);
-      return typeof reply === 'boolean' ? reply : confirmed('desktop.fill', target, reply);
+      if (typeof reply === 'boolean') return reply;
+      const ok = confirmed('desktop.fill', target, reply);
+      if (ok) written.add(await resolve(window));
+      else { windowEffects = 0; await controlEffects(window, { hidden: target, written: String(value), settle: false }); }
+      return ok;
     }),
     type: (window, target, text, options) => step('desktop.type', target, async () => {
       const keys = String(text);
@@ -407,7 +469,10 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
         }
       }));
       views.clear();
-      return confirmed('desktop.type', target, reply);
+      const ok = confirmed('desktop.type', target, reply);
+      if (ok) written.add(await resolve(window));
+      else await controlEffects(window, { hidden: target, written: keys, settle: false });
+      return ok;
     }),
     value: (window, target, options) => step('desktop.value', target, async () => {
       const reply = await act(window, target, options, ref => ad(['get', ref, '--property', 'value']));

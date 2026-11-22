@@ -100,14 +100,11 @@ test('a mouse-taking script without the user\'s word is refused the same way as 
 
 test('preferences set through the tools apply to the folder they name', async () => {
   const project = mkdtempSync(join(tmpdir(), 'ad-mcp-project-'));
-  const replies = await session([
-    call(1, 'workflow_prefs_set', { mode: 'record', scope: 'project', dir: project }),
-    call(2, 'workflow_prefs', { dir: project }),
-    call(3, 'workflow_prefs_set', { scope: 'always' }),
-  ]);
-  assert.equal(replies[1].result.isError, false);
-  assert.deepEqual(replies[2].result.structuredContent.data.mode, { value: 'record', from: 'project' });
-  assert.equal(replies[3].result.isError, true, 'a set with nothing to set is refused');
+  const set = await session([call(1, 'workflow_prefs_set', { mode: 'record', scope: 'project', dir: project }), call(3, 'workflow_prefs_set', { scope: 'always' })]);
+  assert.equal(set[1].result.isError, false);
+  assert.equal(set[3].result.isError, true, 'a set with nothing to set is refused');
+  const read = await session([call(2, 'workflow_prefs', { dir: project })]);
+  assert.deepEqual(read[2].result.structuredContent.data.mode, { value: 'record', from: 'project' }, 'calls run concurrently, so the read waits for the set to answer');
 });
 
 test('the guide carries the routes, the ways of working and the script helpers', async () => {
