@@ -130,6 +130,10 @@ test('a notification watch reads only toasts newer than itself and starts its ro
     base.prepare("insert into Notification (Type, Payload) values ('toast', ?)").run(Buffer.from('<toast><text>上传吧</text></toast>'));
     await fired(agreed.id, 3000);
     assert.deepEqual(jobs[1].values, { 'allow-final': true }, 'the user agreed to the final step when the watch was set: the job goes through it');
+    const settled = await watches.add({ notification: '录好了', then: 'upload-file', values: { 'allow-input': true, pace: 'natural', pointer: 'off' } });
+    base.prepare("insert into Notification (Type, Payload) values ('toast', ?)").run(Buffer.from('<toast><text>录好了</text></toast>'));
+    await fired(settled.id, 3000);
+    assert.deepEqual(jobs[2].values, { 'allow-input': true, pace: 'natural', pointer: 'off' }, 'the way the routine works, settled when the watch was set, goes with its job');
   } finally { watches.stopAll(); base.close(); }
 });
 

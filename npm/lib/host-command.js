@@ -148,7 +148,7 @@ async function runJob(start, { runner, routines, nativeBinary }) {
 const watchUsage = 'watch add (--window TITLE [--gone] | --text TEXT --in WINDOW [--gone] [--every-ms MS] | --notification TEXT | --file PATH) [--then ROUTINE [--args JSON | --args-file FILE] [--allow-final]] | watch list | watch show ID | watch wait ID [--timeout-ms MS] | watch remove ID';
 
 /** Watches live in the host: adding one starts the host if needed. */
-async function watch([action, id, ...rest], values, { workflowPath, readText }) {
+async function watch([action, id, ...rest], values, { workflowPath, readText, settle }) {
   if (rest.length) throw Object.assign(new Error(watchUsage), { code: 'INVALID_ARGS' });
   if (action === 'add') {
     await ensureHost(workflowPath);
@@ -156,7 +156,8 @@ async function watch([action, id, ...rest], values, { workflowPath, readText }) 
     if (args !== undefined && !values.then) throw Object.assign(new Error('--args goes with --then ROUTINE.'), { code: 'INVALID_ARGS' });
     if (values['allow-final'] && !values.then) throw Object.assign(new Error('--allow-final goes with --then ROUTINE.'), { code: 'INVALID_ARGS' });
     return request('watch_add', { spec: { window: values.window, text: values.text, in: values.in, gone: values.gone, every: values['every-ms'],
-      notification: values.notification, file: values.file, then: values.then, args, allowFinal: Boolean(values['allow-final']) } });
+      notification: values.notification, file: values.file, then: values.then, args, allowFinal: Boolean(values['allow-final']),
+      ...(values.then && settle ? { values: settle(values.then) } : {}) } });
   }
   if (action === 'list') {
     try { return await request('watch_list'); } catch (err) { if (err.code === 'HOST_NOT_RUNNING') return { watches: [], host: 'not running' }; throw err; }

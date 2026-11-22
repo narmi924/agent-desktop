@@ -273,7 +273,8 @@ function createWatches({ helperPath, readWindow, startJob, onChange, now = () =>
     w.fired = { at: new Date(now()).toISOString(), ...found };
     if (w.then) {
       try {
-        const job = await startJob({ routine: w.then.routine, args: fill(w.then.args, found), values: w.then.allow_final ? { 'allow-final': true } : {} });
+        const job = await startJob({ routine: w.then.routine, args: fill(w.then.args, found),
+          values: { ...(w.then.values ?? {}), ...(w.then.allow_final ? { 'allow-final': true } : {}) } });
         w.job = job.id;
       } catch (err) { w.error = { code: err.code ?? 'ERROR', message: err.message }; }
     }
@@ -293,7 +294,7 @@ function createWatches({ helperPath, readWindow, startJob, onChange, now = () =>
       id: newId(), kind, when, state: 'watching', created: new Date(now()).toISOString(),
       spec: kind === 'window' ? { title: spec.window, gone: Boolean(spec.gone) } : kind === 'text' ? { text: spec.text, in: spec.in, gone: Boolean(spec.gone), every }
         : kind === 'notification' ? { text: spec.notification } : { file: spec.file },
-      ...(spec.then ? { then: { routine: spec.then, args: spec.args ?? {}, ...(spec.allowFinal ? { allow_final: true } : {}) } } : {}),
+      ...(spec.then ? { then: { routine: spec.then, args: spec.args ?? {}, ...(spec.allowFinal ? { allow_final: true } : {}), ...(spec.values ? { values: spec.values } : {}) } } : {}),
     };
     if (kind === 'notification') openNotifications();
     await startHelper();

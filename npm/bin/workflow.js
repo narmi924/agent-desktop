@@ -22,6 +22,7 @@ const { readPage } = require('../lib/page-read');
 const { markRepeat, clearRepeat } = require('../lib/script-repeat');
 const routines = require('../lib/routine-command');
 const host = require('../lib/host-command');
+const prefs = require('../lib/prefs');
 
 const usage = [
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
@@ -44,8 +45,8 @@ const usage = [
   'agent-desktop-workflow browser-move --session NAME [--tab TAB] --surface CSS --from X,Y --to X,Y [--object CSS] [--after IMAGE.png]',
   'agent-desktop-workflow drop-file --session NAME [--tab TAB] --input DROP_ZONE_CSS --file ABSOLUTE_PATH',
   'agent-desktop-workflow replay --file FLOW.jsonl [--window ID] [--speed N]   (record a flow by setting AGENT_DESKTOP_RECORD=FLOW.jsonl)',
-  'agent-desktop-workflow run [--file SCRIPT.js] [--session NAME | --space | --chrome] [--allow-input] [--allow-final] [--timeout-ms MS] [--args JSON | --args-file FILE.json] [--save NAME --about TEXT [--param name="what it is"]... [--replace]]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers. Without --allow-input a step that needs the real mouse and keyboard is refused before anything is sent; without --allow-final a send, submit, pay or delete step is refused the same way. --save keeps a script that succeeded as a routine; argument values are not stored)',
-  'agent-desktop-workflow routine run NAME [--args JSON | --args-file FILE.json] [--allow-input] [--allow-final] [--session NAME | --space | --chrome]   (runs a saved routine and stops at the first step whose effect differs from the saved runs: EFFECT_MISMATCH)',
+  'agent-desktop-workflow run [--file SCRIPT.js] [--mode background|watch|record|direct] [--session NAME | --space | --chrome] [--allow-input] [--allow-final] [--timeout-ms MS] [--args JSON | --args-file FILE.json] [--save NAME --about TEXT [--param name="what it is"]... [--replace]]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers. Without --allow-input a step that needs the real mouse and keyboard is refused before anything is sent; without --allow-final a send, submit, pay or delete step is refused the same way. --save keeps a script that succeeded as a routine; argument values are not stored)',
+  'agent-desktop-workflow routine run NAME [--mode WAY] [--args JSON | --args-file FILE.json] [--allow-input] [--allow-final] [--session NAME | --space | --chrome]   (runs a saved routine and stops at the first step whose effect differs from the saved runs: EFFECT_MISMATCH)',
   'agent-desktop-workflow routine list [--for TEXT] | routine show NAME | routine remove NAME | routine allow NAME | routine permissions | routine revoke NAME   (allow: the user said in the chat that this routine may always do its final steps; permissions lists those routines and the apps and sites protected.json under the state folder protects)',
   'agent-desktop-workflow run ... --detach | routine run NAME ... --detach   (hands the work to the resident host and answers at once with a job id)',
   'agent-desktop-workflow job list | job show ID | job wait ID [--timeout-ms MS] | job stop ID | job report ID',
@@ -54,6 +55,7 @@ const usage = [
   'agent-desktop-workflow watch add (--window TITLE [--gone] | --text TEXT --in WINDOW [--gone] | --notification TEXT | --file PATH) [--then ROUTINE [--args JSON] [--allow-final]] | watch list | watch show ID | watch wait ID | watch remove ID   (the host watches; --then starts a saved routine as a job, which stops before a final step unless the user agreed to it when the watch was set: --allow-final)',
   'agent-desktop-workflow job approve ID   (a job stopped before a final step, reason "approval": ask the user in the chat first; job approve lets that one step go, job skip passes it, job stop ends the job)',
   'agent-desktop-workflow job grant (ID | --all) --for SECONDS   (a job waits with reason "hands" before a step that needs the real mouse and keyboard: let it, or every job, use them that long; a person touching them makes the job wait until they stop for 3 seconds; nothing goes on while the screen is locked)',
+  'agent-desktop-workflow prefs [--dir FOLDER] | prefs set KEY=VALUE... (--project | --dir FOLDER | --always | --routine NAME) | prefs unset KEY... SCOPE   (how scripts work here: mode is background, watch, record or direct; pointer is amber, red, green, off or a PNG; browser is background, chrome or space. The most specific wins: --mode for this run, the routine, the project folder, everywhere. Set them only when the user asks for it)',
   'agent-desktop-workflow read --url URL   (the text of a web page: a plain request and a background browser run together and the first full answer is returned)',
   'agent-desktop-workflow space [--login URL | --close]   (the agent\'s own browser profile: --login shows its window so the user signs in once; later runs with --space keep that sign-in in the background)',
 ].join('\n');
@@ -280,8 +282,9 @@ async function main() {
     replay: ['file', 'window', 'speed'],
     'browser-move': ['session', 'tab', 'surface', 'from', 'to', 'object', 'after'],
     'drop-file': ['session', 'tab', 'input', 'file'],
-    run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api', 'allow-input', 'allow-final', 'args', 'args-file', 'save', 'about', 'param', 'replace', 'detach'],
-    routine: ['args', 'args-file', 'allow-input', 'allow-final', 'session', 'chrome', 'space', 'timeout-ms', 'for', 'detach'],
+    run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api', 'allow-input', 'allow-final', 'args', 'args-file', 'save', 'about', 'param', 'replace', 'detach', 'mode'],
+    routine: ['args', 'args-file', 'allow-input', 'allow-final', 'session', 'chrome', 'space', 'timeout-ms', 'for', 'detach', 'mode'],
+    prefs: ['project', 'always', 'routine', 'dir'],
     job: ['timeout-ms', 'target', 'options', 'file', 'value', 'force', 'for', 'all'],
     host: [],
     'job-run': [],
@@ -291,8 +294,8 @@ async function main() {
   };
   if (!Object.hasOwn(commands, command)) throw new Error(usage);
   const names = commands[command];
-  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close','allow-input','allow-final','detach','force','gone','all'].includes(key) ? 'boolean' : 'string', ...(key === 'param' ? { multiple: true } : {}) }]));
-  const { values, positionals } = parseArgs({ args: joinCoordinates(args), options, allowPositionals: ['routine', 'job', 'host', 'job-run', 'watch'].includes(command) });
+  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close','allow-input','allow-final','detach','force','gone','all','project','always'].includes(key) ? 'boolean' : 'string', ...(key === 'param' ? { multiple: true } : {}) }]));
+  const { values, positionals } = parseArgs({ args: joinCoordinates(args), options, allowPositionals: ['routine', 'job', 'host', 'job-run', 'watch', 'prefs'].includes(command) });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   if (command === 'run' && values.api) { console.log(api); return; }
   const own = {
@@ -302,7 +305,9 @@ async function main() {
     job: () => host.job(positionals, values, path => readFileSync(path, 'utf8')),
     host: () => host.hostCommand(positionals, { workflowPath: __filename, nativeBinary: nativeBinary() }),
     'job-run': () => jobRun(positionals[0]),
-    watch: () => host.watch(positionals, values, { workflowPath: __filename, readText: path => readFileSync(path, 'utf8') }),
+    watch: () => host.watch(positionals, values, { workflowPath: __filename, readText: path => readFileSync(path, 'utf8'),
+      settle: routine => runnerValues(prefs.runnerOptions(prefs.resolveSettings({ routine }), {})) }),
+    prefs: () => prefs.prefsCommand(positionals, values),
     space: () => space(browserBinary(), values),
     read: () => readPage(browserBinary(), values.url ?? ''),
   };
@@ -339,7 +344,7 @@ async function replay({ file, window, speed = '1' }) {
 
 /** The runner options a detached job carries to its own process. */
 function runnerValues(values) {
-  return Object.fromEntries(['session', 'chrome', 'space', 'timeout-ms', 'allow-input', 'allow-final'].filter(k => values[k] !== undefined).map(k => [k, values[k]]));
+  return Object.fromEntries(['session', 'chrome', 'space', 'timeout-ms', 'allow-input', 'allow-final', 'pace', 'pointer'].filter(k => values[k] !== undefined).map(k => [k, values[k]]));
 }
 
 /** A job may wait hours for a fix, the hands or the user's word before a final step, so its own clock is long. */
@@ -352,16 +357,22 @@ async function jobRun(dir) {
 }
 
 /** The runner both `run` and `routine run` use: same helpers, same refusals, same reply. */
-function scriptRunner({ session, chrome, space: own, 'timeout-ms': wait = '120000', 'allow-input': allowInput = false, 'allow-final': allowFinal = false }) {
+function scriptRunner({ session, chrome, space: own, 'timeout-ms': wait = '120000', 'allow-input': allowInput = false, 'allow-final': allowFinal = false, pace, pointer }) {
   const timeout = Number(wait);
   if (!(timeout > 0)) throw new Error('--timeout-ms takes a positive number.');
   if ([session, chrome, own].filter(Boolean).length > 1) throw new Error('Choose one of --session NAME, --space and --chrome.');
   process.env.AGENT_DESKTOP_POINTER_HOLDER ??= String(process.pid);
+  if (pointer) process.env.AGENT_DESKTOP_POINTER ??= pointer;
   return (source, extra) => runScript(source, {
-    browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform, allowInput, allowFinal,
+    browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform, allowInput, allowFinal, startPace: pace,
     flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? 'work'],
     env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env, ...extra,
   });
+}
+
+/** The first script that runs on a computer carries a short note on the ways of working, for the agent to pass on once. */
+function welcomed(reply) {
+  return prefs.firstUse() ? { ...reply, welcome: prefs.WELCOME } : reply;
 }
 
 async function script(values) {
@@ -371,14 +382,21 @@ async function script(values) {
   if (detach && save) throw new Error('--save runs in the foreground; leave out --detach.');
   const args = routines.readArgs(values, path => readFileSync(path, 'utf8'));
   const source = readFileSync(file ?? 0, 'utf8').replace(/^\uFEFF/, '');
-  if (detach) return host.detach({ source, args, values: runnerValues(values) }, { workflowPath: __filename });
-  const run = scriptRunner(values);
+  const settings = prefs.resolveSettings({ request: { mode: values.mode } });
+  const options = prefs.runnerOptions(settings, values);
+  if (detach) return welcomed({ ...await host.detach({ source, args, values: runnerValues(options) }, { workflowPath: __filename }), ...prefs.settingsNote(settings) });
+  const run = scriptRunner(options);
   try {
     const done = await run(source, { args, watch: Boolean(save) });
     clearRepeat();
-    if (save) return { ...done, saved: routines.save({ name: save, about, params: param, replace, source, args, done }) };
+    const reply = { ...done, ...prefs.settingsNote(settings) };
+    if (save) {
+      const saved = routines.save({ name: save, about, params: param, replace, source, args, done });
+      if (values.mode) prefs.rememberRoutineMode(save, values.mode);
+      return welcomed({ ...reply, saved });
+    }
     const known = routines.knownRoutines(done.trail);
-    return known.length ? { ...done, known_routines: known, known_note: 'Saved routines already work on this app or site. Before writing steps here again, check them with routine show NAME and use routine run NAME.' } : done;
+    return welcomed(known.length ? { ...reply, known_routines: known, known_note: 'Saved routines already work on this app or site. Before writing steps here again, check them with routine show NAME and use routine run NAME.' } : reply);
   } catch (err) {
     throw markRepeat(err);
   }
@@ -395,11 +413,13 @@ async function routine([action, name, ...rest], values) {
   if (action === 'remove') return routines.remove(name);
   if (action !== 'run') throw new Error(usage);
   const args = routines.readArgs(values, path => readFileSync(path, 'utf8'));
-  if (values.detach) return host.detach({ routine: name, args, values: runnerValues(values) }, { workflowPath: __filename });
+  const settings = prefs.resolveSettings({ routine: name, request: { mode: values.mode } });
+  const options = prefs.runnerOptions(settings, values);
+  if (values.detach) return welcomed({ ...await host.detach({ routine: name, args, values: runnerValues(options) }, { workflowPath: __filename }), ...prefs.settingsNote(settings) });
   try {
-    const done = await routines.runRoutine(name, args, scriptRunner(values));
+    const done = await routines.runRoutine(name, args, scriptRunner(options));
     clearRepeat();
-    return done;
+    return welcomed({ ...done, ...prefs.settingsNote(settings) });
   } catch (err) {
     throw markRepeat(err);
   }

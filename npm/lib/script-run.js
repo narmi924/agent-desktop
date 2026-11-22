@@ -128,7 +128,7 @@ function brief(subject) {
 
 /** Runs a script against the page and desktop helpers and reports every step it took. */
 async function runScript(source, { browser, native, flags = [], env, timeout = 120000, flow, call = invoke, picture, allowInput: allowInputOption = false,
-  args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false, hands, approvedRoutine = false } = {}) {
+  args = {}, allowFinal = false, onStep, watch = false, fix, finalsAtRunTime = false, hands, approvedRoutine = false, startPace } = {}) {
   const handsFree = () => (typeof allowInputOption === 'function' ? allowInputOption() : allowInputOption);
   let approvedOnce = false;
   const finalAllowed = () => {
@@ -204,7 +204,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
     call: need(browser, 'agent-browser'), step, warn: text => warnings.push(text), note, flags, touch, watching,
     fetchPage: url => readPage(browser, url, (binary, args, options) => need(binary, 'agent-browser')(args, options)),
   });
-  let pace;
+  let pace = startPace;
   const desk = createDesktop({ call: need(native, 'agent-desktop', gate), step, warn: text => warnings.push(text), note, picture, pace: () => pace,
     inputAllowed: handsFree, touch, watching, interrupted: () => Boolean(hands?.cutShort?.()) });
   const seen = createVisible({ step, warn: text => warnings.push(text), pace: () => pace, takeInput,
