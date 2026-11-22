@@ -23,7 +23,7 @@ Linux 请用官方版。
 | 工具 | 做对 | 它做事时 | 每道用时 |
 |---|---|---|---|
 | Slipwing 0.1.0 | 4 道全对 | 笔记窗口一直在前台 | 7 到 20 秒 |
-| [Sidehand](https://github.com/Blue-B/sidehand) 0.5.2 | 4 道全对；网页注册题两次里失败一次 | 笔记窗口一直在前台 | 6 到 28 秒 |
+| [Sidehand](https://github.com/Blue-B/sidehand) 0.5.2 | 4 道全对；网页注册题两次里失败一次 | 笔记窗口一直在前台，只在失败的那次被切走 0.1 秒 | 6 到 28 秒 |
 | 官方 agent-desktop 1.3.1 和 agent-browser 0.43.0 | 4 道全对 | 登记题里执行 `set-value` 时登记窗口跑到了前台，一直待到结束（两次分别是 14 秒和 21 秒），还有两次不是从键盘来的按键 | 12 到 35 秒 |
 | [Windows-MCP](https://github.com/CursorTouch/Windows-MCP) 0.9.0 | 4 道全对 | 4 道用了真键鼠 | 20 到 70 秒 |
 | [Hybrid Computer Use](https://github.com/microsoft/Hybrid-Computer-Use) 1.0.1 | 4 道全对 | 3 道用了真键鼠 | 8 到 46 秒 |

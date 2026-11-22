@@ -31,7 +31,7 @@ without the note, counting the tasks where they used the real mouse and keyboard
 | Tool | Done right | While it worked | Time per task |
 |---|---|---|---|
 | Slipwing 0.1.0 | 4 of 4 | the note stayed in front | 7 to 20 s |
-| [Sidehand](https://github.com/Blue-B/sidehand) 0.5.2 | 4 of 4; the web sign-up failed once in two runs | the note stayed in front | 6 to 28 s |
+| [Sidehand](https://github.com/Blue-B/sidehand) 0.5.2 | 4 of 4; the web sign-up failed once in two runs | the note stayed in front, apart from a 0.1 s switch in the failed run | 6 to 28 s |
 | official agent-desktop 1.3.1 and agent-browser 0.43.0 | 4 of 4 | on the register task the register came to the front at a `set-value` and stayed there for the rest of the run (14 s and 21 s in two runs), with two key presses from outside the keyboard | 12 to 35 s |
 | [Windows-MCP](https://github.com/CursorTouch/Windows-MCP) 0.9.0 | 4 of 4 | used the real mouse and keyboard on 4 tasks | 20 to 70 s |
 | [Hybrid Computer Use](https://github.com/microsoft/Hybrid-Computer-Use) 1.0.1 | 4 of 4 | used the real mouse and keyboard on 3 tasks | 8 to 46 s |
