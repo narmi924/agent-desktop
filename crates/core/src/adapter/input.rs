@@ -85,6 +85,20 @@ pub trait InputOps: Send + Sync {
         Err(AdapterError::not_supported("frame comparison"))
     }
 
+    /// Clicks a point of a captured window by posting window messages to the
+    /// window under that point. The cursor stays where it is and no window is
+    /// brought forward, so only an app that acts on posted mouse messages
+    /// responds. Nothing reads the effect back.
+    fn post_click_in_frame(
+        &self,
+        _frame: &WindowFrame,
+        _local: &crate::Point,
+        _event: &MouseEvent,
+        _lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        Err(AdapterError::not_supported("posted clicks"))
+    }
+
     /// Milliseconds since the person last used the keyboard or mouse.
     fn user_idle_ms(&self) -> Result<u64, AdapterError> {
         Err(AdapterError::not_supported("user idle time"))

@@ -113,6 +113,7 @@ agent-desktop --headed mouse-click --xy 500,300 [--button left|right|middle] [--
     <tr><td><code>--modifiers NAME</code></td><td>none</td><td>A modifier held during the click: <code>shift</code>, <code>meta</code>, <code>ctrl</code>, <code>alt</code>. Repeat the flag for several.</td></tr>
     <tr><td><code>--frame IMAGE.png</code></td><td>none</td><td>Windows: read <code>--xy</code> as pixels of this captured window image. See <a href="#mouse-move"><code>mouse-move</code></a>.</td></tr>
     <tr><td><code>--hold-ms N</code></td><td>none</td><td>Windows: keep the button down for a long press, 1 to 10000 ms, one click.</td></tr>
+    <tr><td><code>--post</code></td><td>off</td><td>Windows, with <code>--frame</code>: post the click to the window under the point as window messages. See below.</td></tr>
   </tbody>
 </table>
 
@@ -135,6 +136,8 @@ agent-desktop --headed mouse-click --xy 500,300 [--button left|right|middle] [--
 ```
 
 `target.point` is where the click was dispatched; it does not prove which app received it. Before you click at bounds read from a snapshot, check `get --property bounds` and its `live` flag.
+
+With `--post`, `mouse-click --post --frame IMAGE.png --xy X,Y` needs no `--headed`: the click goes as window messages to the deepest visible, enabled child window under the point, in that window's own client pixels. The cursor does not move and no window comes to the front. A point on a border, title bar or scroll bar, or a disabled window, is refused with `ACTION_NOT_SUPPORTED` (`not_delivered`); a window of a higher-integrity process with `PERM_DENIED`. An app that hit-tests the real cursor or ignores posted input does nothing, so the result is always `delivered_unverified`, with a `window_messages_posted` step, `details.delivery: "window_messages"`, `details.receiver_class` and `details.client_point`. Compare the window before and after to know whether the app took the click. `--post` takes no `--modifiers`, `--hold-ms` or `--page-refs`.
 
 ## mouse-down
 

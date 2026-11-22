@@ -252,3 +252,42 @@ fn a_headed_change_is_refused_while_the_screen_is_locked_and_nothing_else_is() {
     let unknown = LockedScreen(Err(AdapterError::not_supported("lock state")));
     assert!(refuse_input_while_locked(&click(VALID_REF_ID), true, &unknown).is_ok());
 }
+
+fn mouse_click(args: serde_json::Value) -> Commands {
+    Commands::MouseClick(serde_json::from_value(args).unwrap())
+}
+
+#[test]
+fn a_posted_click_needs_a_captured_image_and_no_held_keys_also_from_a_batch() {
+    let report = PermissionReport::default();
+    let posted = |extra: serde_json::Value| {
+        let mut args = serde_json::json!({ "xy": "5,6", "post": true, "frame": "shot.png" });
+        args.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        mouse_click(args)
+    };
+    assert!(preflight(&posted(serde_json::json!({})), &report).is_ok());
+    for refused in [
+        serde_json::json!({ "frame": null }),
+        serde_json::json!({ "modifiers": ["shift"] }),
+        serde_json::json!({ "hold_ms": 500 }),
+        serde_json::json!({ "page_refs": ["@s1:e1", "@s1:e2"] }),
+    ] {
+        let err = preflight(&posted(refused.clone()), &report).unwrap_err();
+        assert_eq!(err.code(), "INVALID_ARGS", "{refused}");
+    }
+    let unposted = mouse_click(serde_json::json!({ "xy": "5,6", "modifiers": ["shift"] }));
+    assert!(preflight(&unposted, &report).is_ok());
+}
+
+#[test]
+fn a_posted_click_is_a_background_action_that_the_locked_screen_does_not_stop() {
+    let locked = LockedScreen(Ok(true));
+    let posted = mouse_click(serde_json::json!({ "xy": "5,6", "post": true, "frame": "shot.png" }));
+    assert!(refuse_input_while_locked(&posted, false, &locked).is_ok());
+    assert!(
+        refuse_input_while_locked(&posted, true, &locked).is_err(),
+        "with --headed it is held to the rule for every headed change"
+    );
+}

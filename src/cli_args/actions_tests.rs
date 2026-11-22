@@ -188,3 +188,37 @@ fn type_args_with_an_interval_budget_the_spread_plus_each_keystroke() {
 
     assert!(TypeArgs::try_parse_from(["type", "@e1", "abc", "--interval-ms", "0"]).is_err());
 }
+
+#[test]
+fn mouse_click_post_needs_a_frame_and_refuses_modifiers_on_the_cli() {
+    let posted = MouseClickArgs::try_parse_from([
+        "mouse-click",
+        "--post",
+        "--frame",
+        "shot.png",
+        "--xy",
+        "10,20",
+    ])
+    .unwrap();
+    assert!(posted.post);
+    assert!(MouseClickArgs::try_parse_from(["mouse-click", "--post", "--xy", "10,20"]).is_err());
+    assert!(
+        MouseClickArgs::try_parse_from([
+            "mouse-click",
+            "--post",
+            "--frame",
+            "shot.png",
+            "--xy",
+            "10,20",
+            "--modifiers",
+            "shift",
+        ])
+        .is_err()
+    );
+    let batch: MouseClickArgs =
+        serde_json::from_value(serde_json::json!({ "xy": "10,20" })).unwrap();
+    assert!(
+        !batch.post,
+        "a batch entry without the key moves the cursor as before"
+    );
+}

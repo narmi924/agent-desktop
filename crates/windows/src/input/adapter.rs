@@ -74,6 +74,17 @@ impl InputOps for WindowsAdapter {
         crate::input::drag_frame::patch_matches(frame, image, local, deadline)
     }
 
+    #[cfg(target_os = "windows")]
+    fn post_click_in_frame(
+        &self,
+        frame: &agent_desktop_core::commands::drag::frame::WindowFrame,
+        local: &agent_desktop_core::Point,
+        event: &MouseEvent,
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        crate::input::mouse::mouse_post::post_click(frame, local, event, lease.deadline())
+    }
+
     fn stop_requested(&self) -> bool {
         crate::input::keyboard::escape_pressed()
     }

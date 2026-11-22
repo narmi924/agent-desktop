@@ -353,6 +353,10 @@ pub(crate) struct MouseClickArgs {
     #[arg(long, value_name = "MS", conflicts_with_all = ["page_refs", "frame"])]
     #[serde(default)]
     pub hold_ms: Option<u64>,
+    /// Windows: post the click to the window under the point as window messages; the cursor and the window in front stay as they are, so --headed is not needed. Needs --frame
+    #[arg(long, requires = "frame", conflicts_with = "modifiers")]
+    #[serde(default)]
+    pub post: bool,
 }
 
 #[derive(Parser, Debug, Deserialize)]

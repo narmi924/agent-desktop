@@ -149,17 +149,17 @@ pub(super) fn mouse_click(
 ) -> Result<Value, AppError> {
     let (x, y) = parse_xy(&args.xy)?;
     if let Some(image) = &args.frame {
-        return frame_pointer::execute(
-            frame_pointer::FramePointer { image, x, y },
-            MouseEvent {
-                point: Point { x, y },
-                kind: MouseEventKind::Click { count: args.count },
-                button: parse_mouse_button(&args.button)?,
-                modifiers: parse_modifiers(&args.modifiers)?,
-            },
-            adapter,
-            context,
-        );
+        let target = frame_pointer::FramePointer { image, x, y };
+        let event = MouseEvent {
+            point: Point { x, y },
+            kind: MouseEventKind::Click { count: args.count },
+            button: parse_mouse_button(&args.button)?,
+            modifiers: parse_modifiers(&args.modifiers)?,
+        };
+        if args.post {
+            return frame_pointer::post_click(target, event, adapter);
+        }
+        return frame_pointer::execute(target, event, adapter, context);
     }
     if let Some(page) = crate::cli_args::mouse_wheel::binding(&args.page_refs)? {
         return helpers::page_pointer::execute(
@@ -260,3 +260,7 @@ pub(super) fn mouse_wheel(
         context,
     )
 }
+
+#[cfg(test)]
+#[path = "keyboard_mouse_tests.rs"]
+mod tests;

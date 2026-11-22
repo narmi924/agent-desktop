@@ -237,6 +237,7 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
                 validate_ref_id(ref_id)?;
             }
         }
+        Commands::MouseClick(args) if args.post => validate_posted_click(args)?,
         Commands::DismissNotification(args)
             if args.expected_app.as_deref().is_none_or(str::is_empty)
                 && args.expected_title.as_deref().is_none_or(str::is_empty) =>
@@ -294,6 +295,23 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
         | Commands::CursorOverlay(_)
         | Commands::Sandbox(_)
         | Commands::Trace(_) => {}
+    }
+    Ok(())
+}
+
+/// A posted click needs the captured image for the window it posts to, and
+/// carries neither held keys nor a long press. Batch entries skip clap's own
+/// argument rules, so they are checked here for both.
+fn validate_posted_click(args: &crate::cli_args::actions::MouseClickArgs) -> Result<(), AppError> {
+    if args.frame.is_none() {
+        return Err(AppError::invalid_input(
+            "--post needs --frame: the window to post to comes from the captured image",
+        ));
+    }
+    if !args.modifiers.is_empty() || args.hold_ms.is_some() || !args.page_refs.is_empty() {
+        return Err(AppError::invalid_input(
+            "--post cannot be combined with --modifiers, --hold-ms or --page-refs",
+        ));
     }
     Ok(())
 }

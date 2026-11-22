@@ -21,7 +21,7 @@ fn reject(message: &str) -> AdapterError {
 /// Finds the window rectangle the captured image covers. `PrintWindow` uses the
 /// outer rectangle and Windows Graphics Capture can omit the invisible resize
 /// borders, so the origin comes from whichever matches the captured size.
-fn frame_origin(frame: &WindowFrame, deadline: Deadline) -> Result<Rect, AdapterError> {
+pub(crate) fn frame_origin(frame: &WindowFrame, deadline: Deadline) -> Result<Rect, AdapterError> {
     use windows_sys::Win32::Foundation::RECT;
     use windows_sys::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
     let window = resolve_window_strict(&frame.window, deadline)?;
