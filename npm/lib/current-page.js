@@ -23,6 +23,20 @@ function browserWindow(ad, id, owner) {
   return win;
 }
 
+/**
+ * Chrome can list the page it shows twice: once under the window's own "Chrome Legacy Window" child, with bounds at
+ * the window's corner, and once inside the browser view where it is drawn. Documents with the same title and address
+ * count as one page, and the one deepest in the view is kept, since its bounds are where the page is on screen.
+ */
+function onePerPage(found) {
+  const kept = new Map();
+  for (const {node, depth} of found) {
+    const key = (node.name ?? '') + '\n' + node.value;
+    if (!kept.has(key) || depth > kept.get(key).depth) kept.set(key, {node, depth});
+  }
+  return [...kept.values()].map(entry => entry.node);
+}
+
 function readPage(ad, win, bounds=false) {
   let snapshot;
   try { snapshot = ad('snapshot', '--window-id', win.id, '--compact', '--max-depth', '50', ...(bounds ? ['--include-bounds'] : [])); }
@@ -32,18 +46,19 @@ function readPage(ad, win, bounds=false) {
   }
   if (snapshot.window?.id !== win.id || !ad('list-windows').some(w => w.id === win.id && w.process_instance === win.process_instance)) throw new Error('The browser window changed.');
   if (!snapshot.complete) throw pending('The page tree is incomplete.');
-  const documents = [], groups = [];
-  function visit(node) {
-    if (node.role === 'document' && webUrl(node.value)) { documents.push(node); return; }
+  const found = [], groups = [];
+  function visit(node, depth) {
+    if (node.role === 'document' && webUrl(node.value)) { found.push({node, depth}); return; }
     if (node.role === 'tablist') {
       const tabs = (node.children ?? []).filter(n => n.role === 'tab' && n.tab_instance);
       for (const tab of tabs.filter(n => n.states?.includes('selected'))) groups.push({tab,tabs});
-      for (const child of node.children ?? []) if(child.role!=='tab') visit(child);
+      for (const child of node.children ?? []) if(child.role!=='tab') visit(child, depth + 1);
       return;
     }
-    for (const child of node.children ?? []) visit(child);
+    for (const child of node.children ?? []) visit(child, depth + 1);
   }
-  visit(snapshot.tree);
+  visit(snapshot.tree, 0);
+  const documents = onePerPage(found);
   if (documents.length !== 1) throw pending('Expected one visible web document in this window.');
   const doc = documents[0];
   const matching = groups.length === 1 ? groups : groups.filter(({tab}) => doc.name && tab.name?.startsWith(doc.name) &&
