@@ -23,6 +23,8 @@ const { markRepeat, clearRepeat } = require('../lib/script-repeat');
 const routines = require('../lib/routine-command');
 const host = require('../lib/host-command');
 const prefs = require('../lib/prefs');
+const { COMMAND_OPTIONS, POSITIONAL_COMMANDS, parseOptions } = require('../lib/cli-options');
+const mcp = require('../lib/mcp-server');
 
 const usage = [
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
@@ -56,6 +58,7 @@ const usage = [
   'agent-desktop-workflow job approve ID   (a job stopped before a final step, reason "approval": ask the user in the chat first; job approve lets that one step go, job skip passes it, job stop ends the job)',
   'agent-desktop-workflow job grant (ID | --all) --for SECONDS   (a job waits with reason "hands" before a step that needs the real mouse and keyboard: let it, or every job, use them that long; a person touching them makes the job wait until they stop for 3 seconds; nothing goes on while the screen is locked)',
   'agent-desktop-workflow prefs [--dir FOLDER] | prefs set KEY=VALUE... (--project | --dir FOLDER | --always | --routine NAME) | prefs unset KEY... SCOPE   (how scripts work here: mode is background, watch, record or direct; pointer is amber, red, green, off or a PNG; browser is background, chrome or space. The most specific wins: --mode for this run, the routine, the project folder, everywhere. Set them only when the user asks for it)',
+  'agent-desktop-workflow mcp   (serves run, routines, preferences, jobs and watches as MCP tools over stdio, for any MCP client)',
   'agent-desktop-workflow read --url URL   (the text of a web page: a plain request and a background browser run together and the first full answer is returned)',
   'agent-desktop-workflow space [--login URL | --close]   (the agent\'s own browser profile: --login shows its window so the user signs in once; later runs with --space keep that sign-in in the background)',
 ].join('\n');
@@ -263,39 +266,10 @@ async function main() {
   if (args.includes('--help')) { console.log(usage); return; }
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('The workflow commands require Node.js 22 or later.');
   const command = args.shift();
-  const commands = {
-    connect: ['cdp'],
-    disconnect: [],
-    current: ['window', 'page', 'visible'],
-    follow: ['page', 'link', 'button', 'expect-url', 'visible', 'human', 'seed'],
-    choose: ['page', 'session', 'tab', 'field', 'input', 'value', 'position', 'format', 'within', 'open', 'popup', 'advance', 'search', 'confirm', 'expect-value'],
-    reveal: ['session', 'tab', 'within', 'text'],
-    'choose-file': ['session', 'tab', 'input', 'file'],
-    view: ['window', 'app', 'output', 'region', 'popups'],
-    type: ['page','field','value','stdin','interval-ms','multiline','replace','at','after','human','seed'],
-    wheel: ['page','over','lines','until','human','seed'],
-    point: ['page','on','role','nth','expect-text','human','seed'],
-    click: ['page','on','role','nth','expect-text','human','seed'],
-    edit: ['window', 'app', 'document', 'field', 'value', 'stdin', 'page'],
-    move: ['frame', 'from', 'to-frame', 'to', 'after', 'human', 'seed'],
-    tap: ['frame', 'at', 'text', 'nth', 'button', 'count', 'human', 'seed'],
-    replay: ['file', 'window', 'speed'],
-    'browser-move': ['session', 'tab', 'surface', 'from', 'to', 'object', 'after'],
-    'drop-file': ['session', 'tab', 'input', 'file'],
-    run: ['file', 'session', 'chrome', 'space', 'timeout-ms', 'api', 'allow-input', 'allow-final', 'args', 'args-file', 'save', 'about', 'param', 'replace', 'detach', 'mode'],
-    routine: ['args', 'args-file', 'allow-input', 'allow-final', 'session', 'chrome', 'space', 'timeout-ms', 'for', 'detach', 'mode'],
-    prefs: ['project', 'always', 'routine', 'dir'],
-    job: ['timeout-ms', 'target', 'options', 'file', 'value', 'force', 'for', 'all'],
-    host: [],
-    'job-run': [],
-    watch: ['window', 'text', 'in', 'gone', 'every-ms', 'notification', 'file', 'then', 'args', 'args-file', 'timeout-ms', 'allow-final'],
-    space: ['login', 'close'],
-    read: ['url'],
-  };
-  if (!Object.hasOwn(commands, command)) throw new Error(usage);
-  const names = commands[command];
-  const options = Object.fromEntries(names.map(key => [key, { type: ['stdin','multiline','replace','visible','popups','chrome','api','space','close','allow-input','allow-final','detach','force','gone','all','project','always'].includes(key) ? 'boolean' : 'string', ...(key === 'param' ? { multiple: true } : {}) }]));
-  const { values, positionals } = parseArgs({ args: joinCoordinates(args), options, allowPositionals: ['routine', 'job', 'host', 'job-run', 'watch', 'prefs'].includes(command) });
+  if (!Object.hasOwn(COMMAND_OPTIONS, command)) throw new Error(usage);
+  if (command === 'mcp') { await mcp.serve({ workflowPath: __filename }); return; }
+  const names = COMMAND_OPTIONS[command];
+  const { values, positionals } = parseArgs({ args: joinCoordinates(args), options: parseOptions(command), allowPositionals: POSITIONAL_COMMANDS.includes(command) });
   if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   if (command === 'run' && values.api) { console.log(api); return; }
   const own = {
