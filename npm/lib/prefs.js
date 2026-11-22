@@ -20,7 +20,16 @@ const WAYS = {
     about: 'Uses the real mouse and keyboard whenever a step needs them, without asking again and without a human pace.' },
 };
 const WAY_NAMES = { 后台: 'background', 看着做: 'watch', 录屏: 'record', 直接操作: 'direct' };
-const BROWSERS = { background: 'a background browser with no sign-ins', chrome: 'the user\'s running Chrome (needs connect once)', space: 'the agent\'s own signed-in profile (space --login once)' };
+/**
+ * Which browser web steps use. This is separate from the way of working: in the background way the user's own Chrome
+ * is worked in its own tab without coming to the front, so "background" never means "not the user's browser".
+ */
+const BROWSERS = {
+  clean: 'a fresh browser with no sign-ins, like a private window; never the user\'s own',
+  chrome: 'the user\'s own Chrome with their sign-ins, in its own tab; it stays behind in the background way (connect once)',
+  space: 'the agent\'s own browser profile that keeps a sign-in the user made there once (space --login)',
+};
+const BROWSER_NAMES = { background: 'clean', 无痕: 'clean', 我的: 'chrome', 我的浏览器: 'chrome' };
 const POINTERS = ['amber', 'red', 'green', 'off'];
 const LAYERS = ['request', 'routine', 'project', 'everywhere'];
 const KEYS = ['mode', 'pointer', 'browser'];
@@ -86,6 +95,12 @@ function projectFor(dir, projects) {
   return best;
 }
 
+function browserName(value) {
+  const name = BROWSER_NAMES[String(value).trim()] ?? String(value).trim().toLowerCase();
+  if (!Object.hasOwn(BROWSERS, name)) throw invalid('browser is one of ' + Object.keys(BROWSERS).join(', ') + ' (clean is a private window with no sign-ins; chrome is the user\'s own).');
+  return name;
+}
+
 function wayName(value) {
   const name = WAY_NAMES[String(value).trim()] ?? String(value).trim().toLowerCase();
   if (!Object.hasOwn(WAYS, name)) throw invalid('A way of working is one of ' + Object.keys(WAYS).join(', ') + ' (后台, 看着做, 录屏, 直接操作).');
@@ -94,10 +109,7 @@ function wayName(value) {
 
 function check(key, value) {
   if (key === 'mode') return wayName(value);
-  if (key === 'browser') {
-    if (!Object.hasOwn(BROWSERS, value)) throw invalid('browser is one of ' + Object.keys(BROWSERS).join(', ') + '.');
-    return value;
-  }
+  if (key === 'browser') return browserName(value);
   if (key === 'pointer') {
     if (POINTERS.includes(String(value).toLowerCase())) return String(value).toLowerCase();
     if (/\.png$/i.test(value)) return value;
@@ -127,7 +139,8 @@ function resolveSettings({ cwd = process.cwd(), routine, request = {}, env = pro
   const mode = pick('mode') ?? { value: 'background', from: 'built-in' };
   mode.value = wayName(mode.value);
   const pointer = pick('pointer') ?? { value: WAYS[mode.value].pointer, from: mode.from === 'built-in' ? 'built-in' : 'mode' };
-  const browser = pick('browser') ?? { value: 'background', from: 'built-in' };
+  const browser = pick('browser') ?? { value: 'clean', from: 'built-in' };
+  browser.value = browserName(browser.value);
   return { mode, pointer, browser, ...(project ? { project } : {}) };
 }
 
@@ -175,7 +188,7 @@ function describe(cwd, data = readPrefs().data) {
     ways: Object.fromEntries(Object.entries(WAYS).map(([name, way]) => [name, way.about])),
     browsers: BROWSERS,
     file: prefsPath(), saved: data,
-    change: 'prefs set mode=WAY|pointer=amber,red,green,off,FILE.png|browser=background,chrome,space (--project | --dir FOLDER | --always | --routine NAME); prefs unset KEY with the same scope',
+    change: 'prefs set mode=WAY|pointer=amber,red,green,off,FILE.png|browser=clean,chrome,space (--project | --dir FOLDER | --always | --routine NAME); prefs unset KEY with the same scope',
   };
 }
 

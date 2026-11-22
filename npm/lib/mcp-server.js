@@ -18,7 +18,7 @@ const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']
 const MAX_CONCURRENT_CALLS = 4;
 const WAIT_DEFAULT_MS = 50000;
 const MODES = ['background', 'watch', 'record', 'direct'];
-const BROWSERS = ['background', 'chrome', 'space'];
+const BROWSERS = ['clean', 'chrome', 'space'];
 
 const text = description => ({ type: 'string', description });
 const flag = description => ({ type: 'boolean', description });
@@ -27,8 +27,8 @@ const json = description => ({ type: 'object', description, additionalProperties
 
 const RUN_SHARED = {
   mode: { type: 'string', enum: MODES, description: 'How the user sees the work: background (default, mouse and keyboard untouched), watch (on screen at a human pace, amber pointer), record (on screen at a human pace, the user\'s own pointer), direct (real input whenever a step needs it). Leave it out unless the user asked for one; saved preferences apply otherwise.' },
-  browser: { type: 'string', enum: BROWSERS, description: 'Where web steps run: background (a browser with no sign-ins), chrome (the user\'s running Chrome; needs workflow_connect once), space (the agent\'s own signed-in profile). Leave it out to use the saved preference.' },
-  session: text('A named background browser session instead of browser.'),
+  browser: { type: 'string', enum: BROWSERS, description: 'Which browser web steps use, separate from mode: clean (a private window with no sign-ins), chrome (the user\'s own Chrome with their sign-ins, in its own tab; it stays behind unless mode puts work on screen; workflow_connect once), space (the agent\'s own profile signed in once). Leave it out to use the saved preference.' },
+  session: text('A named agent-browser session instead of browser; never one that was connected to the user\'s Chrome.'),
   allow_input: flag('Let steps use the real mouse and keyboard. Only after the user agreed in this chat, or said so in this request.'),
   allow_final: flag('Let send, submit, pay, delete and post steps go through. Only when the user asked for that step in this request or agreed in this chat.'),
   args: json('Values the script reads as args.NAME.'),

@@ -32,7 +32,7 @@ function cli(args, { cwd, homeDir = home, input } = {}) {
 test('with nothing saved the work stays in the background and nothing takes the mouse', () => {
   const settings = prefs.resolveSettings({ cwd: 'E:/work', env: {}, data: saved({}) });
   assert.deepEqual(settings.mode, { value: 'background', from: 'built-in' });
-  assert.deepEqual(settings.browser, { value: 'background', from: 'built-in' });
+  assert.deepEqual(settings.browser, { value: 'clean', from: 'built-in' });
   const options = prefs.runnerOptions(settings, {});
   assert.equal(options['allow-input'], undefined);
   assert.equal(options.pace, undefined);
@@ -73,7 +73,13 @@ test('each way turns into the runner options it stands for, and the caller\'s ow
   assert.equal(record.screen, true, 'a recording shows web steps on screen');
   assert.equal(watch.screen, true, 'watching shows web steps on screen');
   assert.equal(direct.screen, undefined, 'direct keeps web steps in the faster background browser');
-  assert.equal(prefs.runnerOptions(settingsFor('background', 'chrome'), {}).chrome, true);
+  assert.equal(prefs.runnerOptions(settingsFor('background', 'chrome'), {}).chrome, true,
+    'background is how the work is done, not which browser: the user\'s own Chrome works in the background way');
+  assert.equal(prefs.runnerOptions(settingsFor('background', '我的浏览器'), {}).chrome, true);
+  const clean = prefs.runnerOptions(settingsFor('background', '无痕'), {});
+  assert.equal(clean.chrome, undefined);
+  assert.equal(clean.space, undefined);
+  assert.deepEqual(settingsFor('background', 'background').browser, { value: 'clean', from: 'everywhere' }, 'the old name still reads as the clean browser');
   assert.equal(prefs.runnerOptions(settingsFor('background', 'space'), {}).space, true);
   const own = prefs.runnerOptions(settingsFor('background', 'chrome'), { session: 'work' });
   assert.equal(own.chrome, undefined, 'a session the caller named wins over the saved browser');

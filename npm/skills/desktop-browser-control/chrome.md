@@ -1,7 +1,7 @@
 # The user's Chrome and the agent's own browser
 
-Web steps run in a background browser by default: it never disturbs the user and has no sign-ins. Two routes keep a
-sign-in.
+Web steps run in a clean browser by default: like a private window, it has no sign-ins and is never the user's own.
+Whichever browser is used, the background way never brings it to the front. Two routes keep a sign-in.
 
 ## The Chrome the user is using (`--chrome`)
 
@@ -55,4 +55,4 @@ sites refuse background browsers; then keep the `--login` window open while `run
 
 ## agent-browser directly
 
-A new page with the user's sign-ins: `agent-browser --auto-connect --session work open URL`. More: `agent-browser skills get core`.
+A new page with the user's sign-ins: `agent-browser --auto-connect --session my-chrome open URL`. Never give a session you connected to the user's Chrome to `run --session`: it stays connected to that browser. More: `agent-browser skills get core`.

@@ -10,17 +10,19 @@ Three commands do the work: `agent-desktop` (desktop apps), `agent-browser` (web
 instead of screenshot-and-click tools: they read controls, keep the user's mouse free and type exactly under input
 methods that turn English into other scripts.
 
-## 0. A saved routine first
+## 0. A saved routine, for tasks that come back
 
-Before anything else run `agent-desktop-workflow routine list --for WORD`, with the site host or window name as WORD.
-A routine whose description fits: `routine run NAME --args-file ARGS.json`. No reading, no script. See `routines.md`.
+For a task of several steps on a site or app the user works with often, run
+`agent-desktop-workflow routine list --for WORD` first, with the site host or window name as WORD. A routine whose
+description fits: `routine run NAME --args-file ARGS.json`, with no reading and no script (`routines.md`). Skip this
+for a quick look, a single read or a one-off.
 
 ## 1. The fastest route that can do it
 
 Fewer round trips matter most: a routine beats a script, a script beats single commands. Then, in order:
 
 1. No interface at all: a file no app holds open, or an app with a command line, export or API. Use your shell.
-2. Web pages: `run` with `web.*` in a background browser. Only the text: `agent-desktop-workflow read --url URL`.
+2. Web pages: `run` with `web.*`, in a clean browser by default. Only the text: `agent-desktop-workflow read --url URL`.
 3. Desktop apps with controls: `run` with `desktop.*`; values are set and buttons pressed without the mouse.
 4. On screen with the real mouse and keyboard: only for what the background cannot do. Ask first.
 5. Windows that draw their own interface: `desktop.read` adds the text from their picture.
@@ -33,10 +35,11 @@ A document an app holds open is changed through that app, never by editing its f
 |---|---|
 | nothing about how | a `run` script in the background, no extra flags |
 | a task that will come back | save it: values as `args.NAME`, then `--save NAME --about TEXT` (`routines.md`) |
-| work longer than about 20 s, or "keep talking to me" | `run` or `routine run` with `--detach`, then `job wait` in the background (`jobs.md`) |
+| "keep talking to me while it runs", or work that takes minutes | `run` or `routine run` with `--detach`, then `job wait` in the background (`jobs.md`) |
 | "tell me when the render finishes", "upload it once it downloads" | `watch add`, then `watch wait`; `--then ROUTINE` to act (`watches.md`) |
 | "every morning at nine", "每天九点" | `routine schedule NAME --at 09:00` (`routines.md`) |
-| "use my browser", "I'm signed in" | `run --chrome`; read `chrome.md` first |
+| "use my browser", "用我的浏览器", "I'm signed in" | `run --chrome`: their own Chrome, in its own tab, staying behind; read `chrome.md` first |
+| "use a private window", "无痕" | the default clean browser: no sign-ins, never the user's own |
 | a sign-in, but not in their Chrome | `space --login` once, later `run --space` (`chrome.md`) |
 | "don't touch my mouse", "I'm working" | background only; on `INPUT_NOT_ALLOWED` stop and tell the user |
 | "look at this window" | `return await desktop.read(WINDOW)` |
@@ -61,6 +64,10 @@ A document an app holds open is changed through that app, never by editing its f
   start: "Recording mode from this project's settings, about a minute, Esc stops it." A project or routine set to an
   on-screen way is the user's standing agreement to use the mouse and keyboard there.
 - A reply with `welcome`: after the result, pass it on to the user once, in their language.
+- "Background" is how the work is done, never which browser. Which browser is a separate choice: `clean` (the default,
+  like a private window, no sign-ins), `chrome` (the user's own Chrome with their sign-ins) or `space` (the agent's own
+  profile signed in once). So "use my browser, I'm working" is `run --chrome` with no mode: their Chrome, behind,
+  without the mouse; "use my browser and let me watch" is `run --mode watch`.
 - In watch and record, `web.*` runs in the Chrome window on screen and `web.open` opens a new tab. `web.eval`, `table`,
   `fetch`, `cmd`, `selection`, `value` and `{near}` exist only in the background browser and are refused there.
 
