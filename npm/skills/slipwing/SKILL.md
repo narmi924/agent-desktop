@@ -10,6 +10,9 @@ Three commands do the work: `agent-desktop` (desktop apps), `agent-browser` (web
 instead of screenshot-and-click tools: they read controls, keep the user's mouse free and type exactly under input
 methods that turn English into other scripts.
 
+An agent without a shell starts `slipwing mcp` as an MCP server over stdio: the same work as tools (`workflow_run`,
+`workflow_job`, ...), and its `workflow_guide` says which tool each command below is.
+
 ## 0. A saved routine, for tasks that come back
 
 For a task of several steps on a site or app the user works with often, run

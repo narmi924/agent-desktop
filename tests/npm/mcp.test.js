@@ -11,6 +11,8 @@ const home = mkdtempSync(join(tmpdir(), 'ad-mcp-'));
 process.env.AGENT_DESKTOP_HOME = home;
 
 const { TOOLS, toArgv, definition } = require('../../npm/lib/mcp-server');
+const { TOOL_MAP } = require('../../npm/lib/mcp-guide');
+const { bundle } = require('../../npm/lib/bundle-version');
 const { COMMAND_OPTIONS } = require('../../npm/lib/cli-options');
 
 const workflow = join(__dirname, '..', '..', 'npm', 'bin', 'workflow.js');
@@ -55,6 +57,7 @@ test('initialize answers with a version the client knows and the working rules',
   const replies = await session([{ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } }, { id: 2, method: 'ping' }]);
   assert.equal(replies[1].result.protocolVersion, '2025-06-18');
   assert.equal(replies[1].result.serverInfo.name, 'slipwing');
+  assert.equal(replies[1].result.serverInfo.version, bundle().version, 'the Slipwing version, not the agent-desktop package version');
   assert.match(replies[1].result.instructions, /workflow_guide/);
   assert.deepEqual(replies[2].result, { resultType: 'complete' });
 });
@@ -108,10 +111,24 @@ test('preferences set through the tools apply to the folder they name', async ()
 });
 
 test('the guide carries the routes, the ways of working and the script helpers', async () => {
-  const replies = await session([call(1, 'workflow_guide', {})]);
+  const replies = await session([call(1, 'workflow_guide', {}), call(2, 'workflow_guide', { part: 'jobs' }), call(3, 'workflow_guide', { part: 'nope' })]);
   const text = replies[1].result.content[0].text;
   assert.match(text, /fastest route/);
   assert.match(text, /--mode record/);
   assert.ok(!text.startsWith('---'), 'the frontmatter is left out');
   assert.match(text, /body of an async function/, 'the helper list from run --api follows the guide');
+  for (const tool of TOOLS) assert.ok(text.includes(tool.name), 'the guide says what ' + tool.name + ' does');
+  assert.match(replies[2].result.content[0].text, /# Jobs/);
+  assert.equal(replies[2].result.isError, false);
+  assert.equal(replies[3].result.isError, true);
+  assert.match(replies[3].result.content[0].text, /chrome, desktop, human/);
+});
+
+test('the tool map names only tools that exist, and every routine command has a tool', () => {
+  const named = new Set(TOOL_MAP.match(/workflow_[a-z_]+/g));
+  assert.deepEqual([...named].filter(name => !TOOLS.some(t => t.name === name)), []);
+  const manage = TOOLS.find(t => t.name === 'workflow_routine_manage');
+  assert.deepEqual(toArgv(manage, { action: 'allow', name: 'weekly-orders' }).argv, ['routine', 'allow', 'weekly-orders']);
+  assert.deepEqual(toArgv(manage, { action: 'permissions' }).argv, ['routine', 'permissions']);
+  assert.throws(() => toArgv(manage, { action: 'remove' }), /needs name/);
 });

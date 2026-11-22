@@ -6,7 +6,9 @@ const { mkdirSync, rmSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 const { COMMAND_OPTIONS } = require('./cli-options');
 const { stateDir } = require('./routine-store');
-const { INSTRUCTIONS, GUIDE } = require('./mcp-guide');
+const { INSTRUCTIONS, guideText } = require('./mcp-guide');
+const { parts } = require('./skill-command');
+const { bundle } = require('./bundle-version');
 
 /**
  * Stdio MCP server for the workflow layer. It is not a second command surface: every tool builds the argument
@@ -37,7 +39,8 @@ const RUN_SHARED = {
 };
 
 const TOOLS = [
-  { name: 'workflow_guide', command: ['run'], fixed: ['--api'], raw: true, description: 'How to work: the order of routes from fastest to slowest, the script helpers, and the rules for the mouse, keyboard and final steps. Read it once before the first workflow_run.', properties: {} },
+  { name: 'workflow_guide', command: ['skill'], optional: ['part'], local: true, description: 'How to work: which tool does what the guide writes as a command, the order of routes from fastest to slowest, the script helpers, and the rules for the mouse, keyboard and final steps. Read it once before the first workflow_run; part reads one of the other parts it names.',
+    properties: { part: { type: 'string', enum: parts(), description: 'A part of the guide: chrome, desktop, human, jobs, routines or watches. Leave it out for the main part.' } } },
   { name: 'workflow_run', command: ['run'], description: 'Run one JavaScript script that does many web and desktop steps in one call (web.*, desktop.*, visible.*). Write the whole task as one script; return the value you need. Use args for values that change. save keeps a script that succeeded as a named routine.',
     properties: { script: text('The script body (JavaScript, top-level await allowed).'), ...RUN_SHARED,
       save: text('Save the script as a routine under this name after it succeeds.'), about: text('One sentence on what the saved routine does.'),
@@ -46,6 +49,8 @@ const TOOLS = [
   { name: 'workflow_routine_list', command: ['routine', 'list'], description: 'List saved routines, one line each, optionally filtered by app, site or words. Check this before writing a new script.', properties: { for: text('Filter text: a site host, window name or words.') } },
   { name: 'workflow_routine_show', command: ['routine', 'show'], positional: ['name'], description: 'Show a saved routine: its arguments, steps and script.', properties: { name: text('Routine name.') }, required: ['name'] },
   { name: 'workflow_routine_run', command: ['routine', 'run'], positional: ['name'], description: 'Run a saved routine. It stops at the first step whose effect differs from the saved runs (EFFECT_MISMATCH); then finish the rest with workflow_run.', properties: { name: text('Routine name.'), ...RUN_SHARED }, required: ['name'] },
+  { name: 'workflow_routine_manage', command: ['routine'], description: 'Remove a saved routine (ask the user first), or manage standing approvals: allow only after the user said in this chat that this routine may always do its final steps; permissions lists trusted routines and protected apps and sites; revoke takes the trust back.',
+    properties: { action: { type: 'string', enum: ['remove', 'allow', 'permissions', 'revoke'] }, name: text('Routine name; not for permissions.') }, required: ['action'] },
   { name: 'workflow_prefs', command: ['prefs'], description: 'Show how scripts work here and where each setting comes from: mode, pointer and browser, by this run, the routine, the project folder and everywhere.', properties: { dir: text('Show it for this folder instead of the server\'s working folder.') } },
   { name: 'workflow_prefs_set', command: ['prefs', 'set'], description: 'Remember how the user wants to work, only when the user said so ("from now on in this project ...", "from now on ...", "this routine always ..."). Tell the user what changed and how to undo it.',
     properties: { mode: { type: 'string', enum: MODES }, pointer: text('amber, red, green, off, or the path of a square PNG.'), browser: { type: 'string', enum: BROWSERS },
@@ -56,7 +61,7 @@ const TOOLS = [
   { name: 'workflow_job', command: ['job'], description: 'Follow and fix detached work. wait returns when the job finishes or needs you (state done, waiting with reason fix, approval, hands or user, failed); call it again when it returns still running. approve and grant only after the user agreed in this chat.',
     properties: { action: { type: 'string', enum: ['list', 'show', 'wait', 'stop', 'report', 'retry', 'do', 'skip', 'approve', 'grant'] }, id: text('Job id.'),
       timeout_ms: number('For wait: how long to wait, default 50000.'), target: text('For retry: the name to use now.'), options: json('For retry: step options such as {"timeout": 15000}.'),
-      patch: text('For do: a script to run before the failed step.'), value: { description: 'For skip: the value the skipped step returns.' },
+      patch: text('For do: a script to run before the failed step is tried again. It sees args, scene and the helpers, not the script\'s variables.'), value: { description: 'For skip: the value the skipped step returns.' },
       seconds: number('For grant: how long the job may use the mouse and keyboard.'), all: flag('For grant: every job waiting for the hands.') }, required: ['action'] },
   { name: 'workflow_watch', command: ['watch'], description: 'Let the resident host watch for something and tell you, or start a routine when it happens: a window opening or closing, text in a window, a notification, a file finishing. wait returns when it fires.',
     properties: { action: { type: 'string', enum: ['add', 'list', 'show', 'wait', 'remove'] }, id: text('Watch id.'), window: text('Window title part.'), text: text('Text to watch for (with in).'),
@@ -107,6 +112,12 @@ function toArgv(tool, input) {
     if (typeof input[name] !== 'string' || !input[name]) throw invalid(tool.name + ' needs ' + name + '.');
     argv.push(input[name]);
   }
+  for (const name of tool.optional ?? []) if (input[name] !== undefined) argv.push(String(input[name]));
+  if (tool.name === 'workflow_routine_manage') {
+    if (!input.action) throw invalid(tool.name + ' needs action.');
+    if (input.action !== 'permissions' && !input.name) throw invalid(tool.name + ' needs name for ' + input.action + '.');
+    argv.push(input.action, ...(input.action !== 'permissions' ? [input.name] : []));
+  }
   if (tool.name === 'workflow_job' || tool.name === 'workflow_watch') {
     if (!input.action) throw invalid(tool.name + ' needs action.');
     argv.push(input.action);
@@ -137,7 +148,8 @@ function toArgv(tool, input) {
   if (input.params !== undefined) for (const [name, about] of Object.entries(input.params)) add('param', name + '=' + about);
   if (input.browser === 'chrome') add('chrome', true);
   if (input.browser === 'space') add('space', true);
-  const handled = new Set(['script', 'args', 'patch', 'options', 'value', 'seconds', 'params', 'browser', 'action', 'id', 'keys', 'scope', 'pointer', ...(tool.positional ?? []),
+  const handled = new Set(['script', 'args', 'patch', 'options', 'value', 'seconds', 'params', 'browser', 'action', 'id', 'keys', 'scope', 'pointer', ...(tool.positional ?? []), ...(tool.optional ?? []),
+    ...(tool.name === 'workflow_routine_manage' ? ['name'] : []),
     ...(tool.name === 'workflow_prefs_set' ? ['mode', 'routine', 'dir'] : []), ...(tool.name === 'workflow_prefs_unset' ? ['routine', 'dir'] : [])]);
   for (const [name, value] of Object.entries(input)) {
     if (handled.has(name) || (name === 'timeout_ms' && input.action === 'wait')) continue;
@@ -148,7 +160,7 @@ function toArgv(tool, input) {
 }
 
 /** Runs one workflow command and turns its envelope into an MCP tool result. */
-function runCommand({ workflowPath, argv, raw, register }) {
+function runCommand({ workflowPath, argv, register }) {
   return new Promise(resolve => {
     const child = spawn(process.execPath, [workflowPath, ...argv], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     register?.(child);
@@ -158,7 +170,6 @@ function runCommand({ workflowPath, argv, raw, register }) {
     child.on('close', code => {
       const stdout = Buffer.concat(out).toString('utf8').trim();
       const stderr = Buffer.concat(err).toString('utf8').trim();
-      if (raw && code === 0) { resolve({ content: [{ type: 'text', text: GUIDE + '\n\n' + stdout }], isError: false }); return; }
       const last = (stdout || stderr).split('\n').reverse().find(line => line.startsWith('{'));
       let envelope;
       try { envelope = last ? JSON.parse(last) : undefined; } catch { envelope = undefined; }
@@ -179,8 +190,19 @@ function initialize(params) {
   return { protocolVersion: version, capabilities: { tools: {} }, serverInfo: serverInfo(), instructions: INSTRUCTIONS };
 }
 
+/** The Slipwing version, not the version of the agent-desktop package it ships in. */
 function serverInfo() {
-  return { name: 'slipwing', version: require('../package.json').version };
+  return { name: 'slipwing', version: bundle().version };
+}
+
+/** workflow_guide answers from the guide files and the helper list, without starting a command. */
+function guideResult(input) {
+  try {
+    const text = guideText(input.part ?? 'main', input.part ? '' : require('./script-run').api);
+    return { content: [{ type: 'text', text }], isError: false };
+  } catch (error) {
+    return { content: [{ type: 'text', text: error.message }], isError: true };
+  }
 }
 
 /**
@@ -212,10 +234,11 @@ function serve({ workflowPath, input = process.stdin, output = process.stdout })
     try { call = toArgv(tool, params.arguments ?? {}); } catch (error) {
       return reply(id, { content: [{ type: 'text', text: error.message }], isError: true });
     }
+    if (tool.local) return reply(id, guideResult(params.arguments ?? {}));
     const key = JSON.stringify(id);
     let result;
     try {
-      result = await runCommand({ workflowPath, argv: call.argv, raw: tool.raw, register: child => running.set(key, child) });
+      result = await runCommand({ workflowPath, argv: call.argv, register: child => running.set(key, child) });
     } finally {
       running.delete(key);
       for (const path of call.files) rmSync(path, { force: true });
@@ -238,4 +261,4 @@ function serve({ workflowPath, input = process.stdin, output = process.stdout })
   return new Promise(resolve => input.on('end', () => Promise.allSettled(pending).then(resolve)));
 }
 
-module.exports = { serve, toArgv, TOOLS, definition };
+module.exports = { serve, toArgv, TOOLS, definition, serverInfo };
