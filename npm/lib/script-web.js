@@ -3,6 +3,7 @@
 const { setTimeout: delay } = require('node:timers/promises');
 const { pick } = require('./script-match');
 const { markedPicture } = require('./final-picture');
+const { waitArgs } = require('./script-wait');
 
 const LINE = /^(\s*)- (\S+?)(?: "((?:[^"\\]|\\.)*)")?(?: \[(.*)\])?(?:: (.*))?$/;
 const WRITABLE = ['textbox', 'searchbox', 'combobox', 'spinbutton', 'slider'];
@@ -14,6 +15,7 @@ const MISS = /not found|no element|no match|did not match|could not find|unable 
 const HIDDEN = /cannot take focus/i;
 const NOT_READY = /would not reach it|is covered by|cannot take focus|No option matched/i;
 const PATIENCE_MS = 4000;
+const TEXT_WAIT_MS = 10000;
 const SETTLE_MS = 2000;
 const VIEW_LIMIT = 6000;
 const QUIET_MS = 400;
@@ -135,7 +137,7 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage, t
    * Keep trying for a few seconds, as a person would, before reporting it.
    */
   async function act(target, options, run, fallback) {
-    const until = Date.now() + (options?.timeout ?? PATIENCE_MS);
+    const until = Date.now() + waitArgs(options?.timeout, {}, PATIENCE_MS).timeout;
     for (;;) {
       try { return await attempt(target, options, run, fallback); } catch (err) {
         if (!(err.code === 'ELEMENT_NOT_FOUND' || NOT_READY.test(err.message)) || Date.now() >= until) throw err;
@@ -239,7 +241,8 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage, t
       await ab(['press', String(key)]);
       changed();
     }),
-    waitText: (text, timeout = 10000) => step('web.waitText', text, async () => {
+    waitText: (text, limit) => step('web.waitText', text, async () => {
+      const { timeout } = waitArgs(limit, {}, TEXT_WAIT_MS);
       const until = Date.now() + timeout;
       for (;;) {
         const found = shows((await ab(['snapshot', '-c'])).snapshot, String(text));
@@ -248,7 +251,8 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage, t
         await delay(120);
       }
     }),
-    waitIdle: ({ timeout = 10000, quiet = QUIET_MS } = {}) => step('web.waitIdle', '', async () => {
+    waitIdle: ({ timeout: limit, quiet = QUIET_MS } = {}) => step('web.waitIdle', '', async () => {
+      const { timeout } = waitArgs(limit, {}, TEXT_WAIT_MS);
       const until = Date.now() + timeout;
       let last, since = Date.now();
       for (;;) {
@@ -262,7 +266,8 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage, t
         await delay(120);
       }
     }),
-    waitFor: (target, { timeout = 10000, ...options } = {}) => step('web.waitFor', target, async () => {
+    waitFor: (target, { timeout: limit, ...options } = {}) => step('web.waitFor', target, async () => {
+      const { timeout } = waitArgs(limit, {}, TEXT_WAIT_MS);
       const until = Date.now() + timeout;
       for (;;) {
         const hit = pick(await controls(true), target, options);

@@ -238,12 +238,17 @@ async function runScript(source, { browser, native, flags = [], lease, env, time
       return await Promise.race([look, delay(SCENE_WAIT_MS)]);
     } catch { return undefined; }
   };
+  let sceneAtFix;
   const surfaces = fix ? fixable(guarded, {
     fixes: fix.fixes,
+    approvals: fix.approvals,
     waitHands: hands?.wait,
     allowOnce: () => { approvedOnce = true; },
-    ask: async info => fix.ask({ ...info, scene: await sceneOf(info.surface) }),
-    runPatch: patchSource => new AsyncFunction(...Object.keys(helpers), String(patchSource))(...Object.values(helpers)),
+    ask: async info => {
+      sceneAtFix = await sceneOf(info.surface);
+      return fix.ask({ ...info, scene: sceneAtFix });
+    },
+    runPatch: patchSource => new AsyncFunction(...Object.keys(helpers), 'scene', String(patchSource))(...Object.values(helpers), sceneAtFix),
   }) : guarded;
   /**
    * A person took over: typing in progress is stopped, since their keys would mix into it; a pointer movement in

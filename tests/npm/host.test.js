@@ -211,18 +211,22 @@ test('a job without --allow-final waits before a final step; job approve, after 
 });
 
 test('a job that stops before a final step with nobody waiting on it notifies the user; job approve is refused for a plain fix', async () => {
-  const env = isolated();
+  const env = { ...isolated(), AGENT_DESKTOP_NOTIFY_GRACE_MS: '800' };
   const { reply } = await cli(env, ['run', '--detach'], 'await web.click("提交订单"); return "after";');
   try {
     const id = reply.data.id;
     const shown = await until(async () => {
       const job = (await cli(env, ['job', 'show', id])).reply.data;
-      return job.reason === 'approval' && job;
+      return job.notified && job;
     });
-    assert.ok(shown.notified, 'no caller heard it, so the user is told to come back to the chat');
+    const stoppedAt = Date.parse(shown.waiting.until) - 30 * 60 * 1000;
+    assert.ok(Date.parse(shown.notified) - stoppedAt >= 700, 'the caller first gets the grace time to attach job wait');
+    assert.equal(shown.waiting.step, 'web.click 提交订单', 'the waiting step names the control, not only the helper');
     await cli(env, ['job', 'skip', id]);
     const done = (await cli(env, ['job', 'wait', id])).reply.data;
     assert.equal(done.result.result, 'after', 'skipping the final step is the caller\'s other way out');
+    assert.equal(done.result.fixes, undefined, 'a decision on a final step is not a fix of the script');
+    assert.deepEqual(done.result.approvals, [{ step: 'web.click 提交订单', action: 'skip' }]);
   } finally { await stopHost(env); }
   const fixEnv = isolated();
   const failing = await cli(fixEnv, ['run', '--detach'], 'await desktop.click("没有这个窗口", "保存"); return 1;');
@@ -233,6 +237,47 @@ test('a job that stops before a final step with nobody waiting on it notifies th
     const refused = (await cli(fixEnv, ['job', 'approve', id])).reply;
     assert.equal(refused.code, 'JOB_NOT_WAITING', 'approve only answers a final step');
   } finally { await stopHost(fixEnv); }
+});
+
+test('a caller that attaches job wait within the grace time is the one who asks: no notification', async () => {
+  const env = { ...isolated(), AGENT_DESKTOP_NOTIFY_GRACE_MS: '2500' };
+  const { reply } = await cli(env, ['run', '--detach'], 'await web.click("提交订单"); return "after";');
+  try {
+    const id = reply.data.id;
+    await until(async () => (await cli(env, ['job', 'list'])).reply.data.jobs.find(j => j.id === id)?.reason === 'approval');
+    const waited = (await cli(env, ['job', 'wait', id])).reply.data;
+    assert.equal(waited.reason, 'approval');
+    await delay(3500);
+    assert.equal((await cli(env, ['job', 'show', id])).reply.data.notified, undefined);
+    await cli(env, ['job', 'stop', id]);
+  } finally { await stopHost(env); }
+});
+
+test('a patch that throws puts the job back to waiting for a fix with its error; a patch sees args and scene', async () => {
+  const env = isolated();
+  const home = env.AGENT_DESKTOP_HOME;
+  const { reply } = await cli(env, ['run', '--detach', '--args', '{"n":7}'], 'const marker = "only in the script"; const value = await desktop.read("nothing here"); return value;');
+  try {
+    const id = reply.data.id;
+    assert.equal((await cli(env, ['job', 'wait', id])).reply.data.reason, 'fix');
+    writeFileSync(join(home, 'bad.js'), 'return marker;');
+    assert.equal((await cli(env, ['job', 'do', id, '--file', join(home, 'bad.js')])).reply.ok, true);
+    const again = (await cli(env, ['job', 'wait', id])).reply.data;
+    assert.equal(again.state, 'waiting', 'a broken patch does not fail the job');
+    assert.equal(again.reason, 'fix');
+    assert.equal(again.waiting.step, 'desktop.read nothing here');
+    assert.equal(again.waiting.error.code, 'PATCH_FAILED');
+    assert.match(again.waiting.error.message, /marker is not defined/);
+    writeFileSync(join(home, 'good.js'), 'log(args.n, String(scene)); return 1;');
+    await cli(env, ['job', 'do', id, '--file', join(home, 'good.js')]);
+    const retried = (await cli(env, ['job', 'wait', id])).reply.data;
+    assert.equal(retried.reason, 'fix', 'a step that was not sent is tried again after the patch');
+    await cli(env, ['job', 'skip', id, '--value', '"skipped"']);
+    const done = (await cli(env, ['job', 'wait', id])).reply.data;
+    assert.equal(done.result.result, 'skipped');
+    assert.deepEqual(done.result.logs, ['7 undefined']);
+    assert.deepEqual(done.result.fixes.map(f => f.action), ['do', 'skip'], 'only the patch that ran is a fix');
+  } finally { await stopHost(env); }
 });
 
 test('a job waits before a step that needs the hands, goes on once granted, and the background steps before it ran', async () => {

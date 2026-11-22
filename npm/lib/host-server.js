@@ -15,6 +15,8 @@ const KEEP_JOBS = 50;
 const ACTIVE = new Set(['running', 'waiting']);
 const SETTLED = new Set(['done', 'failed', 'stopped', 'lost']);
 const DEFAULT_IDLE_MS = 30 * 60 * 1000;
+/** How long a job that stopped before a final step waits for its caller to attach job wait before the user is notified. */
+const NOTICE_GRACE_MS = 15000;
 
 function writeJson(path, value) {
   const temporary = path + '.' + process.pid + '.tmp';
@@ -67,12 +69,14 @@ function summary(job) {
  * The resident host: one per user, reached through a named pipe and a token in the state folder. It only records,
  * queues and relays; each job runs in a process of its own, so a script that never ends cannot hold up another job.
  */
-function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_DESKTOP_HOST_IDLE_MS) || DEFAULT_IDLE_MS }) {
+function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_DESKTOP_HOST_IDLE_MS) || DEFAULT_IDLE_MS,
+  graceMs = Number(process.env.AGENT_DESKTOP_NOTIFY_GRACE_MS) || NOTICE_GRACE_MS }) {
   mkdirSync(jobsDir(), { recursive: true });
   const token = randomBytes(24).toString('hex');
   const jobs = new Map();
   const children = new Map();
   const waiters = new Map();
+  const notices = new Map();
   const started = new Date().toISOString();
   let lastBusy = Date.now();
   let closing = false;
@@ -108,6 +112,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
   }));
 
   function change(job, patch) {
+    if (patch.state && patch.state !== 'waiting') cancelNotice(job.id);
     Object.assign(job, patch);
     for (const key of Object.keys(patch)) if (patch[key] === undefined) delete job[key];
     job.version = (job.version ?? 0) + 1;
@@ -143,7 +148,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
       if (message.type === 'waiting') {
         const heard = (waiters.get(id) ?? []).length > 0;
         change(job, { state: 'waiting', reason: message.reason, waiting: message.info });
-        if (message.reason === 'approval' && !heard) notify(job);
+        if (message.reason === 'approval' && !heard) noticeLater(job);
       }
       if (message.type === 'hands_used' && !job.holdsHands) { job.holdsHands = true; updateGuard(); }
       if (message.type === 'running') change(job, { state: 'running', reason: undefined, waiting: undefined });
@@ -222,6 +227,23 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
     showNotification('一个任务在等你确认', (what ? '停在“' + what + '”之前。' : '停在发送或提交之前。') + '回到和 agent 的对话里说一声；' + minutes + ' 分钟内没确认就什么都不发。');
   }
 
+  /**
+   * The caller that started a detached job usually attaches job wait a moment after the reply; a notification before
+   * that would bring the user back for nothing. A job wait on it within the grace time cancels the notification.
+   */
+  function noticeLater(job) {
+    cancelNotice(job.id);
+    notices.set(job.id, setTimeout(() => {
+      notices.delete(job.id);
+      if (job.state === 'waiting' && job.reason === 'approval') notify(job);
+    }, graceMs).unref());
+  }
+
+  function cancelNotice(id) {
+    clearTimeout(notices.get(id));
+    notices.delete(id);
+  }
+
   function stop(body) {
     const job = load(body.id);
     if (!ACTIVE.has(job.state)) return summary(job);
@@ -248,6 +270,7 @@ function serve({ workflowPath, nativeBinary, idleMs = Number(process.env.AGENT_D
 
   function wait(body, reply) {
     const job = load(body.id);
+    cancelNotice(job.id);
     if (!ACTIVE.has(job.state) || job.state === 'waiting' || (body.version !== undefined && job.version !== body.version)) return reply(job);
     const list = waiters.get(job.id) ?? [];
     list.push(reply);

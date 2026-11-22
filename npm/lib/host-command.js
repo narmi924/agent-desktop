@@ -102,7 +102,7 @@ async function runJob(start, { runner, routines, nativeBinary }) {
     if (message?.type === 'fix' && pending) { const resolve = pending; pending = undefined; resolve(message.decision); }
     if (message?.type === 'stop') { if (pending) { const resolve = pending; pending = undefined; resolve({ action: 'stop' }); } else process.exit(1); }
   });
-  const fixes = [];
+  const fixes = [], approvals = [];
   const ask = info => new Promise(resolve => {
     const waitMs = info.approval ? APPROVAL_WAIT_MS : FIX_WAIT_MS;
     send({ type: 'waiting', reason: info.approval ? 'approval' : 'fix', info: { step: info.step, error: errorInfo(info.error), sent: info.sent, target: info.target, scene: info.scene,
@@ -112,7 +112,7 @@ async function runJob(start, { runner, routines, nativeBinary }) {
     const timer = setTimeout(() => { pending = undefined; resolve({ action: 'stop' }); }, waitMs);
     pending = decision => { clearTimeout(timer); send({ type: 'running' }); resolve(decision); };
   });
-  const fix = { ask, fixes };
+  const fix = { ask, fixes, approvals };
   const held = { until: 0, yielded: false, cutShort: false, abort: () => {}, resume: undefined, told: false };
   const allowInput = () => Boolean(start.values?.['allow-input']) || (!held.yielded && Date.now() < held.until);
   const hands = {
@@ -137,9 +137,10 @@ async function runJob(start, { runner, routines, nativeBinary }) {
     const done = start.routine
       ? await routines.runRoutine(start.routine, start.args, (source, extra) => runner(source, { ...extra, fix, finalsAtRunTime: true, hands, allowInput }), { fixes })
       : await runner(start.source, { args: start.args, fix, finalsAtRunTime: true, hands, allowInput });
-    send({ type: 'done', data: { ...done, ...(fixes.length ? { fixes, fixes_note: 'These steps needed a fix. If this was a routine, save the fixed script with run --save NAME --replace.' } : {}) } });
+    send({ type: 'done', data: { ...done, ...(fixes.length ? { fixes, fixes_note: 'These steps needed a fix. If this was a routine, save the fixed script with run --save NAME --replace.' } : {}),
+      ...(approvals.length ? { approvals } : {}) } });
   } catch (err) {
-    send({ type: 'failed', error: { ...errorInfo(err), ...(err.report ?? {}), ...(fixes.length ? { fixes } : {}) } });
+    send({ type: 'failed', error: { ...errorInfo(err), ...(err.report ?? {}), ...(fixes.length ? { fixes } : {}), ...(approvals.length ? { approvals } : {}) } });
   }
   setTimeout(() => process.exit(0), 200);
   return { keep: true };

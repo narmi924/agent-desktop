@@ -1,6 +1,7 @@
 'use strict';
 
 const { setTimeout: delay } = require('node:timers/promises');
+const { waitArgs } = require('./script-wait');
 
 const TICKS = ['radiobutton', 'checkbox', 'switch'];
 const CONFIRM_MS = 2500;
@@ -175,7 +176,8 @@ function createVisible({ flow, step, warn, pace, takeInput = () => {}, pressKey,
       await pressKey(windowId, String(key));
       return true;
     }),
-    waitText: (text, timeout = TEXT_WAIT_MS) => step('visible.waitText', text, async () => {
+    waitText: (text, limit) => step('visible.waitText', text, async () => {
+      const { timeout } = waitArgs(limit, {}, TEXT_WAIT_MS);
       const until = Date.now() + timeout;
       for (;;) {
         const page = await bind();

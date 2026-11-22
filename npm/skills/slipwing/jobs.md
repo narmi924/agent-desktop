@@ -14,12 +14,13 @@ The reply is a job `id` at once. The host starts itself when needed, without a w
 
 ## Waiting
 
-Run `slipwing job wait ID` in the background (in Claude Code, Bash with `run_in_background`). It returns
-when the job ends or needs you, and you are woken. Keep answering the user meanwhile.
+Run `slipwing job wait ID` in the background right after `--detach` (in Claude Code, Bash with
+`run_in_background`). It returns when the job ends or needs you, and you are woken. Keep answering the user meanwhile.
+`slipwing job wait ID --timeout-ms MS` returns after MS at the latest, with the job as it is then.
 
 | state | meaning | you |
 |---|---|---|
-| `done` | finished; the value is in `result` | tell the user |
+| `done` | finished; `result` is the reply `run` gives: the script's value is `result.result`, its steps `result.steps` | tell the user |
 | `waiting`, `reason: "fix"` | a step failed and the job waits in place; finished steps are not redone | see below |
 | `waiting`, `reason: "approval"` | no `--allow-final`; stopped before a send, submit or delete step, described in `waiting.final` | ask the user once in the chat (what, to whom, with what content); yes: `job approve ID`, no: `job skip ID` or `job stop ID`. Without an answer in 30 minutes the step is not sent and the job ends |
 | `waiting`, `reason: "hands"` | no `--allow-input`; the background steps are done and the next needs the real mouse and keyboard | ask the user whether and for how long; yes: `job grant ID --for SECONDS` (`job grant --all --for SECONDS` for every waiting job) |
@@ -27,8 +28,9 @@ when the job ends or needs you, and you are woken. Keep answering the user meanw
 | `failed` | failed; `error` has the step and the window or page | handle it as usual |
 | `stopped` / `lost` | stopped / the host ended mid-way | read the current state first |
 
-`job show ID` shows it at any time and `job list` lists recent jobs. A job that stops before a final step with nobody
-waiting on it shows the user a notification that sends them back to the chat; when they return, check `job list`.
+`job show ID` shows it at any time and `job list` lists recent jobs. A job that stops before a final step and has no
+`job wait` on it within 15 seconds shows the user a notification that sends them back to the chat; when they return,
+check `job list`.
 
 ## Fixing in place
 
@@ -39,7 +41,7 @@ input. Read `waiting.scene`, then choose:
 ```bash
 slipwing job retry ID --target "the name it has now"     # redo the step with another name
 slipwing job retry ID --options '{"timeout": 15000}'     # a slow page: wait longer, then redo
-slipwing job do ID --file patch.js                        # do a few more steps first (close a dialog), then this one
+slipwing job do ID --file patch.js                        # run a patch (close a dialog), then redo the step
 slipwing job approve ID                                   # reason "approval": the user agreed in the chat
 slipwing job skip ID --value '"what the step returns"'    # skip the step
 slipwing job stop ID                                      # only when the user gives up: a stopped job cannot be fixed
@@ -50,12 +52,19 @@ An extra confirmation dialog ("Confirm order?"): `do` with a patch that clicks i
 A `waitText` or `waitFor` step that failed with `TIMEOUT` usually means a slow page: `job retry ID` and wait again. Do not
 repeat the clicks before it in a patch; they may have been sent and not answered yet.
 
-- `patch.js` is written like a `run` script and sees the original script's variables. `job` commands take no
-  `--allow-final` or `--allow-input`; a patch has what the job started with.
-- A step with `sent: true` cannot be retried (it would happen twice): use `do` or `skip`. `do` runs the patch and goes on
-  without redoing the step.
+- `--options` go to the failed step as its options. `timeout` reaches every wait, also one given as a number such as
+  `waitText("Saved", 2000)`; the longer of the retry's time and the script's own applies.
+- `patch.js` is written like a `run` script. It sees `args`, `scene` (the same as `waiting.scene`) and the helpers
+  (`web`, `desktop`, `visible`, `log`, `sleep`, `waitFor`, `expect`), not the original script's variables: put a value
+  it needs into the patch itself. `job` commands take no `--allow-final` or `--allow-input`; a patch has what the job
+  started with.
+- `do` runs the patch, then tries the failed step again. When the step has `sent: true` it is not tried again (it would
+  happen twice; `job retry` is refused with `STEP_ALREADY_SENT`): the patch's return value becomes the step's value.
+- A patch that throws leaves the job waiting with `waiting.error.code: "PATCH_FAILED"` and the patch's error; the step
+  was not tried again. Send another fix.
 - After a fix, `job wait` again. A job that finally succeeds lists its fixes in `result.fixes`; for a routine, update its
-  script and save it again with `--replace`.
+  script and save it again with `--replace`. `job approve` and a skipped final step are not fixes: they are listed in
+  `result.approvals` and need no new save.
 
 ## Looking back
 

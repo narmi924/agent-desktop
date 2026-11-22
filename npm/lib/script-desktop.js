@@ -7,6 +7,7 @@ const { inputRefused } = require('./script-input');
 const { markedPicture } = require('./final-picture');
 const { describeChanges } = require('./control-changes');
 const { editsWithin } = require('./text-match');
+const { waitArgs } = require('./script-wait');
 
 const WRITABLE = ['textfield', 'combobox', 'incrementor', 'slider'];
 const TICKS = ['checkbox', 'radiobutton', 'switch'];
@@ -567,7 +568,8 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
         await delay(200);
       }
     }),
-    waitText: (window, text, timeout = 10000, options = {}) => step('desktop.waitText', text, async () => {
+    waitText: (window, text, limit, more) => step('desktop.waitText', text, async () => {
+      const { timeout, options } = waitArgs(limit, more, 10000);
       const until = Date.now() + timeout;
       for (;;) {
         const seen = await view(window, true);

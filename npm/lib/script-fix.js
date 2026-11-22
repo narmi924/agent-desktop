@@ -6,24 +6,62 @@ const NOT_FIXABLE = new Set(['MISSING_ARGS', 'INVALID_ARGS', 'EXPECTATION_FAILED
 const YIELDED = /Cursor movement interrupted|stopped by Escape|held mouse button|left the foreground|PERSON_TOOK_OVER/;
 /** A step that was sent: doing it again could send it twice. */
 const SENT = new Set(['EFFECT_MISMATCH']);
+/** Wait helpers that take their time limit as a plain number in this place rather than in an options object. */
+const TIME_IN_PLACE = { 'web.waitText': 1, 'visible.waitText': 1, 'desktop.waitText': 2 };
+const SUBJECT_LIMIT = 60;
 
 function targetIndex(surface, name) {
   return surface === 'desktop' && !['windows', 'apps', 'launch', 'cmd'].includes(name) ? 1 : 0;
 }
 
-function withOptions(args, options) {
+/** The time a step was given, as a number, whether it came as milliseconds or as `{timeout}`. */
+function givenTime(value) {
+  const ms = Number(value && typeof value === 'object' ? value.timeout : value);
+  return Number.isFinite(ms) ? ms : undefined;
+}
+
+/**
+ * The step's arguments with the options of a retry. A `timeout` reaches the helper wherever it takes it, and the
+ * longer of the retry's time and the time the script gave the step applies; other options replace the step's own.
+ */
+function withOptions(args, options, helper) {
   if (!options) return args;
+  const { timeout, ...rest } = options;
+  const slot = TIME_IN_PLACE[helper];
+  if (slot !== undefined) {
+    const next = [...args];
+    const longer = Math.max(Number(timeout), givenTime(next[slot]) ?? 0);
+    if (timeout !== undefined) next[slot] = next[slot] && typeof next[slot] === 'object' ? { ...next[slot], timeout: longer } : longer;
+    if (Object.keys(rest).length && helper === 'desktop.waitText') next[slot + 1] = { ...next[slot + 1], ...rest };
+    return next;
+  }
   const last = args.at(-1);
-  return last && typeof last === 'object' && !Array.isArray(last) ? [...args.slice(0, -1), { ...last, ...options }] : [...args, options];
+  const own = last && typeof last === 'object' && !Array.isArray(last) ? last : undefined;
+  const merged = { ...own, ...rest, ...(timeout !== undefined ? { timeout: Math.max(Number(timeout), givenTime(own) ?? 0) } : {}) };
+  return own ? [...args.slice(0, -1), merged] : [...args, merged];
+}
+
+function describe(helper, target) {
+  const text = typeof target === 'string' ? target : '';
+  return helper + (text ? ' ' + (text.length > SUBJECT_LIMIT ? text.slice(0, SUBJECT_LIMIT) + '…' : text) : '');
+}
+
+/** A patch that threw on its own: the job waits again with this, and the step it was for has not been tried again. */
+function patchFailed(thrown) {
+  const message = thrown instanceof Error ? thrown.message : String(thrown);
+  return Object.assign(new Error('The patch stopped: ' + message + '. The failed step was not tried again; send another fix.'),
+    { code: 'PATCH_FAILED', ...(thrown?.step ? { details: { patch_step: thrown.step } } : {}) });
 }
 
 /**
  * Wraps the helpers so a failed step waits for a fix instead of ending the script. `ask` gets what failed and
  * returns what to do: {action: "retry", target, options}, {action: "do", source}, {action: "skip", value} or
  * {action: "stop"}. A patch runs first and then the step is tried again, unless the step was already sent: then the
- * script goes on with the patch's value. The script's variables stay as they were; steps that already ran are not run again.
+ * script goes on with the patch's value. A patch that throws asks again with code PATCH_FAILED. The script's
+ * variables stay as they were; steps that already ran are not run again. Decisions on a final step (approve, or skip
+ * before it) are not fixes of the script and go to `approvals`.
  */
-function fixable(surfaces, { ask, runPatch, fixes = [], allowOnce = () => {}, waitHands }) {
+function fixable(surfaces, { ask, runPatch, fixes = [], approvals = [], allowOnce = () => {}, waitHands }) {
   const wrapped = {};
   for (const [surface, helpers] of Object.entries(surfaces)) {
     wrapped[surface] = Object.fromEntries(Object.entries(helpers).map(([name, fn]) => {
@@ -43,20 +81,34 @@ function fixable(surfaces, { ask, runPatch, fixes = [], allowOnce = () => {}, wa
             }
             const approval = err.code === 'FINAL_NOT_ALLOWED';
             const at = targetIndex(surface, name);
-            const decision = await ask({ step: err.step ?? surface + '.' + name, surface, helper: name, target: current[at], error: err, sent: SENT.has(err.code), approval });
-            if (!decision || decision.action === 'stop') throw err;
-            if (approval && !['approve', 'skip'].includes(decision.action)) throw err;
-            if (decision.action === 'approve') allowOnce();
-            fixes.push({ step: err.step ?? surface + '.' + name, ...decision, ...(decision.source ? { source: undefined, patch: true } : {}) });
-            if (decision.action === 'skip') return decision.value ?? null;
-            if (decision.action === 'do') {
-              const value = await runPatch(decision.source);
-              if (SENT.has(err.code)) return value ?? null;
-            }
-            if (decision.action === 'retry') {
-              current = [...current];
-              if (decision.target !== undefined) current[at] = decision.target;
-              current = withOptions(current, decision.options);
+            const step = err.step ?? describe(surface + '.' + name, current[at]);
+            let problem = err;
+            for (;;) {
+              const decision = await ask({ step, surface, helper: name, target: current[at], error: problem, sent: SENT.has(err.code), approval });
+              if (!decision || decision.action === 'stop') throw Object.assign(err, { fixStopped: true });
+              if (approval && !['approve', 'skip'].includes(decision.action)) throw Object.assign(err, { fixStopped: true });
+              if (decision.action === 'approve') allowOnce();
+              const record = { step, ...decision, ...(decision.source ? { source: undefined, patch: true } : {}) };
+              if (approval) { approvals.push({ step, action: decision.action }); if (decision.action === 'skip') return decision.value ?? null; break; }
+              if (decision.action === 'skip') { fixes.push(record); return decision.value ?? null; }
+              if (decision.action === 'do') {
+                let value;
+                try { value = await runPatch(decision.source); } catch (thrown) {
+                  if (thrown?.fixStopped) throw thrown;
+                  problem = patchFailed(thrown);
+                  continue;
+                }
+                fixes.push(record);
+                if (SENT.has(err.code)) return value ?? null;
+                break;
+              }
+              fixes.push(record);
+              if (decision.action === 'retry') {
+                current = [...current];
+                if (decision.target !== undefined) current[at] = decision.target;
+                current = withOptions(current, decision.options, surface + '.' + name);
+              }
+              break;
             }
           }
         }
@@ -66,4 +118,4 @@ function fixable(surfaces, { ask, runPatch, fixes = [], allowOnce = () => {}, wa
   return wrapped;
 }
 
-module.exports = { fixable, NOT_FIXABLE, SENT, YIELDED };
+module.exports = { fixable, withOptions, NOT_FIXABLE, SENT, YIELDED };
