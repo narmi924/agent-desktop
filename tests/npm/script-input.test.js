@@ -47,6 +47,18 @@ function tools(answers, extra = {}) {
   return { calls, run };
 }
 
+test('desktop.read lists controls by name without refs or the title bar, and {refs:true} brings both back', async () => {
+  const titled = { complete: true, tree: { role: 'window', name: '记事本', children: [
+    { role: 'textfield', name: '文本编辑器', ref_id: '@s1:e1', states: ['focused'] }, { role: 'button', name: '保存', ref_id: '@s1:e2' },
+    { role: 'group', ref_id: '@s1:e3', native_id: { kind: 'automation_id', value: 'TitleBar' }, children: [{ role: 'button', name: '关闭', ref_id: '@s1:e4' }] }] } };
+  const { run } = tools({ 'desktop list-windows': [NOTEPAD], 'desktop snapshot': titled });
+  const brief = (await run(`return await desktop.read('记事本');`)).result;
+  assert.equal(brief, '- window "记事本"\n  - textfield "文本编辑器" [focused]\n  - button "保存"');
+  const full = (await run(`return await desktop.read('记事本', { refs: true });`)).result;
+  assert.match(full, /textfield "文本编辑器" \[focused, @s1:e1\]/);
+  assert.match(full, /button "关闭" \[@s1:e4\]/);
+});
+
 test('a script that names a real-input helper is refused whole, before any step runs', async () => {
   for (const [source, named] of [
     [`await web.open('https://example.com'); await visible.click('提交');`, 'visible.click'],

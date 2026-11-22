@@ -6,6 +6,7 @@ const { createPicture, renderLines } = require('./script-picture');
 const { inputRefused } = require('./script-input');
 const { markedPicture } = require('./final-picture');
 const { describeChanges } = require('./control-changes');
+const { editsWithin } = require('./text-match');
 
 const WRITABLE = ['textfield', 'combobox', 'incrementor', 'slider'];
 const TICKS = ['checkbox', 'radiobutton', 'switch'];
@@ -19,6 +20,25 @@ const TYPE_KEY_MS = 700;
 const QUIET_MS = 400;
 const EFFECT_LIMIT = 3;
 const CHANGE_SETTLE_MS = 250;
+const PICTURE_TEXT_LIMIT = 3;
+
+/** Text compared without spaces and punctuation, since text read from a picture spaces and marks things its own way. */
+function squash(text) {
+  return String(text ?? '').replace(/[\s\p{P}\p{S}]/gu, '').toLowerCase();
+}
+
+/**
+ * Whether a line read from the picture is a control's text: part of it, containing most of it, or a stretch of it with
+ * a character or two misread, as text read from a picture often has.
+ */
+function sameText(name, line) {
+  if (!line.length) return false;
+  if (name.includes(line) || (line.includes(name) && name.length >= line.length * 0.6)) return true;
+  const length = [...line].length;
+  const allowed = length <= 3 ? 1 : length <= 8 ? 2 : Math.floor(length / 5);
+  return editsWithin(line, name) <= allowed;
+}
+
 const BLOCKED_AFTER_MS = 1500;
 const BLOCKED_POLL_MS = 600;
 
@@ -31,7 +51,8 @@ function isTitleBar(node) {
   return node.role === 'titlebar' || (node.native_id?.kind === 'automation_id' && node.native_id.value === 'TitleBar');
 }
 
-function flatten(node, depth, lines, controls, texts, level = 0, inTitle = false) {
+function flatten(node, depth, out, level = 0, inTitle = false) {
+  const { lines, brief, controls, texts } = out;
   const shown = node.name || node.value || node.ref_id;
   const kept = node.ref_id ? texts.controls : texts.plain;
   const title = inTitle || isTitleBar(node);
@@ -43,24 +64,30 @@ function flatten(node, depth, lines, controls, texts, level = 0, inTitle = false
   if (shown) {
     const states = (node.states ?? []).filter(s => ['disabled', 'selected', 'checked', 'expanded', 'focused'].includes(s));
     const value = node.value && node.value !== node.name ? ': ' + (node.value.length > VALUE_LIMIT ? node.value.slice(0, VALUE_LIMIT) + '…' : node.value) : '';
-    lines.push('  '.repeat(depth) + '- ' + node.role + (node.name ? ' "' + node.name + '"' : '') +
-      (node.ref_id || states.length ? ' [' + [...states, node.ref_id].filter(Boolean).join(', ') + ']' : '') + value);
+    const head = '  '.repeat(depth) + '- ' + node.role + (node.name ? ' "' + node.name + '"' : '');
+    lines.push(head + (node.ref_id || states.length ? ' [' + [...states, node.ref_id].filter(Boolean).join(', ') + ']' : '') + value);
+    if (!title && (node.name || node.value || states.length)) brief.push(head + (states.length ? ' [' + states.join(', ') + ']' : '') + value);
   }
-  for (const child of node.children ?? []) flatten(child, depth + (shown ? 1 : 0), lines, controls, texts, level + 1, title);
+  for (const child of node.children ?? []) flatten(child, depth + (shown ? 1 : 0), out, level + 1, title);
 }
 
 /**
  * Renders a window tree as one line per named node, in the style of a page
  * read. `drawn` is true when nothing but the title bar reports controls: the
  * window draws its own interface, and only its picture shows what is in it.
+ * `brief` is the same read without refs and without the title bar, for an agent
+ * that acts by name: shorter, and it costs fewer tokens.
  */
 function renderTree(snapshot) {
-  const lines = [], controls = [], found = { plain: [], controls: [] };
-  flatten(snapshot.tree, 0, lines, controls, found);
-  const texts = [...found.plain, ...found.controls];
-  if (snapshot.complete === false) lines.push('… (the window was not read completely)');
-  const drawn = !controls.some(control => control.ref && !control.title);
-  return { text: lines.join('\n'), controls, texts, drawn };
+  const out = { lines: [], brief: [], controls: [], texts: { plain: [], controls: [] } };
+  flatten(snapshot.tree, 0, out);
+  const texts = [...out.texts.plain, ...out.texts.controls];
+  if (snapshot.complete === false) {
+    out.lines.push('… (the window was not read completely)');
+    out.brief.push('… (the window was not read completely)');
+  }
+  const drawn = !out.controls.some(control => control.ref && !control.title);
+  return { text: out.lines.join('\n'), brief: out.brief.join('\n'), controls: out.controls, texts, drawn };
 }
 
 /**
@@ -168,7 +195,24 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     return /^w-\d+$/.test(String(window)) ? String(window) : found.get(window);
   }
 
-  async function controlEffects(window, { hidden, written: sent, settle = true } = {}) {
+  /**
+   * Text the window's picture shows that no control holds, such as a status line an app draws or a label whose
+   * accessible name differs from what it shows. Read after a click that changed no control, so the step says what
+   * the window shows instead of only "no control changed".
+   */
+  async function textOnlyInPicture(id) {
+    try {
+      const known = (await view(id, true)).texts.map(squash).filter(text => text.length >= 2);
+      const lines = await pictureText(id);
+      const shown = lines.map(line => String(line.text ?? '').trim())
+        .filter(text => /[\p{L}\p{N}]{2}/u.test(text) && !known.some(name => sameText(name, squash(text))));
+      return [...new Set(shown)];
+    } catch {
+      return [];
+    }
+  }
+
+  async function controlEffects(window, { hidden, written: sent, settle = true, pictureText: lookAtPicture = false } = {}) {
     let id;
     try { id = await resolve(window); } catch { return false; }
     const since = readIds.get(id);
@@ -185,7 +229,14 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
         return true;
       }
       if (windowEffects > 0 || !snapshot?.changes) return true;
-      if (attempt >= 1 || !settle) { note('no control changed', { kind: 'no_change' }); return true; }
+      if (attempt >= 1 || !settle) {
+        const shown = lookAtPicture ? await textOnlyInPicture(id) : [];
+        const listed = shown.slice(0, PICTURE_TEXT_LIMIT).map(text => '"' + (text.length > 60 ? text.slice(0, 60) + '…' : text) + '"');
+        const more = shown.length > PICTURE_TEXT_LIMIT ? ' and ' + (shown.length - PICTURE_TEXT_LIMIT) + ' more lines' : '';
+        note('no control changed' + (shown.length ? '; the window shows, in no control: ' + listed.join(', ') + more : ''),
+          { kind: 'no_change', ...(shown.length ? { picture_text: shown.slice(0, PICTURE_TEXT_LIMIT) } : {}) });
+        return true;
+      }
       await delay(CHANGE_SETTLE_MS);
     }
   }
@@ -446,12 +497,13 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       }
       return null;
     }),
-    read: (window, { all = false, picture: withPicture } = {}) => step('desktop.read', window, async () => {
+    read: (window, { all = false, picture: withPicture, refs = false } = {}) => step('desktop.read', window, async () => {
       const seen = await view(window, all);
-      if (withPicture === false || (!seen.drawn && !withPicture)) return seen.text;
+      const text = refs ? seen.text : seen.brief;
+      if (withPicture === false || (!seen.drawn && !withPicture)) return text;
       const lines = await pictureText(seen.id);
       note('with picture text');
-      return [seen.text, '- picture (text read from the screen, not from controls):', renderLines(lines)].filter(Boolean).join('\n');
+      return [text, '- picture (text read from the screen, not from controls):', renderLines(lines)].filter(Boolean).join('\n');
     }),
     click: (window, target, options) => step('desktop.click', target, async () => {
       fromFreshRead(window);
@@ -460,7 +512,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
         return ad([...asPerson(), 'click', ref]);
       }, id => clickPicture(id, target, options)));
       views.clear();
-      if (done?.via !== 'picture') await controlEffects(window);
+      if (done?.via !== 'picture') await controlEffects(window, { pictureText: true });
       return done?.via === 'picture' ? done : undefined;
     }),
     fill: (window, target, value, options) => fillAs('desktop.fill', { window, target, value, options }),

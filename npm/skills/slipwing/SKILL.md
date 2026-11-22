@@ -116,8 +116,10 @@ pointer turns into an amber arrow; the user touching the mouse or keyboard pause
 - `data.result` is what the script returned. `ok: true` only means it ran; wait for results with `waitText`.
 - Each line of `data.steps` says what the step changed: windows that opened or closed, a page that moved on, and on the
   desktop which controls changed (`"Total" value "0.00" -> "231.00"`, `"Invoice" checked`). A value the step itself
-  wrote shows only as `value changed`. `no control changed` covers controls only: text a window merely draws is not
-  compared, so read the window or `waitText` before calling a step failed, and never repeat a final step on that alone.
+  wrote shows only as `value changed`. `no control changed` covers controls only. After a click it is followed by the
+  text the window shows that no control holds (`the window shows, in no control: "Saved C301"`), which is often where
+  an app puts its result. Without that, read the window or `waitText` before calling a step failed, and never repeat a
+  final step on `no control changed` alone.
 - `data.warnings` lists actions the app did not confirm; read again to check them.
 - A failed step stops the script; `step` names it and `scene` shows the window or page after it. Continue from `scene`.
 

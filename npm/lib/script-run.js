@@ -63,7 +63,7 @@ const api = [
   '  await desktop.launch(nameOrId)          -> {app, pid, window, title}: opens an installed app by its name, id or program name',
   '  await desktop.focused(window)           -> {role, name, ref} of the focused control, or null',
   '  await desktop.selection(window, target?) -> the text selected in that control, else in the focused one or the first text field that has a selection, or null',
-  '  await desktop.read(window)              -> controls only, with names and refs; {all:true} adds labels and status text; {picture:true} adds the text on screen',
+  '  await desktop.read(window)              -> controls by name, without the title bar; {all:true} adds labels and status text; {picture:true} adds the text on screen; {refs:true} adds refs and the title bar',
   '  await desktop.click(window, target)     await desktop.fill(window, target, value)',
   '  await desktop.select(window, field, option) -> picks an option of a drop-down or list, as fill does',
   '  await desktop.check(window, target)     await desktop.uncheck(window, target)',

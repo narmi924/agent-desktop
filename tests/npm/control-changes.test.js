@@ -84,6 +84,21 @@ test('a fill the app did not confirm reports what the window shows now', async (
   assert.ok(done.warnings?.some(text => /did not confirm/.test(text)));
 });
 
+test('a click that changes no control names the text the window shows outside its controls', async () => {
+  const w = window({ changes: [] });
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+  const call = async (binary, args, options) => {
+    if (args[0] === 'list-windows') return [{ id: 'w-1', app_name: 'register.exe', title: '登记', visible: true, process_instance: 'p-1', bounds: { width: 1, height: 1 } }];
+    if (args[0] === 'screenshot') return { data: PNG, width: 1, height: 1, scale_factor: 1 };
+    if (args[0] === 'ocr') return { lines: [{ text: '登记' }, { text: '手机兮' }, { text: '保 存' }, { text: 'x' }, { text: '已登记，编号 C301' }] };
+    return w.call(binary, args, options);
+  };
+  const seen = [];
+  const done = await runScript('await desktop.click("w-1", "保存"); return true;', { native: 'desktop', call, allowInput: true, allowFinal: true, onStep: entry => { seen.push(entry); } });
+  assert.match(done.steps[0], /\(no control changed; the window shows, in no control: "已登记，编号 C301"\)/);
+  assert.deepEqual(seen[0].effects.find(e => e.kind === 'no_change').picture_text, ['已登记，编号 C301']);
+});
+
 test('a click that changes nothing says so after looking twice', async () => {
   const w = window({ changes: [] });
   const done = await runScript('await desktop.click("w-1", "保存"); return true;', { native: 'desktop', call: w.call, allowInput: true, allowFinal: true });
