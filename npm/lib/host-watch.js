@@ -6,6 +6,7 @@ const { DatabaseSync } = require('node:sqlite');
 const { join } = require('node:path');
 const { randomBytes } = require('node:crypto');
 const { editsWithin } = require('./text-match');
+const { errorCode } = require('./error-code');
 
 const TEXT_MIN_MS = 5000;
 const TEXT_IDLE_MS = 60000;
@@ -262,7 +263,7 @@ function createWatches({ helperPath, readWindow, startJob, onChange, now = () =>
         const job = await startJob({ routine: w.then.routine, args: fill(w.then.args, found),
           values: { ...(w.then.values ?? {}), ...(w.then.allow_final ? { 'allow-final': true } : {}) } });
         w.job = job.id;
-      } catch (err) { w.error = { code: err.code ?? 'ERROR', message: err.message }; }
+      } catch (err) { w.error = { code: errorCode(err), message: err.message }; }
     }
     onChange(w);
   }

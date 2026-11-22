@@ -5,6 +5,7 @@ const { readFileSync, readdirSync } = require('node:fs');
 const { join } = require('node:path');
 const { request, running, ensureHost } = require('./host-client');
 const { jobsDir } = require('./host-paths');
+const { errorCode } = require('./error-code');
 
 const { FIX_WAIT_MS, APPROVAL_WAIT_MS } = require('./host-waits');
 
@@ -87,7 +88,7 @@ async function job([action, id, ...rest], values, readText) {
 }
 
 function errorInfo(err) {
-  return { code: err?.code ?? 'ERROR', message: String(err?.message ?? err) };
+  return { code: errorCode(err), message: String(err?.message ?? err) };
 }
 
 /**
@@ -149,9 +150,10 @@ async function runJob(start, { runner, routines, nativeBinary }) {
 const watchUsage = 'watch add (--window TITLE [--gone] | --text TEXT --in WINDOW [--gone] [--every-ms MS] | --notification TEXT | --file PATH) [--then ROUTINE [--args JSON | --args-file FILE] [--allow-final]] | watch list | watch show ID | watch wait ID [--timeout-ms MS] | watch remove ID';
 
 /** Watches live in the host: adding one starts the host if needed. */
-async function watch([action, id, ...rest], values, { workflowPath, readText, settle }) {
+async function watch([action, id, ...rest], values, { workflowPath, readText, settle, routineExists }) {
   if (rest.length) throw Object.assign(new Error(watchUsage), { code: 'INVALID_ARGS' });
   if (action === 'add') {
+    if (values.then !== undefined) routineExists?.(values.then);
     await ensureHost(workflowPath);
     const args = values['args-file'] !== undefined ? parseJson(readText(values['args-file']).replace(/^\uFEFF/, ''), '--args-file') : parseJson(values.args, '--args');
     if (args !== undefined && !values.then) throw Object.assign(new Error('--args goes with --then ROUTINE.'), { code: 'INVALID_ARGS' });

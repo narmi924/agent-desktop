@@ -17,6 +17,7 @@ const HIDDEN = /cannot take focus/i;
 const NOT_READY = /would not reach it|is covered by|cannot take focus|No option matched/i;
 const PATIENCE_MS = 4000;
 const TEXT_WAIT_MS = 10000;
+const BLANK_PAGE = '(a blank page, about:blank: no page is open in this browser yet; web.open(URL) opens one)';
 const SETTLE_MS = 2000;
 const VIEW_LIMIT = 6000;
 const QUIET_MS = 400;
@@ -194,7 +195,7 @@ function createWeb({ call, step, warn, note = () => {}, flags = [], fetchPage, t
     read: ({ all = false } = {}) => step('web.read', all ? 'all' : '', async () => {
       const data = await ab(['snapshot', all ? '-c' : '-i']);
       if (!all) known = parseControls(data.snapshot);
-      return data.snapshot;
+      return data.origin === 'about:blank' ? BLANK_PAGE : data.snapshot;
     }),
     fill: (target, value, options) => step('web.fill', target, async () => {
       const reply = await act(target, { roles: WRITABLE, ...options }, async at => {

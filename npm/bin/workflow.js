@@ -28,6 +28,7 @@ const { COMMAND_OPTIONS, POSITIONAL_COMMANDS, parseOptions } = require('../lib/c
 const mcp = require('../lib/mcp-server');
 const skill = require('../lib/skill-command');
 const { versionReport } = require('../lib/bundle-version');
+const { errorCode } = require('../lib/error-code');
 
 /**
  * The background browser's own session. No guide tells anyone to attach this name to the user's Chrome, and an
@@ -60,7 +61,7 @@ const usage = [
   'slipwing replay --file FLOW.jsonl [--window ID] [--speed N]   (record a flow by setting AGENT_DESKTOP_RECORD=FLOW.jsonl)',
   'slipwing run [--file SCRIPT.js] [--mode background|watch|record|direct] [--session NAME | --space | --chrome] [--allow-input] [--allow-final] [--timeout-ms MS] [--args JSON | --args-file FILE.json] [--save NAME --about TEXT [--param name="what it is"]... [--replace]]   (many page and desktop steps in one call; the script comes from stdin without --file; run --api lists the helpers. Without --allow-input a step that needs the real mouse and keyboard is refused before anything is sent; without --allow-final a send, submit, pay or delete step is refused the same way. --save keeps a script that succeeded as a routine; argument values are not stored)',
   'slipwing routine run NAME [--mode WAY] [--args JSON | --args-file FILE.json] [--allow-input] [--allow-final] [--session NAME | --space | --chrome]   (runs a saved routine and stops at the first step whose effect differs from the saved runs: EFFECT_MISMATCH)',
-  'slipwing routine list [--for TEXT] | routine show NAME | routine remove NAME | routine allow NAME | routine permissions | routine revoke NAME   (allow: the user said in the chat that this routine may always do its final steps; permissions lists those routines and the apps and sites protected.json under the state folder protects)',
+  'slipwing routine list [--for TEXT (a word of the name, description, app, site or address)] | routine show NAME | routine remove NAME | routine allow NAME | routine permissions | routine revoke NAME   (allow: the user said in the chat that this routine may always do its final steps; permissions lists those routines and the apps and sites protected.json under the state folder protects)',
   'slipwing run ... --detach | routine run NAME ... --detach   (hands the work to the resident host and answers at once with a job id)',
   'slipwing job list | job show ID | job wait ID [--timeout-ms MS] | job stop ID | job report ID',
   'slipwing job retry ID [--target NAME] [--options JSON] | job do ID --file PATCH.js | job skip ID [--value JSON]   (a job whose step failed waits up to 10 minutes for one of these)',
@@ -68,12 +69,25 @@ const usage = [
   'slipwing watch add (--window TITLE [--gone] | --text TEXT --in WINDOW [--gone] | --notification TEXT | --file PATH) [--then ROUTINE [--args JSON] [--allow-final]] | watch list | watch show ID | watch wait ID | watch remove ID   (the host watches; --then starts a saved routine as a job, which stops before a final step unless the user agreed to it when the watch was set: --allow-final)',
   'slipwing job approve ID   (a job stopped before a final step, reason "approval": ask the user in the chat first; job approve lets that one step go, job skip passes it, job stop ends the job)',
   'slipwing job grant (ID | --all) --for SECONDS   (a job waits with reason "hands" before a step that needs the real mouse and keyboard: let it, or every job, use them that long; a person touching them makes the job wait until they stop for 3 seconds; nothing goes on while the screen is locked)',
-  'slipwing prefs [--dir FOLDER] | prefs set KEY=VALUE... (--project | --dir FOLDER | --always | --routine NAME) | prefs unset KEY... SCOPE   (how scripts work here: mode is background, watch, record or direct; pointer is amber, red, green, off or a PNG; browser is background, chrome or space. The most specific wins: --mode for this run, the routine, the project folder, everywhere. Set them only when the user asks for it)',
+  'slipwing prefs [--dir FOLDER] | prefs set KEY=VALUE... (--project | --dir FOLDER | --always | --routine NAME) | prefs unset KEY... SCOPE   (how scripts work here: mode is background, watch, record or direct; pointer is amber, red, green, off or a PNG; browser is clean, chrome or space. The most specific wins: --mode for this run, the routine, the project folder, everywhere. Set them only when the user asks for it)',
   'slipwing skill [NAME] | skill --list | skill --install [--dir FOLDER] [--force]   (the working guide for agents; --install puts a short entry that points here into the Claude Code and Codex skill folders)',
   'slipwing mcp   (serves run, routines, preferences, jobs and watches as MCP tools over stdio, for any MCP client)',
   'slipwing read --url URL   (the text of a web page: a plain request and a background browser run together and the first full answer is returned)',
   'slipwing space [--login URL | --close]   (the agent\'s own browser profile: --login shows its window so the user signs in once; later runs with --space keep that sign-in in the background)',
 ].join('\n');
+
+/** A command called the wrong way: the reply says how, with code INVALID_ARGS. */
+function invalid(message) {
+  return Object.assign(new Error(message), { code: 'INVALID_ARGS' });
+}
+
+/** The text of a file the command was given, or FILE_NOT_FOUND naming the option and the folder a relative path counts from. */
+function readText(path, option) {
+  try { return readFileSync(path, 'utf8'); } catch (err) {
+    if (!['ENOENT', 'EISDIR'].includes(err.code)) throw err;
+    throw Object.assign(new Error('No file at ' + path + (option ? ' (' + option + ')' : '') + '. A relative path counts from ' + process.cwd() + '.'), { code: 'FILE_NOT_FOUND' });
+  }
+}
 
 function one(items, description) {
   if (items.length !== 1) throw new Error('Expected one ' + description + ', found ' + items.length);
@@ -118,7 +132,7 @@ function boundTab(session, tab) {
 
 function choose({ session, tab, field, input, value, position, format }) {
   if (!session || Boolean(field) === Boolean(input) || !value ||
-      (position !== undefined && (!/^[1-9]\d*$/.test(position) || !Number.isSafeInteger(Number(position))))) throw new Error(usage);
+      (position !== undefined && (!/^[1-9]\d*$/.test(position) || !Number.isSafeInteger(Number(position))))) throw invalid(usage);
   const { ab, original, check, evaluate } = boundTab(session, tab);
   const key = 'data-ad-' + randomUUID();
   try {
@@ -209,7 +223,7 @@ function readFileInput(selector) {
 
 async function chooseFile({ session, tab, input, file }) {
   if (process.platform !== 'win32' || typeof WebSocket === 'undefined') throw new Error('Requires Windows and Node.js 22 or newer.');
-  if (![session, input, file].every(Boolean) || !isAbsolute(file)) throw new Error(usage);
+  if (![session, input, file].every(Boolean) || !isAbsolute(file)) throw invalid(usage);
   const stat = statSync(file);
   if (!stat.isFile()) throw new Error('Expected a regular file.');
   const { ab, original, check } = boundTab(session, tab);
@@ -279,7 +293,7 @@ async function main() {
   if (args[0] === '--version') { console.log(JSON.stringify({ ok: true, data: versionReport({ nativeBinary: nativeBinary(), browserBinary: optionalBrowserBinary() }) })); return; }
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('The workflow commands require Node.js 22 or later.');
   const command = args.shift();
-  if (!Object.hasOwn(COMMAND_OPTIONS, command)) throw new Error(usage);
+  if (!Object.hasOwn(COMMAND_OPTIONS, command)) throw invalid(usage);
   if (command === 'mcp') { await mcp.serve({ workflowPath: __filename }); return; }
   const names = COMMAND_OPTIONS[command];
   const { values, positionals } = parseArgs({ args: joinCoordinates(args), options: parseOptions(command), allowPositionals: POSITIONAL_COMMANDS.includes(command) });
@@ -290,10 +304,10 @@ async function main() {
     replay: () => replay(values),
     run: () => script(values),
     routine: () => routine(positionals, values),
-    job: () => host.job(positionals, values, path => readFileSync(path, 'utf8')),
+    job: () => host.job(positionals, values, path => readText(path, '--file')),
     host: () => host.hostCommand(positionals, { workflowPath: __filename, nativeBinary: nativeBinary() }),
     'job-run': () => jobRun(positionals[0]),
-    watch: () => host.watch(positionals, values, { workflowPath: __filename, readText: path => readFileSync(path, 'utf8'),
+    watch: () => host.watch(positionals, values, { workflowPath: __filename, readText: path => readText(path, '--args-file'), routineExists: routines.requireRoutine,
       settle: routine => runnerValues(prefs.runnerOptions(prefs.resolveSettings({ routine }), {})) }),
     prefs: () => prefs.prefsCommand(positionals, values),
     skill: () => (values.list ? { parts: skill.parts() } : skill.install({ dir: values.dir, force: Boolean(values.force) })),
@@ -313,7 +327,7 @@ function nativeBinary() {
 async function replay({ file, window, speed = '1' }) {
   const ad = (...args) => run(nativeBinary(), args);
   const factor = Number(speed);
-  if (!file || !(factor > 0)) throw new Error('Use --file FLOW.jsonl and a positive --speed.');
+  if (!file || !(factor > 0)) throw invalid('Use --file FLOW.jsonl and a positive --speed.');
   const steps = readSteps(file);
   const report = [];
   for (const [index, step] of steps.entries()) {
@@ -348,8 +362,8 @@ async function jobRun(dir) {
 /** The runner both `run` and `routine run` use: same helpers, same refusals, same reply. */
 function scriptRunner({ session, chrome, space: own, 'timeout-ms': wait = '120000', 'allow-input': allowInput = false, 'allow-final': allowFinal = false, pace, pointer, screen = false }) {
   const timeout = Number(wait);
-  if (!(timeout > 0)) throw new Error('--timeout-ms takes a positive number.');
-  if ([session, chrome, own].filter(Boolean).length > 1) throw new Error('Choose one of --session NAME, --space and --chrome.');
+  if (!(timeout > 0)) throw invalid('--timeout-ms takes a positive number.');
+  if ([session, chrome, own].filter(Boolean).length > 1) throw invalid('Choose one of --session NAME, --space and --chrome.');
   process.env.AGENT_DESKTOP_POINTER_HOLDER ??= String(process.pid);
   if (pointer) process.env.AGENT_DESKTOP_POINTER ??= pointer;
   const flags = own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? BACKGROUND_SESSION];
@@ -367,11 +381,11 @@ function welcomed(reply) {
 
 async function script(values) {
   const { file, save, about, param, replace = false, detach } = values;
-  if (!file && process.stdin.isTTY) throw new Error('Pipe a script to run, or pass --file SCRIPT.js.');
-  if ((about !== undefined || param || replace) && !save) throw new Error('--about, --param and --replace go with --save NAME.');
-  if (detach && save) throw new Error('--save runs in the foreground; leave out --detach.');
-  const args = routines.readArgs(values, path => readFileSync(path, 'utf8'));
-  const source = readFileSync(file ?? 0, 'utf8').replace(/^\uFEFF/, '');
+  if (!file && process.stdin.isTTY) throw invalid('Pipe a script to run, or pass --file SCRIPT.js.');
+  if ((about !== undefined || param || replace) && !save) throw invalid('--about, --param and --replace go with --save NAME.');
+  if (detach && save) throw invalid('--save runs in the foreground; leave out --detach.');
+  const args = routines.readArgs(values, path => readText(path, '--args-file'));
+  const source = (file ? readText(file, '--file') : readFileSync(0, 'utf8')).replace(/^\uFEFF/, '');
   const settings = prefs.resolveSettings({ request: { mode: values.mode } });
   const options = prefs.runnerOptions(settings, values);
   if (detach) return welcomed({ ...await host.detach({ source, args, values: runnerValues(options) }, { workflowPath: __filename }), ...prefs.settingsNote(settings) });
@@ -393,16 +407,17 @@ async function script(values) {
 }
 
 async function routine([action, name, ...rest], values) {
-  if (rest.length) throw new Error(usage);
+  if (rest.length) throw invalid(usage);
   if (action === 'list') return routines.list(values.for);
   if (action === 'permissions') return routines.permissions();
   if (action === 'allow' && name) return routines.allow(name);
   if (action === 'revoke' && name) return routines.revoke(name);
-  if (!name) throw new Error('Name the routine: routine ' + (action ?? 'run') + ' NAME.');
+  if (!name) throw invalid('Name the routine: routine ' + (action ?? 'run') + ' NAME.');
   if (action === 'show') return routines.show(name);
   if (action === 'remove') return routines.remove(name);
-  if (action !== 'run') throw new Error(usage);
-  const args = routines.readArgs(values, path => readFileSync(path, 'utf8'));
+  if (action !== 'run') throw invalid(usage);
+  routines.requireRoutine(name);
+  const args = routines.readArgs(values, path => readText(path, '--args-file'));
   const settings = prefs.resolveSettings({ routine: name, request: { mode: values.mode } });
   const options = prefs.runnerOptions(settings, values);
   if (values.detach) return welcomed({ ...await host.detach({ routine: name, args, values: runnerValues(options) }, { workflowPath: __filename }), ...prefs.settingsNote(settings) });
@@ -432,11 +447,11 @@ async function perform(command, values, check) {
     case 'follow': data = await follow(ad, values, physicalPointer); break;
     case 'choose-file': data = await chooseFile(values); break;
     case 'choose':
-      if (!values.page && (values.within || values.open || values.popup || values.advance || values.search || values.confirm || values['expect-value'])) throw new Error('Native choice options require --page.');
+      if (!values.page && (values.within || values.open || values.popup || values.advance || values.search || values.confirm || values['expect-value'])) throw invalid('Native choice options require --page.');
       data = values.page !== undefined ? await choosePage(ad, values) : choose(values);
       break;
     case 'reveal': {
-      if (!values.session || !values.within || !values.text?.trim()) throw new Error(usage);
+      if (!values.session || !values.within || !values.text?.trim()) throw invalid(usage);
       const {original,check,evaluate}=boundTab(values.session,values.tab);
       check();
       data = {tab:original.tabId,...evaluate(revealText,values.within,values.text,original.url)};
@@ -462,12 +477,10 @@ async function perform(command, values, check) {
 
 main().catch(err => {
   const partial=err.details?.typed_keystrokes;
-  console.error(JSON.stringify({ok:false,error:err.message,...(err.disposition ? {code:err.code,disposition:err.disposition} : {}),
+  console.error(JSON.stringify({ok:false,error:err.message,code:errorCode(err),...(err.disposition ? {disposition:err.disposition} : {}),
     ...(Number.isInteger(partial) ? {typed_keystrokes:partial,keystrokes:err.details.keystrokes} : {}),
-    ...(err.report ? {...(err.code && !err.disposition ? {code:err.code} : {}),...err.report} : {}),
-    ...(['MISSING_ARGS','EFFECT_MISMATCH','FINAL_NOT_ALLOWED','ROUTINE_NOT_FOUND','ROUTINE_EXISTS','INVALID_ARGS',
-      'JOB_NOT_FOUND','JOB_NOT_WAITING','JOB_NEEDS_APPROVAL','STEP_ALREADY_SENT','HOST_NOT_RUNNING'].includes(err.code) && !err.report ? {code:err.code} : {}),
-    ...(err.details && ['MISSING_ARGS','EFFECT_MISMATCH','FINAL_NOT_ALLOWED'].includes(err.code) ? {details:err.details} : {})}));
+    ...(err.report ?? {}),
+    ...(err.details && ['MISSING_ARGS','EFFECT_MISMATCH','FINAL_NOT_ALLOWED','AMBIGUOUS_TARGET'].includes(err.code) ? {details:err.details} : {})}));
   process.exitCode=1;
   if (err.report) leave(1);
 });

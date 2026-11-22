@@ -35,16 +35,23 @@ function writeJson(path, value) {
 
 const indexPath = () => join(routinesDir(), 'index.json');
 
+/** The addresses a routine opens, as its saved steps show them, so a search for a page path finds it. */
+function pagesOf(routine) {
+  return (routine.steps ?? []).map(step => /^(?:web|visible)\.open (.+)$/.exec(step.label)?.[1]).filter(Boolean);
+}
+
 function summary(routine) {
   return {
     about: routine.about, params: routine.params.map(p => p.name), input: routine.input, finals: routine.finals.length,
     status: routine.status, successes: routine.successes, failures: routine.failures, apps: routine.apps, hosts: routine.hosts,
-    last_success: routine.last_success,
+    pages: pagesOf(routine), last_success: routine.last_success,
   };
 }
 
+/** The index of saved routines; one written before it listed their addresses is built again. */
 function readIndex() {
-  return readJson(indexPath(), undefined) ?? rebuildIndex();
+  const index = readJson(indexPath(), undefined);
+  return index && Object.values(index.routines ?? {}).every(r => Array.isArray(r.pages)) ? index : rebuildIndex();
 }
 
 function rebuildIndex() {

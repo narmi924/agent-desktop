@@ -74,7 +74,7 @@ async function runRoutine(name, given, run, { fixes } = {}) {
 function list(filter) {
   const wanted = filter?.toLowerCase();
   const rows = Object.entries(store.readIndex().routines)
-    .filter(([name, r]) => !wanted || [name, r.about, ...(r.apps ?? []), ...(r.hosts ?? [])].some(t => String(t ?? '').toLowerCase().includes(wanted)))
+    .filter(([name, r]) => !wanted || [name, r.about, ...(r.apps ?? []), ...(r.hosts ?? []), ...(r.pages ?? [])].some(t => String(t ?? '').toLowerCase().includes(wanted)))
     .map(([name, r]) => row(name, r));
   return { routines: rows };
 }
@@ -111,7 +111,19 @@ function allow(name) {
 }
 
 function revoke(name) {
-  return { revoked: name, had: grants.revoke(name) };
+  const had = grants.revoke(name);
+  if (!had && !store.exists(name)) throw notFound(name);
+  return { revoked: name, had };
+}
+
+function notFound(name) {
+  return Object.assign(new Error('No routine is named "' + name + '". routine list shows the saved ones.'), { code: 'ROUTINE_NOT_FOUND' });
+}
+
+/** Refuses a routine name nothing is saved under, before anything else is read or started. */
+function requireRoutine(name) {
+  if (!store.exists(name)) throw notFound(name);
+  return name;
 }
 
 function remove(name) {
@@ -135,4 +147,4 @@ function readArgs({ args, 'args-file': file }, readText) {
   return parseArgs(file !== undefined ? readText(file).replace(/^﻿/, '') : args);
 }
 
-module.exports = { save, runRoutine, list, show, remove, knownRoutines, readArgs, parseParams, routineFrom, permissions, allow, revoke };
+module.exports = { save, runRoutine, list, show, remove, knownRoutines, readArgs, parseParams, routineFrom, permissions, allow, revoke, requireRoutine };
