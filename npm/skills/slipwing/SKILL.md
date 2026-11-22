@@ -83,6 +83,7 @@ await web.check("I confirm the details");
 await web.click("Place order");
 const order = (await web.waitText("Order number")).match(/D\d+/)[0];
 await desktop.fill("Customer register", "Order", order);
+await desktop.select("Customer register", "Customer type", "Business");
 await desktop.click("Customer register", "Save");
 return order;
 ```

@@ -22,6 +22,11 @@ const CHANGE_SETTLE_MS = 250;
 const BLOCKED_AFTER_MS = 1500;
 const BLOCKED_POLL_MS = 600;
 
+/** A read without the read's own id in each ref, so two reads of an unchanged window compare equal. */
+function withoutReadIds(text) {
+  return text.replace(/@s[a-z0-9]+:/g, '@');
+}
+
 function isTitleBar(node) {
   return node.role === 'titlebar' || (node.native_id?.kind === 'automation_id' && node.native_id.value === 'TitleBar');
 }
@@ -388,6 +393,29 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     return reply?.completed_entries ?? entries.length;
   }
 
+  /**
+   * Writes a value into a field, or picks an option of a drop-down, without keys: set-value on the control. A name
+   * found only in the window's picture is clicked and typed instead. `label` names the step as the script called it.
+   */
+  function fillAs(label, { window, target, value, options }) {
+    return step(label, target, async () => {
+      const typed = async id => {
+        const clicked = await clickPicture(id, target, options);
+        if (!clicked) return undefined;
+        await ad(['--headed', 'type', '--window-id', id, '--stdin'], { input: String(value) });
+        if (await pictureShows(id, String(value), SEEN_WAIT_MS)) return true;
+        warn(label + ' "' + target + '" typed the text by picture, but the window does not show it afterwards.');
+        return false;
+      };
+      const reply = await act(window, target, { roles: WRITABLE, ...options }, ref => ad(['set-value', ref, '--stdin'], { input: String(value) }), typed);
+      if (typeof reply === 'boolean') return reply;
+      const ok = confirmed(label, target, reply);
+      if (ok) written.add(await resolve(window));
+      else { windowEffects = 0; await controlEffects(window, { hidden: target, written: String(value), settle: false }); }
+      return ok;
+    });
+  }
+
   const desktop = {
     sequence: (window, actions) => step('desktop.sequence', window, () => sequence(window, actions)),
     check: tick(true),
@@ -435,22 +463,8 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       if (done?.via !== 'picture') await controlEffects(window);
       return done?.via === 'picture' ? done : undefined;
     }),
-    fill: (window, target, value, options) => step('desktop.fill', target, async () => {
-      const typed = async id => {
-        const clicked = await clickPicture(id, target, options);
-        if (!clicked) return undefined;
-        await ad(['--headed', 'type', '--window-id', id, '--stdin'], { input: String(value) });
-        if (await pictureShows(id, String(value), SEEN_WAIT_MS)) return true;
-        warn('desktop.fill "' + target + '" typed the text by picture, but the window does not show it afterwards.');
-        return false;
-      };
-      const reply = await act(window, target, { roles: WRITABLE, ...options }, ref => ad(['set-value', ref, '--stdin'], { input: String(value) }), typed);
-      if (typeof reply === 'boolean') return reply;
-      const ok = confirmed('desktop.fill', target, reply);
-      if (ok) written.add(await resolve(window));
-      else { windowEffects = 0; await controlEffects(window, { hidden: target, written: String(value), settle: false }); }
-      return ok;
-    }),
+    fill: (window, target, value, options) => fillAs('desktop.fill', { window, target, value, options }),
+    select: (window, target, option, options) => fillAs('desktop.select', { window, target, value: option, options }),
     type: (window, target, text, options) => step('desktop.type', target, async () => {
       const keys = String(text);
       const entry = [...(options?.multiline ? ['--entry-mode', 'multiline'] : []), ...(options?.at ? ['--at', options.at] : [])];
@@ -530,7 +544,8 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       let last, since = Date.now();
       for (;;) {
         const { text } = await view(window, true);
-        if (text !== last) { last = text; since = Date.now(); } else if (Date.now() - since >= quiet) return text;
+        const content = withoutReadIds(text);
+        if (content !== last) { last = content; since = Date.now(); } else if (Date.now() - since >= quiet) return text;
         if (Date.now() >= until) {
           warn('desktop.waitIdle: the window was still changing after ' + timeout + ' ms; this is its latest read.');
           return text;

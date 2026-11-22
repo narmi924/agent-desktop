@@ -145,9 +145,27 @@ test('waitIdle returns the read once it stops changing, and warns instead of fai
   const busy = tools({ 'desktop list-windows': [NOTEPAD], 'desktop snapshot': () => growing(++ticks) });
   const late = await busy.run(`return await desktop.waitIdle('记事本', { timeout: 300, quiet: 100 });`);
   assert.match(late.warnings[0], /still changing after 300 ms/);
+  let read = 0;
+  const still = () => { read++; return { snapshot_id: 's' + read, complete: true, tree: { role: 'window', name: '客户登记', children: [{ role: 'button', name: '提交', ref_id: '@s' + read + ':e1' }] } }; };
+  const steady = tools({ 'desktop list-windows': [NOTEPAD], 'desktop snapshot': still });
+  const quick = await steady.run(`return await desktop.waitIdle('记事本', { timeout: 3000, quiet: 100 });`);
+  assert.equal(quick.warnings, undefined, 'each read has its own id in every ref; an unchanged window is still idle');
+  assert.ok(read < 6, 'it returned after a few reads, not at the timeout: ' + read);
   let page = 0;
   const web = tools({ 'browser snapshot': () => ({ snapshot: '- text "已加载 ' + Math.min(++page, 2) + '"' }) });
   assert.match((await web.run(`return await web.waitIdle({ quiet: 100 });`)).result, /已加载 2/);
+});
+
+test('desktop.select picks an option of a drop-down without keys, named as the script called it', async () => {
+  const form = { complete: true, tree: { role: 'window', name: '客户登记', children: [
+    { role: 'combobox', name: '客户类型', ref_id: '@s4:e1', children: [{ role: 'button', name: '打开', ref_id: '@s4:e2' }] }] } };
+  const { calls, run } = tools({ 'desktop list-windows': [NOTEPAD], 'desktop snapshot': form,
+    'desktop set-value': (words, options) => ({ disposition: { delivery: 'delivered_verified' }, input: options.input }) });
+  const done = await run(`return await desktop.select('记事本', '客户类型', '企业');`);
+  assert.equal(done.result, true);
+  assert.match(done.steps[0], /^desktop\.select 客户类型 \d+ms$/);
+  assert.deepEqual(calls.find(words => words[0] === 'set-value').slice(0, 2), ['set-value', '@s4:e1']);
+  assert.ok(!calls.some(words => words.includes('--headed')), 'no keys were sent');
 });
 
 test('the same step failing the same way twice in a row is marked with a count and advice', () => {
