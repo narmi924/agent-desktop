@@ -5,7 +5,7 @@ const { test } = require('node:test');
 const { runScript } = require('../../npm/lib/script-run');
 const { BACKGROUND_ONLY } = require('../../npm/lib/script-screen');
 
-const PAGE = { page: 'handle-1', window: 'w-9', title: '会员注册', url: 'http://127.0.0.1:8790/register', text: '会员注册\n已注册，会员号 M1042',
+const PAGE = { page: 'handle-1', window: 'w-9', title: '会员注册', url: 'http://127.0.0.1:8790/register', instance: 'i1', instances: ['i1'], text: '会员注册\n已注册，会员号 M1042',
   controls: [{ ref: '@s1:e1', role: 'textfield', name: '姓名' }, { ref: '@s1:e2', role: 'checkbox', name: '我已阅读并同意会员条款' },
     { ref: '@s1:e3', role: 'combobox', name: '所在城市' }, { ref: '@s1:e4', role: 'button', name: '提交注册' }] };
 const WINDOW = { complete: true, tree: { role: 'window', name: '会员注册 - Google Chrome', children: [] } };
@@ -55,15 +55,25 @@ test('on screen, a background-style script fills, ticks, picks and clicks in the
   assert.ok(done.steps.every(line => line.startsWith('visible.')), 'every step says it happened on screen: ' + done.steps.join(' | '));
 });
 
-test('on screen, open uses a new Chrome tab and waits until that tab shows the address', async () => {
+test('on screen, open uses a new Chrome tab and waits until that new tab is the one shown', async () => {
   let reads = 0;
-  const shown = { ...PAGE, url: 'about:blank' };
+  const fresh = { ...PAGE, title: '新开的注册页', instance: 'i2', instances: ['i1', 'i2'] };
   const { result, opened } = onScreen('return (await web.open("http://127.0.0.1:8790/register")).title;', {
-    page: () => (++reads < 3 ? shown : PAGE),
+    page: () => (++reads < 4 ? PAGE : fresh),
   });
-  assert.equal((await result).result, '会员注册');
+  assert.equal((await result).result, '新开的注册页', 'the tab that was open before, at the very same address, is not taken for the new one');
   assert.deepEqual(opened, ['http://127.0.0.1:8790/register']);
-  assert.ok(reads >= 3, 'it read the tab again until the address matched');
+  assert.ok(reads >= 4, 'it read again until the new tab showed');
+});
+
+test('two orders that differ only in their number are never mixed up when one is opened', async () => {
+  let reads = 0;
+  const first = { ...PAGE, title: '订单 D6181', url: 'http://127.0.0.1:8790/orders?id=D6181', instance: 'i1', instances: ['i1'] };
+  const second = { ...PAGE, title: '订单 D6182', url: 'http://127.0.0.1:8790/orders?id=D6182', instance: 'i2', instances: ['i1', 'i2'] };
+  const { result } = onScreen('return (await web.open("http://127.0.0.1:8790/orders?id=D6182")).title;', {
+    page: () => (++reads < 4 ? first : second),
+  });
+  assert.equal((await result).result, '订单 D6182');
 });
 
 test('on screen, open refuses anything but a web address, before anything starts', async () => {

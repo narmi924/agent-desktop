@@ -68,7 +68,7 @@ function readPage(ad, win, bounds=false) {
 function result(state) {
   const {window,owner,instance,url,title,controls} = state;
   const page = Buffer.from(JSON.stringify({window,owner,instance,url})).toString('base64url');
-  return {page,window,title,url,tab:state.tab,controls,text:state.text};
+  return {page,window,title,url,tab:state.tab,instance,instances:state.instances,controls,text:state.text};
 }
 
 async function readyPage(ad, id, owner, bounds=false) {

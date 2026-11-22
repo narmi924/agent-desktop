@@ -20,12 +20,13 @@ function checkedUrl(url) {
   return parsed.href;
 }
 
-/** The page a tab shows counts as the one asked for when it is the same address, or one the site redirected to on the same host. */
-function samePage(shown, asked) {
-  try {
-    const a = new URL(shown), b = new URL(asked);
-    return a.host === b.host && (a.pathname === b.pathname || a.pathname.startsWith(b.pathname.replace(/\/$/, '') + '/') || b.pathname === '/');
-  } catch { return false; }
+/**
+ * The tab opened for an address is the one that was not there before and shows the same site. Two pages of one site
+ * that differ only in an order number or a query look alike, so the address alone never picks the tab.
+ */
+function openedTab(page, known, asked) {
+  if (!page.instance || known.has(page.instance)) return false;
+  try { return new URL(page.url).host === new URL(asked).host; } catch { return false; }
 }
 
 /**
@@ -150,12 +151,14 @@ function createVisible({ flow, step, warn, pace, takeInput = () => {}, pressKey,
     open: url => step('visible.open', url, async () => {
       const address = checkedUrl(url);
       takeInput('visible.open');
+      let known = new Set();
+      try { known = new Set((await bind()).instances ?? []); } catch { /* No Chrome window is open yet. */ }
       openUrl(address);
       const until = Date.now() + OPEN_WAIT_MS;
       for (;;) {
         try {
-          const page = await bind();
-          if (samePage(page.url, address)) return shown(page);
+          const page = await bind(null);
+          if (openedTab(page, known, address)) return shown(page);
         } catch { /* The new tab may not be readable yet. */ }
         if (Date.now() >= until) throw Object.assign(new Error('Chrome did not show ' + address + ' within ' + OPEN_WAIT_MS / 1000 + ' s.'), { code: 'TIMEOUT' });
         await delay(250);

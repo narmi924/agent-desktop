@@ -29,6 +29,13 @@ const schedule = require('../lib/routine-schedule');
 const skill = require('../lib/skill-command');
 const { versionReport } = require('../lib/bundle-version');
 
+/**
+ * The background browser's own session. No guide tells anyone to attach this name to the user's Chrome, and an
+ * inherited AGENT_BROWSER_SESSION never replaces it, so background web steps cannot land in a browser the user signed
+ * into: an agent-browser session keeps whatever browser it was first connected to.
+ */
+const BACKGROUND_SESSION = 'agent-desktop-background';
+
 const usage = [
   'agent-desktop-workflow --version   (the version of this bundle, and for each program the installed version and the official release it is built on)',
   'agent-desktop-workflow connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
@@ -277,7 +284,7 @@ async function main() {
   if (command === 'mcp') { await mcp.serve({ workflowPath: __filename }); return; }
   const names = COMMAND_OPTIONS[command];
   const { values, positionals } = parseArgs({ args: joinCoordinates(args), options: parseOptions(command), allowPositionals: POSITIONAL_COMMANDS.includes(command) });
-  if (names.includes('session') && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
+  if (names.includes('session') && !['run', 'routine'].includes(command) && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   if (command === 'run' && values.api) { console.log(api); return; }
   if (command === 'skill' && !values.list && !values.install) { console.log(skill.read(positionals[0])); return; }
   const own = {
@@ -348,7 +355,7 @@ function scriptRunner({ session, chrome, space: own, 'timeout-ms': wait = '12000
   if (pointer) process.env.AGENT_DESKTOP_POINTER ??= pointer;
   return (source, extra) => runScript(source, {
     browser: optionalBrowserBinary(), native: nativeBinary(), timeout, flow: perform, allowInput, allowFinal, startPace: pace, screen,
-    flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? 'work'],
+    flags: own ? spaceFlags() : chrome ? chromeFlags() : ['--session', session ?? BACKGROUND_SESSION],
     env: chrome ? { ...process.env, AGENT_BROWSER_IDLE_TIMEOUT_MS: '0' } : process.env, ...extra,
   });
 }
