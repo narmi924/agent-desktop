@@ -72,12 +72,30 @@ const isRef = target => /^@\w+:e\d+$/.test(String(target));
  * A name is looked for among the window's controls first; when no control has it, the window's
  * picture is read and the text found there is used instead, unless the call passes {picture: false}.
  */
-function createDesktop({ call, step, warn, note = () => {}, picture: makePicture = createPicture, pace = () => undefined, inputAllowed = () => true, touch = () => {}, watching = () => false }) {
+const MAX_STRAY = 3;
+
+/**
+ * How much of `keys` went in after `before` when typing was stopped part way: the characters that match, and how many
+ * stray ones follow them (a slip not yet taken back). Undefined when the field no longer starts with what it held.
+ */
+function typedSoFar(before, after, keys) {
+  if (typeof after !== 'string' || !after.startsWith(before)) return undefined;
+  const added = after.slice(before.length);
+  let done = 0;
+  while (done < added.length && done < keys.length && added[done] === keys[done]) done++;
+  const stray = added.length - done;
+  return stray <= MAX_STRAY ? { done, stray } : undefined;
+}
+
+function createDesktop({ call, step, warn, note = () => {}, picture: makePicture = createPicture, pace = () => undefined, inputAllowed = () => true, touch = () => {}, watching = () => false, interrupted = () => false }) {
   const views = new Map(), found = new Map(), drawnWindows = new Set(), apps = new Map();
   let last, listed, pending;
   const ad = (args, options) => call(args.map(String), pending ? { signal: pending, ...options } : options);
   const picture = makePicture({ ad });
   const asPerson = () => (pace() ? ['--headed', '--human', pace()] : []);
+  const fieldValue = async ref => {
+    try { const reply = await ad(['get', ref, '--property', 'value']); return typeof reply === 'string' ? reply : reply?.value; } catch { return undefined; }
+  };
 
   async function windows(filter) {
     const wanted = filter === undefined ? undefined : String(filter).toLowerCase();
@@ -374,8 +392,20 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     type: (window, target, text, options) => step('desktop.type', target, async () => {
       const keys = String(text);
       const entry = [...(options?.multiline ? ['--entry-mode', 'multiline'] : []), ...(options?.at ? ['--at', options.at] : [])];
-      const reply = await watchWindows(() => act(window, target, { roles: WRITABLE, ...options },
-        ref => ad(['--headed', ...asPerson().slice(1), 'type', ref, '--stdin', ...entry], { input: keys, timeout: TYPE_WAIT_MS + keys.length * TYPE_KEY_MS })));
+      const reply = await watchWindows(() => act(window, target, { roles: WRITABLE, ...options }, async ref => {
+        const before = !options?.at || options.at === 'end' ? await fieldValue(ref) : undefined;
+        try {
+          return await ad(['--headed', ...asPerson().slice(1), 'type', ref, '--stdin', ...entry], { input: keys, timeout: TYPE_WAIT_MS + keys.length * TYPE_KEY_MS });
+        } catch (err) {
+          if (!interrupted() || typeof before !== 'string') throw err;
+          const so = typedSoFar(before, await fieldValue(ref), keys);
+          if (!so) throw err;
+          if (so.stray) await ad(['set-value', ref, '--stdin'], { input: before + keys.slice(0, so.done) });
+          throw Object.assign(new Error('PERSON_TOOK_OVER: typing stopped after ' + so.done + ' of ' + keys.length +
+            ' characters; the rest goes in at the end once nobody touches the mouse or keyboard.'),
+          { code: 'PERSON_TOOK_OVER', resumeWith: [window, target, keys.slice(so.done), { ...options, at: 'end' }] });
+        }
+      }));
       views.clear();
       return confirmed('desktop.type', target, reply);
     }),
@@ -469,4 +499,4 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
   return { desktop, markTarget, scene };
 }
 
-module.exports = { createDesktop, renderTree };
+module.exports = { createDesktop, renderTree, typedSoFar };

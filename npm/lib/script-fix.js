@@ -38,7 +38,7 @@ function fixable(surfaces, { ask, runPatch, fixes = [], allowOnce = () => {}, wa
             const cutShort = waitHands?.cutShort?.() ?? false;
             if (waitHands && (err.code === 'INPUT_NOT_ALLOWED' || YIELDED.test(err.message ?? '') || cutShort)) {
               const outcome = await waitHands({ step: err.step ?? surface + '.' + name, helper: name, reason: err.code === 'INPUT_NOT_ALLOWED' ? 'hands' : 'user', error: err, uncertain: cutShort && !YIELDED.test(err.message ?? '') });
-              if (outcome === 'retry') continue;
+              if (outcome === 'retry') { if (err.resumeWith) current = err.resumeWith; continue; }
               if (outcome !== 'fix') throw err;
             }
             const approval = err.code === 'FINAL_NOT_ALLOWED';

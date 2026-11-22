@@ -2,7 +2,8 @@
 # Prints one word: once | always | deny | timeout.
 # Only a real mouse click counts: the choices are not buttons (nothing to invoke through UI Automation), keys do
 # nothing, and a click whose mouse-down was synthesized (SendInput, mouse_event: anything a program sends) is ignored.
-param([string]$What, [string]$Routine = '', [string]$Details = '', [string]$Picture = '', [int]$Seconds = 120)
+# -SelfTest once|always|deny raises that choice's own click handler as a person's click would, to check the answer reaches stdout.
+param([string]$What, [string]$Routine = '', [string]$Details = '', [string]$Picture = '', [int]$Seconds = 120, [string]$SelfTest = '')
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
@@ -70,7 +71,8 @@ if ($Picture -and (Test-Path $Picture)) {
 $note = New-Object Windows.Controls.TextBlock
 $note.FontSize = 12; $note.Foreground = [Windows.Media.Brushes]::DimGray; $note.Margin = '0,4,0,0'; $note.FontFamily = 'Microsoft YaHei UI'
 
-$script:answer = 'timeout'
+$state = @{ answer = 'timeout' }
+$choices = @{}
 $row = New-Object Windows.Controls.StackPanel
 $row.Orientation = 'Horizontal'
 $row.Margin = '0,8,0,0'
@@ -85,9 +87,10 @@ function Add-Choice([string]$label, [string]$value, $fill, $text, [bool]$enabled
     $b.Add_MouseLeftButtonUp({
         if (-not $enabled) { return }
         if ([RealClick]::LastDownInjected) { $note.Text = '只认真人用鼠标点的这一下。'; return }
-        $script:answer = $value
+        $state.answer = $value
         $window.Close()
     }.GetNewClosure())
+    $choices[$value] = $b
     [void]$row.Children.Add($b)
 }
 Add-Choice '允许这一次' 'once' $ink $paper $true
@@ -105,5 +108,13 @@ $timer.Add_Tick({
 })
 $script:left = $Seconds
 $timer.Start()
+if ($SelfTest) {
+    $window.Add_ContentRendered({
+        [RealClick]::LastDownInjected = $false
+        $up = New-Object Windows.Input.MouseButtonEventArgs ([Windows.Input.Mouse]::PrimaryDevice, 0, [Windows.Input.MouseButton]::Left)
+        $up.RoutedEvent = [Windows.UIElement]::MouseLeftButtonUpEvent
+        $choices[$SelfTest].RaiseEvent($up)
+    })
+}
 [void]$window.ShowDialog()
-[Console]::Out.WriteLine($script:answer)
+[Console]::Out.WriteLine($state.answer)

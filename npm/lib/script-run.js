@@ -206,7 +206,7 @@ async function runScript(source, { browser, native, flags = [], env, timeout = 1
   });
   let pace;
   const desk = createDesktop({ call: need(native, 'agent-desktop', gate), step, warn: text => warnings.push(text), note, picture, pace: () => pace,
-    inputAllowed: handsFree, touch, watching });
+    inputAllowed: handsFree, touch, watching, interrupted: () => Boolean(hands?.cutShort?.()) });
   const seen = createVisible({ step, warn: text => warnings.push(text), pace: () => pace, takeInput,
     flow: (command, options) => {
       if (!flow) throw new Error('The visible page helpers are not available here.');
