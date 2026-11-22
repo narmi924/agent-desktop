@@ -6,7 +6,8 @@ const { join } = require('node:path');
 const { request, running, ensureHost } = require('./host-client');
 const { jobsDir } = require('./host-paths');
 
-const FIX_WAIT_MS = 10 * 60 * 1000;
+const { FIX_WAIT_MS, APPROVAL_WAIT_MS } = require('./host-waits');
+
 const usage = 'job list | job show ID | job wait ID [--timeout-ms MS] | job stop ID | job report ID | job retry ID [--target NAME] [--options JSON] | job do ID --file PATCH.js | job skip ID [--value JSON] | job approve ID | job grant (ID | --all) --for SECONDS';
 
 async function hostCommand([action], { workflowPath, nativeBinary }) {
@@ -79,7 +80,7 @@ async function job([action, id, ...rest], values, readText) {
       if (!values.file) throw Object.assign(new Error('job do ID --file PATCH.js'), { code: 'INVALID_ARGS' });
       return fix({ action: 'do', source: readText(values.file).replace(/^﻿/, '') });
     case 'skip': return fix({ action: 'skip', ...(values.value !== undefined ? { value: parseJson(values.value, '--value') } : {}) });
-    case 'approve': return request('confirm', { id });
+    case 'approve': return fix({ action: 'approve' });
     case 'grant': return request('grant', { id, seconds: Number(values.for) });
     default: throw Object.assign(new Error(usage), { code: 'INVALID_ARGS' });
   }
@@ -103,11 +104,12 @@ async function runJob(start, { runner, routines, nativeBinary }) {
   });
   const fixes = [];
   const ask = info => new Promise(resolve => {
+    const waitMs = info.approval ? APPROVAL_WAIT_MS : FIX_WAIT_MS;
     send({ type: 'waiting', reason: info.approval ? 'approval' : 'fix', info: { step: info.step, error: errorInfo(info.error), sent: info.sent, target: info.target, scene: info.scene,
-      ...(info.approval ? { final: info.error.details, picture: info.error.details?.picture } : {}),
-      until: new Date(Date.now() + FIX_WAIT_MS).toISOString() } });
+      ...(info.approval ? { final: info.error.details, picture: info.error.details?.picture, need: 'the user agreeing in the chat: then job approve ' + start.id } : {}),
+      until: new Date(Date.now() + waitMs).toISOString() } });
     execFile(nativeBinary, ['restore-cursor'], { windowsHide: true }, () => {});
-    const timer = setTimeout(() => { pending = undefined; resolve({ action: 'stop' }); }, FIX_WAIT_MS);
+    const timer = setTimeout(() => { pending = undefined; resolve({ action: 'stop' }); }, waitMs);
     pending = decision => { clearTimeout(timer); send({ type: 'running' }); resolve(decision); };
   });
   const fix = { ask, fixes };
@@ -143,7 +145,7 @@ async function runJob(start, { runner, routines, nativeBinary }) {
   return { keep: true };
 }
 
-const watchUsage = 'watch add (--window TITLE [--gone] | --text TEXT --in WINDOW [--gone] [--every-ms MS] | --notification TEXT | --file PATH) [--then ROUTINE [--args JSON | --args-file FILE]] | watch list | watch show ID | watch wait ID [--timeout-ms MS] | watch remove ID';
+const watchUsage = 'watch add (--window TITLE [--gone] | --text TEXT --in WINDOW [--gone] [--every-ms MS] | --notification TEXT | --file PATH) [--then ROUTINE [--args JSON | --args-file FILE] [--allow-final]] | watch list | watch show ID | watch wait ID [--timeout-ms MS] | watch remove ID';
 
 /** Watches live in the host: adding one starts the host if needed. */
 async function watch([action, id, ...rest], values, { workflowPath, readText }) {
@@ -152,8 +154,9 @@ async function watch([action, id, ...rest], values, { workflowPath, readText }) 
     await ensureHost(workflowPath);
     const args = values['args-file'] !== undefined ? parseJson(readText(values['args-file']).replace(/^\uFEFF/, ''), '--args-file') : parseJson(values.args, '--args');
     if (args !== undefined && !values.then) throw Object.assign(new Error('--args goes with --then ROUTINE.'), { code: 'INVALID_ARGS' });
+    if (values['allow-final'] && !values.then) throw Object.assign(new Error('--allow-final goes with --then ROUTINE.'), { code: 'INVALID_ARGS' });
     return request('watch_add', { spec: { window: values.window, text: values.text, in: values.in, gone: values.gone, every: values['every-ms'],
-      notification: values.notification, file: values.file, then: values.then, args } });
+      notification: values.notification, file: values.file, then: values.then, args, allowFinal: Boolean(values['allow-final']) } });
   }
   if (action === 'list') {
     try { return await request('watch_list'); } catch (err) { if (err.code === 'HOST_NOT_RUNNING') return { watches: [], host: 'not running' }; throw err; }

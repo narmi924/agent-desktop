@@ -95,13 +95,19 @@ function show(name) {
   };
 }
 
-/** Routines a person approved for good in the confirmation window, and whether each is still the script they approved. */
+/** Routines the user allowed for good, and whether each is still the script they allowed. */
 function permissions() {
   return { approved: Object.entries(grants.approvals()).map(([name, entry]) => {
     let current;
     try { current = grants.approved(name, store.load(name).script); } catch { current = false; }
     return { name, since: entry.at, current };
   }), protected: grants.protectedSurfaces(), protected_file: grants.protectedPath() };
+}
+
+/** The user said in the chat that this routine may always do its final steps: tied to its script, so a change voids it. */
+function allow(name) {
+  grants.approve(name, store.load(name).script);
+  return { allowed: name, note: 'Its final steps now go without asking, in the foreground, as a job and after a watch, until the routine changes or routine revoke ' + name + '.' };
 }
 
 function revoke(name) {
@@ -129,4 +135,4 @@ function readArgs({ args, 'args-file': file }, readText) {
   return parseArgs(file !== undefined ? readText(file).replace(/^﻿/, '') : args);
 }
 
-module.exports = { save, runRoutine, list, show, remove, knownRoutines, readArgs, parseParams, routineFrom, permissions, revoke };
+module.exports = { save, runRoutine, list, show, remove, knownRoutines, readArgs, parseParams, routineFrom, permissions, allow, revoke };

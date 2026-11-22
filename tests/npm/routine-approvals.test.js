@@ -55,7 +55,8 @@ test('a script on a protected app stops before anything is sent; an approved rou
     input: false, finals: [], apps: ['bank.exe'], hosts: [], steps: [], seen: {}, pinned: {} }, source);
   const before = await routines.runRoutine('pay-rent', {}, (src, extra) => desk().run(src, extra)).catch(e => e);
   assert.equal(before.code, 'FINAL_NOT_ALLOWED', 'without a standing approval the final click is refused');
-  grants.approve('pay-rent', source);
+  assert.equal(routines.allow('pay-rent').allowed, 'pay-rent', 'the user said so in the chat: routine allow records it');
+  assert.deepEqual(routines.permissions().approved.map(a => [a.name, a.current]), [['pay-rent', true]]);
   const tools = desk();
   const after = await routines.runRoutine('pay-rent', {}, (src, extra) => tools.run(src, extra));
   assert.equal(after.routine, 'pay-rent');

@@ -126,6 +126,10 @@ test('a notification watch reads only toasts newer than itself and starts its ro
     assert.equal(done.fired.match, '下载完成 report.pdf');
     assert.equal(done.job, 'j-test');
     assert.deepEqual(jobs, [{ routine: 'upload-file', args: { note: '下载完成 report.pdf' }, values: {} }], 'no --allow-final: the routine still stops before a final step');
+    const agreed = await watches.add({ notification: '上传吧', then: 'upload-file', allowFinal: true });
+    base.prepare("insert into Notification (Type, Payload) values ('toast', ?)").run(Buffer.from('<toast><text>上传吧</text></toast>'));
+    await fired(agreed.id, 3000);
+    assert.deepEqual(jobs[1].values, { 'allow-final': true }, 'the user agreed to the final step when the watch was set: the job goes through it');
   } finally { watches.stopAll(); base.close(); }
 });
 

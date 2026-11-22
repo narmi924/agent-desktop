@@ -14,7 +14,7 @@ let pipes = 0;
 /** A host of its own: a fresh state folder and pipe, no native binary, and a short idle time when asked. */
 function isolated(idleMs = 600000) {
   const home = mkdtempSync(join(tmpdir(), 'ad-host-'));
-  const env = { ...process.env, AGENT_DESKTOP_HOME: home, AGENT_DESKTOP_CONFIRM: 'off', AGENT_DESKTOP_HOST_PIPE: '\\\\.\\pipe\\ad-host-test-' + process.pid + '-' + (++pipes),
+  const env = { ...process.env, AGENT_DESKTOP_HOME: home, AGENT_DESKTOP_NOTIFY: 'off', AGENT_DESKTOP_HOST_PIPE: '\\\\.\\pipe\\ad-host-test-' + process.pid + '-' + (++pipes),
     AGENT_DESKTOP_BIN: join(home, 'no-native.exe'), AGENT_DESKTOP_HOST_IDLE_MS: String(idleMs) };
   delete env.AGENT_DESKTOP_POINTER_HOLDER;
   return env;
@@ -186,32 +186,53 @@ test('a failed step retried with another name runs again with it; a patch runs f
   assert.deepEqual(fixes.map(f => f.action), ['do', 'retry', 'skip']);
 });
 
-test('a job without --allow-final runs up to a final step and waits there for an approval', async () => {
+test('a job without --allow-final waits before a final step; job approve, after the user agreed in the chat, lets it go', async () => {
   const env = isolated();
-  const { reply } = await cli(env, ['run', '--detach'], 'log("before"); await web.click("提交订单"); return "after";');
+  const { reply } = await cli(env, ['run', '--detach'], 'await new Promise(r => setTimeout(r, 1500)); await desktop.click("登记", "提交订单"); return "after";');
   try {
     const id = reply.data.id;
     const waiting = (await cli(env, ['job', 'wait', id])).reply.data;
     assert.equal(waiting.state, 'waiting');
     assert.equal(waiting.reason, 'approval', 'the final click is held, not the whole script refused');
     assert.equal(waiting.waiting.error.code, 'FINAL_NOT_ALLOWED');
+    assert.match(waiting.waiting.need, /job approve/);
+    const shown = (await cli(env, ['job', 'show', id])).reply.data;
+    assert.equal(shown.notified, undefined, 'a caller was waiting on the job and will ask in the chat: no notification');
+    const minutes = (Date.parse(waiting.waiting.until) - Date.now()) / 60000;
+    assert.ok(minutes > 25 && minutes <= 30, 'the user gets half an hour to answer, not the ten minutes of a fix');
     const wrong = (await cli(env, ['job', 'retry', id])).reply;
-    assert.equal(wrong.error ? 'refused' : wrong.ok, 'refused');
-    const asked = (await cli(env, ['job', 'approve', id])).reply.data;
-    assert.equal(asked.showing, true, 'job approve only shows the confirmation window again');
-    assert.equal((await cli(env, ['job', 'show', id])).reply.data.reason, 'approval', 'nothing but a click in that window lets the step go');
-    const token = readFileSync(join(env.AGENT_DESKTOP_HOME, 'host', 'token'), 'utf8');
-    const net = require('node:net');
-    const direct = await new Promise(resolve => {
-      const socket = net.connect(env.AGENT_DESKTOP_HOST_PIPE, () => socket.write(JSON.stringify({ token, op: 'fix', id, decision: { action: 'approve' } }) + '\n'));
-      let text = '';
-      socket.on('data', d => { text += d; if (text.includes('\n')) { socket.end(); resolve(JSON.parse(text)); } });
+    assert.equal(wrong.code, 'JOB_NEEDS_APPROVAL');
+    const approved = (await cli(env, ['job', 'approve', id])).reply;
+    assert.equal(approved.ok, true);
+    const next = (await cli(env, ['job', 'wait', id, '--timeout-ms', '15000'])).reply.data;
+    assert.equal(next.reason, 'fix', 'approved: the click went out and failed only because no desktop tool exists here');
+    assert.notEqual(next.waiting.error.code, 'FINAL_NOT_ALLOWED');
+  } finally { await stopHost(env); }
+});
+
+test('a job that stops before a final step with nobody waiting on it notifies the user; job approve is refused for a plain fix', async () => {
+  const env = isolated();
+  const { reply } = await cli(env, ['run', '--detach'], 'await web.click("提交订单"); return "after";');
+  try {
+    const id = reply.data.id;
+    const shown = await until(async () => {
+      const job = (await cli(env, ['job', 'show', id])).reply.data;
+      return job.reason === 'approval' && job;
     });
-    assert.equal(direct.error.code, 'POLICY_DENIED', 'not even with the host token');
+    assert.ok(shown.notified, 'no caller heard it, so the user is told to come back to the chat');
     await cli(env, ['job', 'skip', id]);
     const done = (await cli(env, ['job', 'wait', id])).reply.data;
     assert.equal(done.result.result, 'after', 'skipping the final step is the caller\'s other way out');
   } finally { await stopHost(env); }
+  const fixEnv = isolated();
+  const failing = await cli(fixEnv, ['run', '--detach'], 'await desktop.click("没有这个窗口", "保存"); return 1;');
+  try {
+    const id = failing.reply.data.id;
+    const waiting = (await cli(fixEnv, ['job', 'wait', id])).reply.data;
+    assert.equal(waiting.reason, 'fix');
+    const refused = (await cli(fixEnv, ['job', 'approve', id])).reply;
+    assert.equal(refused.code, 'JOB_NOT_WAITING', 'approve only answers a final step');
+  } finally { await stopHost(fixEnv); }
 });
 
 test('a job waits before a step that needs the hands, goes on once granted, and the background steps before it ran', async () => {

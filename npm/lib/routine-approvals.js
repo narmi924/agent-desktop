@@ -17,7 +17,7 @@ function scriptHash(script) {
   return createHash('sha256').update(String(script)).digest('hex');
 }
 
-/** Standing approvals, written only after a person clicked "以后都允许这个动作" in the confirmation window. */
+/** Standing approvals, written by `routine allow NAME` after the user said so in the chat. */
 function approvals() {
   return readJson(approvalsPath(), {});
 }
