@@ -16,6 +16,14 @@ when the platform cannot establish the required identity or capability. Verify c
 apps and relevant UI toolkits; one app passing does not establish platform-wide correctness. App-specific names belong
 in examples and verification scenarios, never in runtime special cases.
 
+## Diagnose a Slipwing failure
+
+Start with what the person expected and what the app actually did. Check the installed version, command, mode and target against the shipped skill. If a documented example fails, check the example and the test setup before changing the product.
+
+When the cause is unclear, try the smallest operation that distinguishes the likely explanations. Compare Slipwing with the underlying CLI on the same target. For behavior inherited from agent-desktop or agent-browser, use the exact upstream commit in `npm/bundle.json` and check whether upstream already has a fix. A workflow that exists only in Slipwing can be compared with its last working version. Report the originating layer separately from the affected platform or toolkit. An observation on Windows alone leaves other platforms untested.
+
+Fix the cause in the layer that owns it. Check the platform contract when focus, input or delivery is involved. After a possibly delivered click, confirm the app's result before considering another click. Verify a fix against the original symptom from the normal entry point. If the evidence still supports several causes, say what remains unknown and which observation would distinguish them.
+
 ## Commands
 
 Each platform adapter compiles only on its own OS and the workspace names all three, so an unscoped `cargo build`,
