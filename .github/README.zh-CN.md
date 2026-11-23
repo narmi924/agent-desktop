@@ -8,7 +8,7 @@ Slipwing 是基于 [vercel-labs/agent-desktop](https://github.com/vercel-labs/ag
 [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser) 独立制作的 Windows 版本。它把你的桌面软件和浏览器交给
 AI agent，鼠标留给你。
 
-[![播放 25 秒演示](../assets/Videos/slipwing-zh.jpg)](../assets/Videos/slipwing-zh.mp4?raw=true)
+https://github.com/user-attachments/assets/8e2b2930-1413-4bcf-b9a0-56d4820ff6d5
 
 ## 能做什么
 
