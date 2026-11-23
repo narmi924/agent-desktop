@@ -143,7 +143,7 @@ agent-desktop expand @s8f3k2p9:e7
 From the checkout, use Node.js 22+ and the local Windows executable. Open an HTTP(S) page or a local HTML file in Chrome. `current` reads the selected tab of the foreground Chrome window, or the sole visible Chrome window if another app is in front. If several windows qualify, pass `--window ID` from `list-windows`. An explicit window also works with Edge. The command uses Windows accessibility.
 
 ```powershell
-$page = (node npm/bin/workflow.js current | ConvertFrom-Json).data
+$page = (slipwing current | ConvertFrom-Json).data
 $page.url
 $page.controls
 ```
@@ -151,8 +151,8 @@ $page.controls
 On `https://the-internet.herokuapp.com/`, continue in the same tab and then in the new tab:
 
 ```powershell
-$next = (node npm/bin/workflow.js follow --visible --page $page.page --link "Multiple Windows" | ConvertFrom-Json).data
-$child = (node npm/bin/workflow.js follow --visible --page $next.page --link "Click Here" | ConvertFrom-Json).data
+$next = (slipwing follow --visible --page $page.page --link "Multiple Windows" | ConvertFrom-Json).data
+$child = (slipwing follow --visible --page $next.page --link "Click Here" | ConvertFrom-Json).data
 $child.text
 ```
 
@@ -161,10 +161,10 @@ Each result includes the URL, page text, control refs and a handle for the next 
 For visible interaction, type at the caret and turn the mouse wheel over text in the intended pane:
 
 ```powershell
-node npm/bin/workflow.js type --page $page.page --field "Search" --value "linked lists"
-node npm/bin/workflow.js wheel --page $page.page --over "Example 1:" --lines 3
-node npm/bin/workflow.js point --page $page.page --on "Details" --role button
-node npm/bin/workflow.js click --page $page.page --on "Details" --role button --expect-text "More information"
+slipwing type --page $page.page --field "Search" --value "linked lists"
+slipwing wheel --page $page.page --over "Example 1:" --lines 3
+slipwing point --page $page.page --on "Details" --role button
+slipwing click --page $page.page --on "Details" --role button --expect-text "More information"
 ```
 
 Typing inserts at the caret, and the caret of a field nobody clicked is at its start: pass `--at end` to append, or `--at start`. The reply's `landed` says where the text went in (`start`, `end` or `middle`) when the field can be read, and `verified` is false when `--at` was asked and the text landed elsewhere. The default interval is 75 ms between keystroke units; `--interval-ms` changes the pace. `--human` sets its own uneven pace, so pass one or the other; both together are refused before the page is touched. Windows uses the foreground keyboard layout for characters available on a key and Unicode input for other text. While an input method is in a composing mode such as Chinese Pinyin, every character uses Unicode input, so text is committed instead of waiting in the candidate window. A change of tab or receiver stops a burst. Printable keys can continue in an editor's own suggestion list. Hold Escape to interrupt.
@@ -184,9 +184,9 @@ For a background value replacement, use `edit --page PAGE --field NAME --value T
 Use `choose --page` for choices on the open page. No extension, debugging port or named browser session is required:
 
 ```powershell
-node npm/bin/workflow.js choose --page $page.page --field "Favorite Fruit" --value "Fig"
-node npm/bin/workflow.js choose --page $page.page --within "Shipping" --field "Region" --value "South"
-node npm/bin/workflow.js choose --page $page.page --field "Languages" --value "French" --search "Search language" --confirm "Apply"
+slipwing choose --page $page.page --field "Favorite Fruit" --value "Fig"
+slipwing choose --page $page.page --within "Shipping" --field "Region" --value "South"
+slipwing choose --page $page.page --field "Languages" --value "French" --search "Search language" --confirm "Apply"
 ```
 
 Names match the visible field or its adjacent label. A named section disambiguates repeated fields. For a separate calendar or picker button, use `--open NAME`; `--popup NAME` identifies an exposed panel, and `--expect-value TEXT` sets the exact field readback when its display differs from the option label. A radio or checkbox can be chosen by its own name or inside a labelled group. A multi-choice picker adds one option and preserves the others. `--confirm` names a button in the choice popup only. The command checks the original field and reports `changed:false` if the value was already selected.
@@ -200,34 +200,34 @@ Only choices the main document exposes through Windows accessibility can be reso
 In a named agent-browser session, use the exact field label and desired value. From the checkout, run:
 
 ```powershell
-node npm/bin/workflow.js choose --session work --field "Departure" --value 1990-06-18
-node npm/bin/workflow.js choose --session work --field "Favorite Fruit" --value Huckleberry
-node npm/bin/workflow.js choose --session work --field "Records" --value "Record 734" --position 734
+slipwing choose --session work --field "Departure" --value 1990-06-18
+slipwing choose --session work --field "Favorite Fruit" --value Huckleberry
+slipwing choose --session work --field "Records" --value "Record 734" --position 734
 ```
 
 `choose` uses the active session tab, or `--tab t1` to specify one. It reads the selection back from the original field. If the field has no label, pass `--input CSS` instead. Only the main document is supported. Node.js 22+ and the agent-browser executable are required (tested with 0.41.0); set `AGENT_BROWSER_BIN` to give its path.
 
 - Dates use ISO input. For an editable text calendar, also give the page's format: `--format MM/DD/YYYY`, `DD/MM/YYYY` or `YYYY-MM-DD`. A native date needs no format. The command does not submit the form.
 - A single-select dropdown matches its option label. An ARIA combobox must expose its own listbox. For lists that render only some options, the scrollable listbox and its options must expose their positions and total count (`aria-posinset`, `aria-setsize` on the options). A name-only search checks for duplicates within its search budget. If the one-based position is known, `--position` finds that position and checks the label before clicking. Success returns `field`, `value`, `kind` and `scrolls` (explicit list search moves).
-- To choose a file, run `node npm/bin/workflow.js choose-file --session work --tab t1 --input "#attachment" --file "C:\Work\sample.txt"`. Use one visible native browser window in a dedicated headed session. The CSS selector must identify one enabled file input. The command verifies the filename, size and modification time on the original tab. Set `AGENT_DESKTOP_BIN` to override the native executable.
+- To choose a file, run `slipwing choose-file --session work --tab t1 --input "#attachment" --file "C:\Work\sample.txt"`. Use one visible native browser window in a dedicated headed session. The CSS selector must identify one enabled file input. The command verifies the filename, size and modification time on the original tab. Set `AGENT_DESKTOP_BIN` to override the native executable.
 
 If the field cannot confirm the requested value, inspect it before trying again. An open popup or a changed viewport can remain after an error.
 
 Browser workflows that take `--session` also accept `AGENT_BROWSER_SESSION`. Without `--tab`, they use the active tab in that named session.
 
-- If the page exposes no option positions, run `node npm/bin/workflow.js reveal --session work --within "#records" --text "Record 734"`. It looks for the exact visible text, first probing ordered labels or rows already drawn outside the viewport. If those probes miss, it scans overlapping viewports within the search budget. The result describes visibility and the number of scroll moves. Selecting the item is a separate action.
-- For a web drop zone, run `node npm/bin/workflow.js drop-file --session work --input "#drop-zone" --file "C:\Work\sample.txt"`. The zone must accept the drag. Success means it received a trusted drop event with that filename, size and modification time; the application may still need a separate save or upload. For a file input, use `choose-file`.
-- For a web canvas, run `node npm/bin/workflow.js browser-move --session work --surface "#drawing" --from 45,50 --to 145,85 --after drawing.png`. Coordinates are CSS pixels from the visible surface's top left. Add `--object "#square"` for a DOM or SVG object to check its displacement. A bitmap canvas returns a gesture result and, with `--after`, an image of that surface. Use these two gestures only in a dedicated, unrestricted local Chromium session: they use the tab's DevTools connection directly and do not move the OS cursor.
+- If the page exposes no option positions, run `slipwing reveal --session work --within "#records" --text "Record 734"`. It looks for the exact visible text, first probing ordered labels or rows already drawn outside the viewport. If those probes miss, it scans overlapping viewports within the search budget. The result describes visibility and the number of scroll moves. Selecting the item is a separate action.
+- For a web drop zone, run `slipwing drop-file --session work --input "#drop-zone" --file "C:\Work\sample.txt"`. The zone must accept the drag. Success means it received a trusted drop event with that filename, size and modification time; the application may still need a separate save or upload. For a file input, use `choose-file`.
+- For a web canvas, run `slipwing browser-move --session work --surface "#drawing" --from 45,50 --to 145,85 --after drawing.png`. Coordinates are CSS pixels from the visible surface's top left. Add `--object "#square"` for a DOM or SVG object to check its displacement. A bitmap canvas returns a gesture result and, with `--after`, an image of that surface. Use these two gestures only in a dedicated, unrestricted local Chromium session: they use the tab's DevTools connection directly and do not move the OS cursor.
 
 ## Edit a named document (Windows fork)
 
-Run `node npm/bin/workflow.js edit --app Notepad.exe --document "Notes.txt*" --value "Updated notes"`. Match the tab's accessible name exactly or end it with `*` for a unique prefix when the app appends status text. The tab must already be selected. Add `--field "Editor"` if several fields support writing, or `--window ID` instead of `--app` if multiple windows match. Use `--stdin` for piped content. The command replaces the field value; saving the document is separate. It uses the native selected-tab check immediately before writing.
+Run `slipwing edit --app Notepad.exe --document "Notes.txt*" --value "Updated notes"`. Match the tab's accessible name exactly or end it with `*` for a unique prefix when the app appends status text. The tab must already be selected. Add `--field "Editor"` if several fields support writing, or `--window ID` instead of `--app` if multiple windows match. Use `--stdin` for piped content. The command replaces the field value; saving the document is separate. It uses the native selected-tab check immediately before writing.
 
 ## Move within or between native windows (Windows fork)
 
 ```powershell
-node npm/bin/workflow.js view --app mspaint.exe --output paint.png
-node npm/bin/workflow.js move --frame paint.png --from 812,604 --to 925,671 --after moved.png
+slipwing view --app mspaint.exe --output paint.png
+slipwing move --frame paint.png --from 812,604 --to 925,671 --after moved.png
 ```
 
 `view` without `--output` saves the image under a new name and returns its `path`. An `--output` that already exists is refused, because a picture is never overwritten. While a page is loading or a window is opening, `view` captures again until the title and size hold still. Read the image to choose endpoints in its original pixel dimensions; `width` and `height` in the reply are those dimensions, so scale a coordinate back up when your viewer shows the image smaller. The coordinates above are examples. For a cross-window drag, capture the destination separately and pass its PNG with `--to-frame`; `--to` then uses that image. A frame is an ordinary PNG containing the captured window's identity, title, size and scale. Use the original file. Moving a window before the gesture is supported. A changed title, resized window, stale process or covered endpoint refuses the drag; both windows must remain visible. A window frame does not identify a particular object painted inside it.
@@ -241,8 +241,8 @@ For a large window, add `--region X,Y,WIDTH,HEIGHT` to `view` to capture only th
 Click a place in a saved image with `tap`:
 
 ```powershell
-node npm/bin/workflow.js tap --frame paint.png --at 812,604
-node npm/bin/workflow.js tap --frame paint.png --text "Save" --human natural
+slipwing tap --frame paint.png --at 812,604
+slipwing tap --frame paint.png --text "Save" --human natural
 ```
 
 `--text` finds the place with Windows OCR. Several matches fail unless you pass `--nth N`. `tap` brings the captured window to the front, takes the same refusals as `mouse-click --frame`, and waits for 600 ms of quiet first. A shell that splits `812,604` into two words is understood; in PowerShell, quote coordinates built from variables: `--at "$x,$y"`.
@@ -250,7 +250,7 @@ node npm/bin/workflow.js tap --frame paint.png --text "Save" --human natural
 ## Use your running Chrome without the cursor (Windows fork)
 
 ```powershell
-node npm/bin/workflow.js connect
+slipwing connect
 ```
 
 Run this once, after enabling `chrome://inspect/#remote-debugging`. Chrome asks you to allow each new connection, so expect one prompt now and one more after Chrome restarts. The connection stays open while Chrome runs, and later commands reconnect by themselves after a restart or reboot. After that, `current` binds the tab it read over this connection and reports `route: "web"`. `current` gives the saved connection 4 s to answer and asks once; when Chrome is closed or is waiting for you to allow the connection, it returns `route: "desktop"` with a `route_note`, and `connect` is the command that waits. After Chrome restarts, run `connect` again. `current --visible` skips the connection and binds the tab for the real mouse and keyboard only; the script helpers under `visible` use it, so they never wait for the connection and never act in the background. On a `web` page handle, `type`, `edit`, `click` and `follow` run over DevTools without moving the cursor or taking the foreground. A field is found by its label, then its placeholder, then the visible text before it.
@@ -262,7 +262,7 @@ These commands stay on the visible desktop route: `--human`, `--visible`, `--nth
 Set `AGENT_DESKTOP_RECORD=flow.jsonl` while running `follow`, `type`, `wheel`, `point`, `click`, `edit`, `choose`, `tap` or `move`. Each step is appended with its options and the pause before it, up to 5 seconds. `--stdin` text is not recorded.
 
 ```powershell
-node npm/bin/workflow.js replay --file flow.jsonl --window w-1234 --speed 2
+slipwing replay --file flow.jsonl --window w-1234 --speed 2
 ```
 
 `replay` runs the steps with the same checks as the original commands and stops at the first failure. Page steps are aimed at the current page of `--window`.
@@ -276,7 +276,7 @@ await web.fill("Username", "tomsmith");
 await web.fill("Password", "SuperSecretPassword!");
 await web.click("Login");
 return await web.waitText("You logged into");
-'@ | node npm/bin/workflow.js run
+'@ | slipwing run
 ```
 
 ```json
@@ -316,7 +316,7 @@ return await desktop.waitText("Customer records", "Saved");
 ## Read a web page as text (Windows fork)
 
 ```powershell
-node npm/bin/workflow.js read --url https://react.dev/learn
+slipwing read --url https://react.dev/learn
 ```
 
 `read` sends a plain request and renders the address in a background browser tab at the same time, and returns `{ "url", "via", "text" }` from the first one that yields a full page. `via` is `request` or `browser`. A script-built page is empty to a plain request, and some sites turn a background browser away, so each way reads pages the other cannot. When both answers are short, the longer one comes back with `"thin": true`. In a script, `await web.fetch(url)` does the same without leaving the current page.
@@ -324,9 +324,9 @@ node npm/bin/workflow.js read --url https://react.dev/learn
 ## The agent's own browser profile (Windows fork)
 
 ```powershell
-node npm/bin/workflow.js space --login https://example.com/login
-node npm/bin/workflow.js space --close
-node npm/bin/workflow.js run --space --file orders.js
+slipwing space --login https://example.com/login
+slipwing space --close
+slipwing run --space --file orders.js
 ```
 
 `space --login URL` opens a browser window on a profile that belongs to the agent, so the user can sign in to a site once. The profile is separate from the user's Chrome: it shows no permission prompt, and it cannot see or change the user's tabs. `run --space` works on that window while it is open. After `space --close`, `run --space` starts the same profile in the background with the sign-in kept. `space` with no option reports whether it is running.

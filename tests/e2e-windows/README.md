@@ -96,15 +96,3 @@ self-test in `ci.yml` runs it only to prove that guard exits 2.
 - Every scenario calls `Register-Legs` with its leg names up front; every
   registered leg ends the run with a disposition (`Add-Pass`/`Add-Fail`/
   `Add-Skip`).
-
-## Keep-typing check for slipwing
-
-`keep-typing/Run-KeepTyping.ps1` is separate from the scenario runner. A note window in front receives a character
-every 150 ms while `slipwing run` fills and saves a WinForms register window behind it. It passes when the register
-saved once with the right values, the note never lost the foreground, the cursor never moved, no key or click came
-from another program, and every typed character reached the note. It exits 2 without touching anything when the
-keyboard or mouse was used in the last 60 s.
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tests\e2e-windows\keep-typing\Run-KeepTyping.ps1
-```

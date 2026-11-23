@@ -35,9 +35,9 @@ On Windows, when operating an open web page for a person to watch, use the compa
 
 Use `find` when you know the role or exact name. Otherwise map the app first and drill into one region.
 
-On the Windows fork, run `node npm/bin/workflow.js current` to read the selected page in an open Chrome window. Pass its page handle to `follow` to continue after navigation or to `edit` to fill a field. In a named Chromium session, use `choose`, `reveal` or `browser-move` for lists and canvases. Use `view` and `move` for native visual input, or `choose-file` and `drop-file` for attachments. See `commands-interaction` for examples.
+With Slipwing installed (`npm install -g slipwing`, https://github.com/narmi924/slipwing), run `slipwing current` to read the selected page in an open Chrome window. Pass its page handle to `follow` to continue after navigation or to `edit` to fill a field. In a named Chromium session, use `choose`, `reveal` or `browser-move` for lists and canvases. Use `view` and `move` for native visual input, or `choose-file` and `drop-file` for attachments. See `commands-interaction` for examples.
 
-When a task takes several steps on a page, in a window, or across both, send them as one script with `node npm/bin/workflow.js run` instead of one command per step. Read the page or window once, then write the whole sequence by control name. A failing step returns a fresh read, so the next script continues from there. `run --api` lists the helpers.
+When a task takes several steps on a page, in a window, or across both, send them as one script with `slipwing run` instead of one command per step. Read the page or window once, then write the whole sequence by control name. A failing step returns a fresh read, so the next script continues from there. `run --api` lists the helpers.
 
 ```
 agent-desktop snapshot --skeleton --app "Notes" -i --compact   # shallow map, children_count on cut branches
