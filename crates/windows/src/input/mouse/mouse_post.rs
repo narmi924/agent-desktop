@@ -2,7 +2,8 @@
 //! it. Nothing moves the cursor, nothing goes through `SendInput`, and no
 //! window is activated, so the person keeps the mouse and the window in
 //! front. The messages go to the deepest visible, enabled child window at the
-//! point, in that window's own client coordinates.
+//! point, in that window's own client coordinates, posted from that window's
+//! DPI awareness (see `WindowDpiScope`).
 //!
 //! An app that reads the live button state, or hit-tests the real cursor
 //! instead of the message's point, does nothing with such a click, and
@@ -10,7 +11,10 @@
 //! reaction, so a posted click is `delivered_unverified` and the caller
 //! judges the effect.
 
+use super::mouse_post_keep::{PostDesk, wait_for_take};
+use crate::actions::foreground_keep::keep_foreground;
 use crate::input::elevation::ensure_target_integrity_allows_input;
+use crate::system::window::foreground_return;
 use crate::system::window::window_ops::parse_handle;
 use agent_desktop_core::{
     ActionResult, ActionStep, AdapterError, Deadline, DeliverySemantics, ErrorCode, MouseButton,
@@ -18,12 +22,10 @@ use agent_desktop_core::{
     commands::drag::frame::WindowFrame,
 };
 use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
-use windows_sys::Win32::Graphics::Gdi::{
-    MONITOR_DEFAULTTONEAREST, MonitorFromWindow, ScreenToClient,
-};
+use windows_sys::Win32::Graphics::Gdi::ScreenToClient;
 use windows_sys::Win32::UI::HiDpi::{
-    DPI_AWARENESS_PER_MONITOR_AWARE, GetAwarenessFromDpiAwarenessContext, GetDpiForMonitor,
-    GetDpiForWindow, GetWindowDpiAwarenessContext, MDT_EFFECTIVE_DPI,
+    DPI_AWARENESS_CONTEXT, GetWindowDpiAwarenessContext, PhysicalToLogicalPointForPerMonitorDPI,
+    SetThreadDpiAwarenessContext,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::IsWindowEnabled;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
@@ -114,24 +116,6 @@ pub(crate) fn deepest_window<H: Copy + PartialEq>(
     current
 }
 
-/// The client point an app works with, from the client point in physical
-/// pixels. A window that is not per-monitor aware sees pixels the system
-/// scaled from the monitor's DPI to its own (96, or the system DPI), and a
-/// posted message is not scaled for it, so the point is scaled here instead.
-pub(crate) fn app_client_point(
-    physical: (i32, i32),
-    window_dpi: u32,
-    monitor_dpi: u32,
-) -> (i32, i32) {
-    if window_dpi == 0 || monitor_dpi == 0 || window_dpi == monitor_dpi {
-        return physical;
-    }
-    let scale = |value: i32| {
-        (f64::from(value) * f64::from(window_dpi) / f64::from(monitor_dpi)).floor() as i32
-    };
-    (scale(physical.0), scale(physical.1))
-}
-
 /// The disposition of a click whose posting stopped at message `index`: the
 /// pointer move alone presses nothing, so only a failure after the first
 /// button message leaves part of the click delivered.
@@ -143,17 +127,14 @@ pub(crate) fn delivery_after_failure(index: usize) -> DeliverySemantics {
     }
 }
 
-fn posted_report(screen: Point, receiver_class: &str, client: (i32, i32)) -> OperationReport {
-    OperationReport::new(
-        ActionResult::delivered_unverified("mouse-click")
-            .with_steps(vec![ActionStep::succeeded("window_messages_posted")])
-            .with_details(serde_json::json!({
-                "delivery": "window_messages",
-                "receiver_class": receiver_class,
-                "client_point": { "x": client.0, "y": client.1 },
-            })),
-        OperationTarget::Pointer { point: screen },
-    )
+fn posted_result(receiver_class: &str, client: (i32, i32)) -> ActionResult {
+    ActionResult::delivered_unverified("mouse-click")
+        .with_steps(vec![ActionStep::succeeded("window_messages_posted")])
+        .with_details(serde_json::json!({
+            "delivery": "window_messages",
+            "receiver_class": receiver_class,
+            "client_point": { "x": client.0, "y": client.1 },
+        }))
 }
 
 fn outside_client_area() -> AdapterError {
@@ -175,20 +156,14 @@ fn window_disabled() -> AdapterError {
 }
 
 /// Posts a click at `local`, a point of the captured window in its own
-/// pixels, to the window under that point.
+/// pixels, to the window under that point, and keeps the user's foreground
+/// window in front (see `mouse_post_keep`).
 pub(crate) fn post_click(
     frame: &WindowFrame,
     local: &Point,
     event: &MouseEvent,
     deadline: Deadline,
 ) -> Result<OperationReport, AdapterError> {
-    let MouseEventKind::Click { count } = event.kind else {
-        return Err(AdapterError::new(
-            ErrorCode::InvalidArgs,
-            "Only a click can be posted to a window",
-        ));
-    };
-    agent_desktop_core::validate_mouse_click_count(count)?;
     let origin = crate::input::drag_frame::frame_origin(frame, deadline)?;
     let screen = Point {
         x: origin.x + local.x,
@@ -199,33 +174,106 @@ pub(crate) fn post_click(
         y: screen.y.round() as i32,
     };
     let top = parse_handle(&frame.window.id);
+    let desk = PostDesk {
+        target_pid: window_process(top).get(),
+        target_root: top as isize,
+    };
+    let before = foreground_return::foreground_window();
+    let result = keep_foreground(&desk, || {
+        let (receiver, client) = post_at(top, at, event, deadline)?;
+        wait_for_take(&desk, before);
+        Ok(posted_result(&class_name(receiver), (client.x, client.y)))
+    })?;
+    Ok(OperationReport::new(
+        result,
+        OperationTarget::Pointer { point: screen },
+    ))
+}
+
+/// Posts a click at `physical`, a screen point in physical pixels inside
+/// `top`, to the deepest window under it, and returns that window and the
+/// client point it was given in its own pixels.
+pub(crate) fn post_at(
+    top: HWND,
+    physical: POINT,
+    event: &MouseEvent,
+    deadline: Deadline,
+) -> Result<(HWND, POINT), AdapterError> {
+    let MouseEventKind::Click { count } = event.kind else {
+        return Err(AdapterError::new(
+            ErrorCode::InvalidArgs,
+            "Only a click can be posted to a window",
+        ));
+    };
+    agent_desktop_core::validate_mouse_click_count(count)?;
     if unsafe { IsWindowEnabled(top) } == 0 {
         return Err(window_disabled());
     }
-    let receiver = deepest_window(top, |parent| child_at(parent, at));
-    let physical = client_point(receiver, at).ok_or_else(outside_client_area)?;
-    let client = app_client_point(
-        physical,
-        unsafe { GetDpiForWindow(receiver) },
-        monitor_dpi(receiver),
-    );
+    let receiver = deepest_window(top, |parent| child_at(parent, physical));
+    let _scope = WindowDpiScope::enter(receiver).ok_or_else(scale_unknown)?;
+    let client = own_client_point(receiver, physical)
+        .filter(|client| inside_client_area(receiver, *client))
+        .ok_or_else(outside_client_area)?;
     ensure_target_integrity_allows_input(window_process(receiver))?;
     deadline.ensure_remaining()?;
     let messages = click_messages(
         event.button.clone(),
         count,
         has_double_clicks(receiver),
-        pack_point(client.0, client.1),
+        pack_point(client.x, client.y),
     );
     post_all(receiver, &messages)?;
-    Ok(posted_report(screen, &class_name(receiver), client))
+    Ok((receiver, client))
 }
 
-fn child_at(parent: HWND, screen: POINT) -> Option<HWND> {
-    let mut client = screen;
-    if unsafe { ScreenToClient(parent, &mut client) } == 0 {
-        return None;
+/// Puts this thread in a window's DPI awareness until it is dropped, so the
+/// points read and posted here are in the pixels that window works in.
+/// Windows translates a posted mouse message's point from the posting
+/// thread's awareness to the receiving window's: a per-monitor thread that
+/// posted 120,69 to a DPI-unaware window at 225 % had it arrive as 53,31,
+/// while the same post from a DPI-unaware thread arrived as 120,69. So the
+/// point is computed, and the click posted, inside the receiver's scope.
+struct WindowDpiScope {
+    previous: DPI_AWARENESS_CONTEXT,
+}
+
+impl WindowDpiScope {
+    fn enter(window: HWND) -> Option<Self> {
+        let context = unsafe { GetWindowDpiAwarenessContext(window) };
+        if context.is_null() {
+            return None;
+        }
+        let previous = unsafe { SetThreadDpiAwarenessContext(context) };
+        (!previous.is_null()).then_some(Self { previous })
     }
+}
+
+impl Drop for WindowDpiScope {
+    fn drop(&mut self) {
+        unsafe { SetThreadDpiAwarenessContext(self.previous) };
+    }
+}
+
+/// `physical`, a screen point in physical pixels, as a client point of
+/// `window` in the window's own pixels. Runs inside that window's scope.
+fn own_client_point(window: HWND, physical: POINT) -> Option<POINT> {
+    let mut point = physical;
+    let mapped = unsafe {
+        PhysicalToLogicalPointForPerMonitorDPI(window, &mut point) != 0
+            && ScreenToClient(window, &mut point) != 0
+    };
+    mapped.then_some(point)
+}
+
+fn inside_client_area(window: HWND, client: POINT) -> bool {
+    let mut area = RECT::default();
+    let read = unsafe { GetClientRect(window, &mut area) } != 0;
+    read && (0..area.right).contains(&client.x) && (0..area.bottom).contains(&client.y)
+}
+
+fn child_at(parent: HWND, physical: POINT) -> Option<HWND> {
+    let _scope = WindowDpiScope::enter(parent)?;
+    let client = own_client_point(parent, physical)?;
     let child = unsafe { RealChildWindowFromPoint(parent, client) };
     if child.is_null() || child == parent {
         return None;
@@ -234,26 +282,13 @@ fn child_at(parent: HWND, screen: POINT) -> Option<HWND> {
     usable.then_some(child)
 }
 
-fn client_point(window: HWND, screen: POINT) -> Option<(i32, i32)> {
-    let mut client = screen;
-    let mut area = RECT::default();
-    let read = unsafe {
-        ScreenToClient(window, &mut client) != 0 && GetClientRect(window, &mut area) != 0
-    };
-    let inside = (0..area.right).contains(&client.x) && (0..area.bottom).contains(&client.y);
-    (read && inside).then_some((client.x, client.y))
-}
-
-fn monitor_dpi(window: HWND) -> u32 {
-    let awareness =
-        unsafe { GetAwarenessFromDpiAwarenessContext(GetWindowDpiAwarenessContext(window)) };
-    if awareness == DPI_AWARENESS_PER_MONITOR_AWARE {
-        return unsafe { GetDpiForWindow(window) };
-    }
-    let monitor = unsafe { MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST) };
-    let (mut dpi_x, mut dpi_y) = (0u32, 0u32);
-    let read = unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y) };
-    if read == 0 { dpi_x } else { 0 }
+fn scale_unknown() -> AdapterError {
+    AdapterError::new(
+        ErrorCode::ActionNotSupported,
+        "The window's DPI awareness could not be taken on, so the point it would receive is unknown",
+    )
+    .with_suggestion("Click there with --headed mouse-click --frame, which moves the real cursor")
+    .with_disposition(DeliverySemantics::not_delivered())
 }
 
 fn window_process(window: HWND) -> ProcessId {
@@ -288,3 +323,7 @@ fn post_all(window: HWND, messages: &[PostedMessage]) -> Result<(), AdapterError
 #[cfg(test)]
 #[path = "mouse_post_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "mouse_post_dpi_tests.rs"]
+mod dpi_tests;

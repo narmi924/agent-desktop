@@ -212,6 +212,8 @@ On Windows, a ref action without `--headed` leaves the window that was in front 
 
 The field is omitted when the target did not take the foreground, when the window in front already belonged to the target's process, for `--headed` actions, and for `press`, which may focus its target. The foreground is read once when the action returns, so an action that moved nothing waits for nothing. After a return it is read once more 30 ms later, in case the application activates itself again. An application that activates itself later than that keeps the foreground. On macOS and Linux the field is never present.
 
+`mouse-click --post` reports `details.foreground` the same way. A posted click reaches the application after the command has posted it, so the foreground is watched for up to 200 ms after posting; the watch ends as soon as a window of the target's process takes the foreground, and is skipped when that process already holds it.
+
 ## Snapshot changes
 
 `snapshot --since SNAPSHOT_ID` adds `data.changes`, compared with that earlier snapshot in the same session.

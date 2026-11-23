@@ -302,6 +302,8 @@ pub(super) mod mouse_coord;
 pub(super) mod mouse_modifier;
 #[cfg(target_os = "windows")]
 pub(crate) mod mouse_post;
+#[cfg(target_os = "windows")]
+pub(crate) mod mouse_post_keep;
 pub(super) mod mouse_screen;
 pub(crate) mod mouse_send;
 #[cfg(all(test, target_os = "windows"))]

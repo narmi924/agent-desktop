@@ -105,15 +105,6 @@ fn a_tree_that_keeps_naming_new_children_stops_at_the_depth_bound() {
 }
 
 #[test]
-fn a_window_that_is_not_per_monitor_aware_gets_its_own_scaled_pixels() {
-    assert_eq!(app_client_point((450, 225), 96, 216), (200, 100));
-    assert_eq!(app_client_point((451, 226), 96, 216), (200, 100));
-    assert_eq!(app_client_point((300, 150), 144, 216), (200, 100));
-    assert_eq!(app_client_point((450, 225), 216, 216), (450, 225));
-    assert_eq!(app_client_point((450, 225), 96, 0), (450, 225));
-}
-
-#[test]
 fn only_a_failure_after_the_first_press_leaves_part_of_the_click_delivered() {
     assert_eq!(
         delivery_after_failure(0).delivery(),
@@ -131,7 +122,12 @@ fn only_a_failure_after_the_first_press_leaves_part_of_the_click_delivered() {
 
 #[test]
 fn a_posted_click_reports_an_unverified_delivery_through_window_messages() {
-    let report = posted_report(Point { x: 10.0, y: 20.0 }, "Button", (3, 4));
+    let report = OperationReport::new(
+        posted_result("Button", (3, 4)),
+        OperationTarget::Pointer {
+            point: Point { x: 10.0, y: 20.0 },
+        },
+    );
     let value = serde_json::to_value(&report).unwrap();
     assert_eq!(value["disposition"]["delivery"], "delivered_unverified");
     assert_eq!(value["details"]["delivery"], "window_messages");
