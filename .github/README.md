@@ -1,5 +1,7 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+<img src="../assets/slipwing.png" width="96" alt="">
+
 # Slipwing
 
 Slipwing is an independent Windows build of [vercel-labs/agent-desktop](https://github.com/vercel-labs/agent-desktop)

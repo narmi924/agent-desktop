@@ -58,6 +58,7 @@ $raw = 'https://raw.githubusercontent.com/narmi924/slipwing/personal/'
 $readme = [IO.File]::ReadAllText((Join-Path $repo '.github\README.md'))
 $readme = $readme.Replace('](../assets/slipwing-architecture.svg)', '](' + $raw + 'assets/slipwing-architecture.png)')
 $readme = $readme.Replace('](../', '](' + $raw)
+$readme = $readme.Replace('src="../', 'src="' + $raw)
 $readme = $readme.Replace('](README.zh-CN.md)', '](' + $repoUrl + '/blob/personal/.github/README.zh-CN.md)')
 $readme = $readme.Replace('](README.md)', '](' + $repoUrl + '#readme)')
 [IO.File]::WriteAllText((Join-Path $stage 'README.md'), $readme)
