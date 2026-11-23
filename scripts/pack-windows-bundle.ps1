@@ -53,6 +53,14 @@ foreach ($file in 'lib', 'skills', 'bundle.json') {
     Copy-Item -LiteralPath (Join-Path $repo "npm\$file") -Destination $stage -Recurse
 }
 Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $stage
+$repoUrl = 'https://github.com/narmi924/slipwing'
+$raw = 'https://raw.githubusercontent.com/narmi924/slipwing/personal/'
+$readme = [IO.File]::ReadAllText((Join-Path $repo '.github\README.md'))
+$readme = $readme.Replace('](../assets/slipwing-architecture.svg)', '](' + $raw + 'assets/slipwing-architecture.png)')
+$readme = $readme.Replace('](../', '](' + $raw)
+$readme = $readme.Replace('](README.zh-CN.md)', '](' + $repoUrl + '/blob/personal/.github/README.zh-CN.md)')
+$readme = $readme.Replace('](README.md)', '](' + $repoUrl + '#readme)')
+[IO.File]::WriteAllText((Join-Path $stage 'README.md'), $readme)
 $browser = Split-Path -Parent $browserBin.FullName
 foreach ($file in 'skill-data', 'skills', 'LICENSE') {
     Copy-Item -LiteralPath (Join-Path $BrowserRepo $file) -Destination $browser -Recurse
@@ -62,9 +70,11 @@ Copy-Item -Path (Join-Path $BrowserRepo 'cli\src\native\a11y\LICENSE-axe-core*.t
 $manifest = [ordered]@{
     name = 'slipwing'
     version = $bundle.version
-    description = 'Operate Windows apps and web pages from one agent workflow.'
+    description = 'Let any AI agent work in your Windows apps and browser in the background. A Windows build of agent-desktop and agent-browser.'
     license = 'Apache-2.0'
     repository = 'github:narmi924/slipwing'
+    homepage = $repoUrl + '#readme'
+    keywords = @('windows', 'ai-agent', 'computer-use', 'desktop-automation', 'browser-automation', 'ui-automation', 'mcp', 'agent-skills')
     bin = @{ slipwing = 'bin/workflow.js' }
     engines = @{ node = '>=22' }
     os = @('win32')
