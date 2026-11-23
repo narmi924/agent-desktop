@@ -1,7 +1,7 @@
 'use strict';
 
 const { setTimeout: delay } = require('node:timers/promises');
-const { invoke } = require('./script-call');
+const { invoke, foregroundInterruption } = require('./script-call');
 const { createWeb } = require('./script-web');
 const { createDesktop } = require('./script-desktop');
 const { createVisible, readingMs } = require('./script-visible');
@@ -76,6 +76,7 @@ const api = [
   'A name no control has is looked for in the window\'s picture right away, and a window with no control outside its',
   'title bar is read from its picture; read() then lists that text as [picture x,y]. click by picture is first posted to',
   'the window in the background and returns {via: "picture", background: true, text, x, y} when the window then changes;',
+  'FOREGROUND_TAKEN stops the run. Tell the user to switch back to their working window and check the last action before continuing.',
   'CLICK_UNCONFIRMED means it may have arrived. Check the result before another click. Only a confirmed refusal of the',
   'background method can fall back to the real mouse (needs --allow-input). fill by picture clicks, types, and returns false',
   'when the typed text cannot be seen afterwards. The same text in several places needs {near} or {nth}.',
@@ -158,7 +159,7 @@ async function runScript(source, { browser, native, flags = [], lease, env, time
   env = holding(env ?? process.env);
   const steps = [], logs = [], warnings = [], children = new Set(), records = [], finals = [];
   const touched = { apps: new Set(), hosts: new Set() };
-  let surface, inputUsed = false, effects = [];
+  let surface, foregroundStop, inputUsed = false, effects = [];
 
   let notes = [];
   /**
@@ -173,6 +174,7 @@ async function runScript(source, { browser, native, flags = [], lease, env, time
   };
   const gate = args => { if (args.includes('--headed')) takeInput(); };
   const step = async (name, subject, run) => {
+    if (foregroundStop) throw foregroundStop;
     const at = Date.now();
     surface = name.split('.')[0];
     const label = name + (brief(subject) ? ' ' + brief(subject) : '');
@@ -188,21 +190,31 @@ async function runScript(source, { browser, native, flags = [], lease, env, time
     };
     try {
       const value = await run();
+      if (foregroundStop) throw foregroundStop;
       const done = record(true);
       if (onStep) await onStep(done);
       steps.push(label + how() + ' ' + (Date.now() - at) + 'ms');
       return value;
     } catch (err) {
+      if (err?.code === 'FOREGROUND_TAKEN') foregroundStop ??= err;
+      err = foregroundStop ?? err;
       if (!recorded) record(false);
       steps.push(label + how() + ' ' + (Date.now() - at) + 'ms FAILED');
       if (err && typeof err === 'object' && !err.step) err.step = label;
       throw err;
     }
   };
-  const need = (binary, name, check = () => {}) => (args, options) => {
-    if (!binary) return Promise.reject(new Error(name + ' is not installed.'));
-    try { check(args); } catch (err) { return Promise.reject(err); }
-    return call(binary, args, { env, children, ...options });
+  const need = (binary, name, check = () => {}) => async (args, options) => {
+    if (foregroundStop) throw foregroundStop;
+    if (!binary) throw new Error(name + ' is not installed.');
+    check(args);
+    if (name !== 'agent-desktop') return call(binary, args, { env, children, ...options });
+    let data;
+    try { data = await call(binary, args, { env, children, ...options }); }
+    catch (err) { foregroundStop ??= foregroundInterruption(err); throw foregroundStop ?? err; }
+    foregroundStop ??= foregroundInterruption(data);
+    if (foregroundStop) throw foregroundStop;
+    return data;
   };
   const note = (text, effect) => {
     if (text) notes.push(text);
@@ -333,9 +345,10 @@ async function runScript(source, { browser, native, flags = [], lease, env, time
   });
   try {
     const result = await Promise.race([body(...Object.values(helpers)), expired]);
+    if (foregroundStop) throw foregroundStop;
     return withTrail({ result: result === undefined ? null : result, ...report() });
   } catch (thrown) {
-    const err = thrown instanceof Error ? thrown : new Error(String(thrown));
+    const err = foregroundStop ?? (thrown instanceof Error ? thrown : new Error(String(thrown)));
     for (const child of children) child.kill();
     let scene;
     try {

@@ -44,7 +44,7 @@ impl ForegroundDesk for ScriptedDesk {
         true
     }
 
-    fn bring_back(&self, _window: ForegroundWindow) -> bool {
+    fn bring_back(&self, _window: ForegroundWindow, _taken: ForegroundWindow) -> bool {
         true
     }
 

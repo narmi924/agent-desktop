@@ -19,7 +19,7 @@ function readRecord() {
  * repeats and says to change the approach, because the same script will fail the same way again.
  */
 function markRepeat(err, now = Date.now()) {
-  if (!err?.report?.step) return err;
+  if (!err?.report?.step || err.code === 'FOREGROUND_TAKEN') return err;
   const key = err.report.step + ' | ' + (err.code ?? 'ERROR');
   const last = readRecord();
   const count = last && last.key === key && now - last.at < WINDOW_MS ? last.count + 1 : 1;

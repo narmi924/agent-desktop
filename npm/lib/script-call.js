@@ -47,4 +47,17 @@ function invoke(binary, args, { input, timeout = DEFAULT_WAIT_MS, env, children,
   });
 }
 
-module.exports = { invoke };
+function foregroundInterruption(report) {
+  const stopped = report?.stopped;
+  const last = stopped?.reason === 'foreground_taken' ? report.results?.[stopped.index] : undefined;
+  const body = last?.data ?? last?.error ?? report;
+  const action = body?.after_action ?? body?.details?.after_action ?? body;
+  const foreground = action?.details?.foreground ?? report?.details?.foreground;
+  if (foreground?.outcome !== 'taken' && report?.stopped?.reason !== 'foreground_taken') return;
+  return Object.assign(new Error('The background app took the foreground. Ask the user to switch back to their working window. Check what the last action did before continuing. Do not repeat it automatically.'), {
+    code: 'FOREGROUND_TAKEN', details: { ...action?.details, ...(last ? { batch_index: stopped.index } : {}) },
+    disposition: { delivery: action?.disposition?.delivery ?? 'unknown', retry: 'unsafe' },
+  });
+}
+
+module.exports = { invoke, foregroundInterruption };

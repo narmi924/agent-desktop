@@ -56,10 +56,9 @@ the last keyboard or mouse input).
   splatting operator and deletes the argument before the binary sees it, so
   `set-value @s8f3k2p9:e1 hi` fails `INVALID_ARGS`. Write
   `set-value '@s8f3k2p9:e1' hi`. cmd.exe and bash need no quoting.
-- **Headless ref actions leave the user's window in front.** UI Automation's
-  implicit focus is off. When the target app has activated its own window by
-  the time the action returns, the previous window is put back without
-  sending any input and the result carries `details.foreground`
+- **Headless ref actions disable UI Automation's implicit focus.** If the
+  target app activates itself, agent-desktop asks
+  Windows to return to the previous window without sending any input. The result carries `details.foreground`
   (`outcome: "restored"` with `away_ms`). `outcome: "taken"` means the app
   kept the foreground; `reason: "cursor_on_target"` means the pointer is on
   the app's window and the user may have clicked it. `--headed` actions and

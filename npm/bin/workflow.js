@@ -17,6 +17,7 @@ const { wheelPage, pointerPage, physicalPointer } = require('../lib/page-pointer
 const { recordStep, readSteps } = require('../lib/flow-record');
 const { connect, disconnect, webPerform, withRoute, chromeFlags } = require('../lib/web-page');
 const { runScript, api } = require('../lib/script-run');
+const { foregroundInterruption } = require('../lib/script-call');
 const { space, spaceFlags } = require('../lib/space');
 const { readPage } = require('../lib/page-read');
 const { pageLease } = require('../lib/page-lease');
@@ -94,7 +95,7 @@ function one(items, description) {
   return items[0];
 }
 
-function run(binary, args, input, check) {
+function run(binary, args, input, check, inspect) {
   check?.(args);
   let out;
   try {
@@ -105,6 +106,8 @@ function run(binary, args, input, check) {
     out = err.stdout;
   }
   const reply = JSON.parse(out);
+  const interrupted = inspect?.(reply.data ?? reply.error);
+  if (interrupted) throw interrupted;
   if (!(reply.ok ?? reply.success)) {
     const message = reply.error?.message ?? reply.error ?? 'Command refused';
     const error = new Error(String(message).replace(/^Evaluation error: Error: ([^\n]*)\n\s+at [\s\S]*$/, '$1'));
@@ -228,7 +231,7 @@ async function chooseFile({ session, tab, input, file }) {
   if (!stat.isFile()) throw new Error('Expected a regular file.');
   const { ab, original, check } = boundTab(session, tab);
   const db = process.env.AGENT_DESKTOP_BIN ?? join(__dirname, 'agent-desktop-win32-' + process.arch + '.exe');
-  const ad = (...args) => run(db, args);
+  const ad = (...args) => run(db, args, undefined, undefined, foregroundInterruption);
 
   const page = () => {
     check();
@@ -325,7 +328,7 @@ function nativeBinary() {
 }
 
 async function replay({ file, window, speed = '1' }) {
-  const ad = (...args) => run(nativeBinary(), args);
+  const ad = (...args) => run(nativeBinary(), args, undefined, undefined, foregroundInterruption);
   const factor = Number(speed);
   if (!file || !(factor > 0)) throw invalid('Use --file FLOW.jsonl and a positive --speed.');
   const steps = readSteps(file);
@@ -432,7 +435,8 @@ async function routine([action, name, ...rest], values) {
 
 async function perform(command, values, check) {
   const db = nativeBinary();
-  const ad = (...args) => run(db, args, undefined, check);
+  const nativeCall = (args, input) => run(db, args, input, check, foregroundInterruption);
+  const ad = (...args) => nativeCall(args);
   const web = await webPerform(optionalBrowserBinary(), command, values);
   if (web) return web;
   let data;
@@ -459,12 +463,11 @@ async function perform(command, values, check) {
       break;
     }
     case 'view': data = view(ad, values); break;
-    case 'type': data = await typePage(ad,(args,input)=>run(db,args,input,check),values); break;
+    case 'type': data = await typePage(ad, nativeCall, values); break;
     case 'wheel': data = await wheelPage(ad,values); break;
     case 'point': case 'click': data = await pointerPage(ad,command,values); break;
     case 'edit': {
-      const write = (args,data) => run(db,args,data,check);
-      data = values.page ? await editPage(ad,write,values) : edit(ad,write,values);
+      data = values.page ? await editPage(ad, nativeCall, values) : edit(ad, nativeCall, values);
       break;
     }
     case 'move': data = move(ad, values); break;
@@ -481,7 +484,7 @@ main().catch(err => {
     ...(err.suggestion ? {suggestion:err.suggestion} : {}),
     ...(Number.isInteger(partial) ? {typed_keystrokes:partial,keystrokes:err.details.keystrokes} : {}),
     ...(err.report ?? {}),
-    ...(err.details && ['MISSING_ARGS','EFFECT_MISMATCH','FINAL_NOT_ALLOWED','AMBIGUOUS_TARGET'].includes(err.code) ? {details:err.details} : {})}));
+    ...(err.details && ['MISSING_ARGS','EFFECT_MISMATCH','FINAL_NOT_ALLOWED','AMBIGUOUS_TARGET','FOREGROUND_TAKEN'].includes(err.code) ? {details:err.details} : {})}));
   process.exitCode=1;
   if (err.report) leave(1);
 });

@@ -9,6 +9,7 @@ use super::*;
 
 struct CountingAdapter {
     clears: AtomicUsize,
+    takes_foreground: bool,
 }
 
 impl agent_desktop_core::ObservationOps for CountingAdapter {}
@@ -20,10 +21,14 @@ impl agent_desktop_core::InputOps for CountingAdapter {
         _lease: &InteractionLease,
     ) -> Result<agent_desktop_core::OperationReport, AdapterError> {
         self.clears.fetch_add(1, Ordering::SeqCst);
-        Ok(agent_desktop_core::OperationReport::delivered_unverified(
+        let mut report = agent_desktop_core::OperationReport::delivered_unverified(
             "test",
             agent_desktop_core::OperationTarget::Clipboard,
-        ))
+        );
+        if self.takes_foreground {
+            report.result.details = Some(json!({ "foreground": { "outcome": "taken" } }));
+        }
+        Ok(report)
     }
 }
 
@@ -47,7 +52,31 @@ fn args(commands: Value, timeout_ms: u64) -> BatchArgs {
 fn adapter() -> CountingAdapter {
     CountingAdapter {
         clears: AtomicUsize::new(0),
+        takes_foreground: false,
     }
+}
+
+#[test]
+fn foreground_taken_stops_before_the_next_batch_entry() {
+    let adapter = CountingAdapter {
+        takes_foreground: true,
+        ..adapter()
+    };
+    let clear = json!({"command": "clipboard-clear", "args": {}});
+    let output = execute(
+        args(json!([clear, clear]), 60_000),
+        &adapter,
+        &PermissionReport::default(),
+        &CommandContext::default(),
+    )
+    .unwrap();
+    assert_eq!(adapter.clears.load(Ordering::SeqCst), 1);
+    assert_eq!(output["results"][0]["ok"], true);
+    assert_eq!(
+        output["stopped"],
+        json!({"reason":"foreground_taken","index":0})
+    );
+    assert_eq!(output["not_started_entries"], 1);
 }
 
 #[test]

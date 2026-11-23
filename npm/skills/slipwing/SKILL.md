@@ -118,7 +118,7 @@ slipwing run --file task.js --args '{"who":"Gulnar"}' --allow-final
 
 `run` works in the background by default. A step that needs the real mouse and keyboard (`visible.*`, `human()`,
 `desktop.type`, filling by picture, `--headed`) is refused with `INPUT_NOT_ALLOWED` and nothing is sent. A click by
-picture is first posted in the background. On `CLICK_UNCONFIRMED`, check the application's result before another click.
+picture is first posted in the background. On `FOREGROUND_TAKEN`, tell the user to switch back to their working window. Check what the last action did before continuing from the next unfinished step. On `CLICK_UNCONFIRMED`, check the application's result before another click.
 On `INPUT_NOT_ALLOWED`, ask for the input time the step needs. After the user agrees, run only the remaining steps
 with `--allow-input` (or the chosen `--mode`). While the agent has the input the
 pointer turns into an amber arrow; the user touching the mouse or keyboard pauses typing, and Esc stops it.
@@ -186,4 +186,5 @@ Always:
 Read one with `slipwing skill NAME`, for example `slipwing skill chrome`. `slipwing --help` lists every command and
 flag, also the rarer ones this guide leaves out (`routine remove`, `watch show`, `host status`, `replay`). Saved
 routines, jobs and settings live in the state folder, `%USERPROFILE%\.agent-desktop` unless `AGENT_DESKTOP_HOME`
-names another.
+names another. For a custom location, choose a folder private to the Windows account. A state folder that other
+accounts can access is refused when the desktop tool saves its first snapshot.

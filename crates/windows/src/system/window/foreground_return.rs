@@ -1,12 +1,8 @@
 //! Reads the desktop foreground window and the pointer, and puts a previous
 //! foreground window back.
 //!
-//! Putting a window back never injects input. A background process may not
-//! call `SetForegroundWindow` on its own, so the caller's thread joins the
-//! input state of the thread that holds the foreground (`AttachThreadInput`),
-//! raises the window, detaches, and reads the foreground again. A holder whose
-//! thread does not answer `WM_NULL` is left alone, because attaching to a
-//! thread that is not dispatching can stall the caller.
+//! Requests foreground activation of a responsive window and checks the
+//! result. Windows can refuse activation by a background process.
 
 /// A top-level window and the process that owns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,14 +32,14 @@ mod imp {
     use super::{ForegroundWindow, Pointer};
     use std::time::{Duration, Instant};
     use windows_sys::Win32::Foundation::{HWND, POINT};
-    use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
     use windows_sys::Win32::UI::WindowsAndMessaging::{
-        BringWindowToTop, GA_ROOT, GetAncestor, GetCursorPos, GetForegroundWindow,
-        GetWindowThreadProcessId, IsWindow, SetForegroundWindow, WindowFromPoint,
+        GA_ROOT, GetAncestor, GetCursorPos, GetForegroundWindow, GetWindowThreadProcessId,
+        IsWindow, SetForegroundWindow, WindowFromPoint,
     };
 
     const RAISE_SETTLE: Duration = Duration::from_millis(20);
     const RAISE_POLL: Duration = Duration::from_millis(2);
+    const RESPONSE_WAIT_MS: u64 = 50;
 
     /// The top-level window in front. `GetForegroundWindow` can name a child
     /// control while UI Automation focus settles, so the root is used.
@@ -89,37 +85,24 @@ mod imp {
         alive && window_of(hwnd).is_some_and(|live| live.pid == window.pid)
     }
 
-    /// Raises `window` over whatever holds the foreground now and reports
-    /// whether it is the foreground window afterwards.
-    pub(crate) fn bring_back(window: ForegroundWindow) -> bool {
-        if !still_owned(window) {
+    /// Requests the previous window only while the observed target still holds the foreground.
+    pub(crate) fn bring_back(window: ForegroundWindow, taken: ForegroundWindow) -> bool {
+        if !still_owned(window)
+            || !crate::tree::automation::window_is_pumping(window.hwnd, RESPONSE_WAIT_MS)
+        {
             return false;
         }
-        if foreground_window() == Some(window) {
+        let current = foreground_window();
+        if current == Some(window) {
             return true;
         }
-        let holder = unsafe { GetForegroundWindow() };
-        if !holder.is_null() && !crate::system::window::window_enum::window_is_responsive(holder) {
+        if current != Some(taken) || !still_owned(window) {
             return false;
         }
-        let holder_thread = if holder.is_null() {
-            0
-        } else {
-            unsafe { GetWindowThreadProcessId(holder, std::ptr::null_mut()) }
-        };
-        let own_thread = unsafe { GetCurrentThreadId() };
-        let attached = holder_thread != 0
-            && holder_thread != own_thread
-            && unsafe { AttachThreadInput(own_thread, holder_thread, 1) } != 0;
-        let hwnd = window.hwnd as HWND;
-        unsafe {
-            let _ = SetForegroundWindow(hwnd);
-            let _ = BringWindowToTop(hwnd);
-        }
-        if attached {
-            unsafe { AttachThreadInput(own_thread, holder_thread, 0) };
-        }
-        settled_on(window)
+        (unsafe { SetForegroundWindow(window.hwnd as HWND) } != 0)
+            && settled_on(window)
+            && crate::tree::automation::window_is_pumping(window.hwnd, RESPONSE_WAIT_MS)
+            && foreground_window() == Some(window)
     }
 
     fn settled_on(window: ForegroundWindow) -> bool {
@@ -138,3 +121,7 @@ mod imp {
 
 #[cfg(target_os = "windows")]
 pub(crate) use imp::{bring_back, foreground_window, pointer, still_owned};
+
+#[cfg(all(test, target_os = "windows"))]
+#[path = "foreground_return_tests.rs"]
+mod tests;

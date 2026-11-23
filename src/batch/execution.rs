@@ -106,6 +106,14 @@ pub(super) fn execute(
             crate::dispatch::dispatch(command, adapter, permission_report, &item_context),
         );
         let failed = entry["ok"] != true;
+        let foreground_taken = [
+            "/data/details/foreground/outcome",
+            "/data/after_action/details/foreground/outcome",
+            "/error/details/foreground/outcome",
+            "/error/details/after_action/details/foreground/outcome",
+        ]
+        .iter()
+        .any(|path| entry.pointer(path).is_some_and(|value| value == "taken"));
         let (entry, oversized) = super::result_entry::bounded_completed_entry(
             index,
             &commands[index].name,
@@ -115,6 +123,10 @@ pub(super) fn execute(
         completed += usize::from(entry["execution"] == "completed");
         push_small_entry(&mut results, &mut results_bytes, entry);
 
+        if foreground_taken {
+            stopped = Some(json!({ "reason": "foreground_taken", "index": index }));
+            break;
+        }
         if oversized {
             stopped = Some(json!({ "reason": "output_limit", "index": index }));
             break;

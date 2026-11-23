@@ -67,7 +67,8 @@ impl ForegroundDesk for FakeDesk {
     fn still_owned(&self, _window: ForegroundWindow) -> bool {
         true
     }
-    fn bring_back(&self, window: ForegroundWindow) -> bool {
+    fn bring_back(&self, window: ForegroundWindow, taken: ForegroundWindow) -> bool {
+        assert_eq!(self.foreground(), Some(taken));
         self.returns.borrow_mut().push(window);
         self.elapsed
             .set(self.elapsed.get() + Duration::from_millis(3));

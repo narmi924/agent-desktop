@@ -1,11 +1,10 @@
 //! Keeps the user's foreground window in front across a headless action.
 //!
 //! Some applications activate their own window when a control changes, for
-//! example a `TextChanged` or `Click` handler that calls `Activate`. A
-//! headless action must leave the user's foreground where it was, so when a
-//! window of the target's process holds the foreground once the action
-//! returns, the window that was in front before is put back and the result
-//! says so in `details.foreground`. After a return the foreground is read once
+//! example a `TextChanged` or `Click` handler that calls `Activate`. When a window
+//! of the target process takes the foreground during a headless action, the
+//! adapter requests the previous window and reports whether Windows returned
+//! it in `details.foreground`. After a return the foreground is read once
 //! more [`RECHECK`] later, in case the application activates itself again.
 //! When nothing moved, nothing waits.
 //!
@@ -33,7 +32,7 @@ pub(crate) trait ForegroundDesk {
     fn pointer(&self) -> Option<Pointer>;
     fn is_target(&self, window: ForegroundWindow) -> bool;
     fn still_owned(&self, window: ForegroundWindow) -> bool;
-    fn bring_back(&self, window: ForegroundWindow) -> bool;
+    fn bring_back(&self, window: ForegroundWindow, taken: ForegroundWindow) -> bool;
     fn now(&self) -> Instant;
     fn pause(&self, length: Duration);
 }
@@ -190,7 +189,7 @@ pub(crate) fn settle<D: ForegroundDesk>(desk: &D, start: &Start) -> ForegroundTa
             }
             Verdict::Return(previous) => {
                 tally.attempts += 1;
-                if desk.bring_back(previous) {
+                if desk.bring_back(previous, taken) {
                     tally.away += desk.now().saturating_duration_since(fine_since);
                     tally.returned_to = Some(previous);
                     tally.recheck_due = true;

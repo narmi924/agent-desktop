@@ -43,8 +43,8 @@ impl ForegroundDesk for PostDesk {
         foreground_return::still_owned(window)
     }
 
-    fn bring_back(&self, window: ForegroundWindow) -> bool {
-        foreground_return::bring_back(window)
+    fn bring_back(&self, window: ForegroundWindow, taken: ForegroundWindow) -> bool {
+        foreground_return::bring_back(window, taken)
     }
 
     fn now(&self) -> Instant {

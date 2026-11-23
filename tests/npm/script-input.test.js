@@ -84,13 +84,15 @@ test('human(false) and the read-only visible helpers are not real input', async 
   assert.equal(data.input_used, undefined);
 });
 
-test('a name only the picture shows is refused with where it shows, and the window never comes forward', async () => {
+test('a refused background click needs permission before bringing the window forward', async () => {
   const { calls, run } = tools({
     'desktop list-windows': [{ ...NOTEPAD, id: 'w-7', title: '自绘窗口示例' }],
     'desktop snapshot': DRAWN,
     'desktop screenshot': { data: tinyPng().toString('base64'), width: 1, height: 1, scale_factor: 1 },
     'desktop ocr': words => ({ lines: [], matches: words.includes('发送') ? [{ text: '发送', bounds: { x: 1000, y: 700, width: 24, height: 32 }, center: { x: 1012, y: 716 } }] : [] }),
-    'desktop mouse-click': { disposition: { delivery: 'delivered_unverified' } },
+    'desktop mouse-click': () => { throw Object.assign(new Error('Background click unsupported'), {
+      code: 'ACTION_NOT_SUPPORTED', disposition: { delivery: 'not_delivered' },
+    }); },
   });
   const err = await run(`await desktop.click('自绘', '发送');`).catch(e => e);
   assert.equal(err.code, 'INPUT_NOT_ALLOWED');

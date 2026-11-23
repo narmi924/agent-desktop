@@ -29,6 +29,22 @@ function fakeTools(answers) {
   return { call, calls, run: (source, extra) => runScript(source, { browser: 'browser', native: 'desktop', flags: ['--session', 't'], call, allowInput: true, allowFinal: true, ...extra }) };
 }
 
+test('losing the foreground stops the run even when the script catches the first error', async () => {
+  const details = { foreground: { outcome: 'taken', reason: 'return_refused' } };
+  for (const sent of [
+    { disposition: { delivery: 'delivered_verified' }, details },
+    () => { throw Object.assign(new Error('readback failed'), { disposition: { delivery: 'delivery_uncertain' }, details }); },
+  ]) {
+    const tools = fakeTools({ 'desktop set-value': sent });
+    await assert.rejects(tools.run(`
+      try { await desktop.cmd('set-value', '@s1:e1', 'hello'); } catch {}
+      try { await web.cmd('click', '@e1'); } catch {}
+      return 'done';`, { fix: { ask: () => assert.fail('a sent action must not be retried') } }),
+    err => err.code === 'FOREGROUND_TAKEN' && err.disposition.retry === 'unsafe' && err.details.foreground === details.foreground);
+    assert.equal(tools.calls.length, 1);
+  }
+});
+
 test('a page read becomes controls with a role, a name, a ref and nearby text', () => {
   const controls = parseControls(FORM);
   assert.deepEqual(controls[1], { role: 'textbox', name: '姓名', near: '', ref: '@e2', value: undefined, depth: 0 });
