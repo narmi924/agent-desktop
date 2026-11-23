@@ -34,6 +34,7 @@ public static class KeepTyping
     [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string name);
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr hwnd, int command);
     [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] static extern uint SendInput(uint count, INPUT[] inputs, int size);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
@@ -241,6 +242,7 @@ public static class KeepTyping
         form.Shown += delegate
         {
             formHandle = form.Handle;
+            ShowWindow(formHandle, 5);
             keyProc = OnKey; mouseProc = OnMouse;
             IntPtr module = GetModuleHandle(null);
             keyHook = SetWindowsHookEx(WH_KEYBOARD_LL, keyProc, module, 0);
@@ -248,7 +250,7 @@ public static class KeepTyping
             clock.Start();
             Thread starter = new Thread(delegate ()
             {
-                for (int attempt = 0; attempt < 30 && GetForegroundWindow() != formHandle; attempt++)
+                for (int attempt = 0; attempt < 60 && GetForegroundWindow() != formHandle; attempt++)
                 {
                     TapAlt();
                     form.BeginInvoke((MethodInvoker)delegate { SetForegroundWindow(formHandle); form.Activate(); note.Focus(); });

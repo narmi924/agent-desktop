@@ -41,8 +41,8 @@ try {
     }
 
     $files = @{ out = (Join-Path $Out 'typist.json'); ready = (Join-Path $Out 'typist.ready'); stop = (Join-Path $Out 'typist.stop') }
-    $typist = Start-Process powershell.exe -PassThru -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $here 'typist.ps1'),
-        '-Out', $files.out, '-ReadyFile', $files.ready, '-StopFile', $files.stop, '-Seconds', '120', '-Title', 'Keep Typing Note')
+    $typist = Start-Process powershell.exe -PassThru -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $here 'typist.ps1'),
+        '-Out', "`"$($files.out)`"", '-ReadyFile', "`"$($files.ready)`"", '-StopFile', "`"$($files.stop)`"", '-Seconds', '120', '-Title', '"Keep Typing Note"')
     $until = (Get-Date).AddSeconds(20)
     while (-not (Test-Path $files.ready)) {
         if ($typist.HasExited -or (Get-Date) -gt $until) { throw 'The note did not take the foreground.' }
