@@ -26,6 +26,22 @@ function Get-NodeMajor {
     try { return [int]((& $found.Source --version).TrimStart('v').Split('.')[0]) } catch { return 0 }
 }
 
+function Initialize-StateDirectory {
+    $path = if ($env:AGENT_DESKTOP_HOME) { $env:AGENT_DESKTOP_HOME } else { Join-Path $env:USERPROFILE '.agent-desktop' }
+    if ([IO.Path]::GetPathRoot($path).Length -lt 3) { throw 'AGENT_DESKTOP_HOME needs an absolute directory path.' }
+    if (Test-Path -LiteralPath $path -PathType Container) { return }
+    $security = New-Object System.Security.AccessControl.DirectorySecurity
+    $security.SetAccessRuleProtection($true, $false)
+    $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    foreach ($sid in @($account, [System.Security.Principal.SecurityIdentifier]'S-1-5-18', [System.Security.Principal.SecurityIdentifier]'S-1-5-32-544')) {
+        $rule = [System.Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'ContainerInherit, ObjectInherit', 'None', 'Allow')
+        $security.AddAccessRule($rule)
+    }
+    $directory = [IO.DirectoryInfo]::new($path)
+    if ($PSVersionTable.PSEdition -eq 'Core') { [IO.FileSystemAclExtensions]::Create($directory, $security) }
+    else { $directory.Create($security) }
+}
+
 if ([Environment]::Is64BitOperatingSystem -ne $true) { throw 'Slipwing needs 64-bit Windows.' }
 $had = Get-NodeMajor
 if ($had -lt 22) {
@@ -71,21 +87,32 @@ foreach ($folder in 'skill-data', 'skills') {
 }
 
 Say "Installing agent-desktop with the slipwing command ..."
-$env:AGENT_DESKTOP_BINARY_PATH = Join-Path $stage 'agent-desktop-win32-x64.exe'
-try { Invoke-Npm @('install', '-g', (Join-Path $stage 'agent-desktop.tgz')) } finally { Remove-Item Env:AGENT_DESKTOP_BINARY_PATH -ErrorAction SilentlyContinue }
+$previousDesktopBinary = $env:AGENT_DESKTOP_BINARY_PATH
+try {
+    $env:AGENT_DESKTOP_BINARY_PATH = Join-Path $stage 'agent-desktop-win32-x64.exe'
+    Invoke-Npm @('install', '-g', (Join-Path $stage 'agent-desktop.tgz'))
+} finally { $env:AGENT_DESKTOP_BINARY_PATH = $previousDesktopBinary }
 $desktop = Join-Path $root 'agent-desktop'
 foreach ($pair in @(@((Join-Path $desktop 'bin\agent-desktop-win32-x64.exe'), 'agent-desktop-win32-x64.exe'), @($target, 'agent-browser-win32-x64.exe'))) {
     if ((Get-FileHash $pair[0]).Hash -ne (Get-FileHash (Join-Path $stage $pair[1])).Hash) { throw "$($pair[0]) does not match the bundle." }
 }
 
 $workflow = Join-Path $desktop 'bin\workflow.js'
-$env:AGENT_BROWSER_BIN = $target
-& node $workflow --version
-Remove-Item Env:AGENT_BROWSER_BIN -ErrorAction SilentlyContinue
+Initialize-StateDirectory
+$previousBrowserBinary = $env:AGENT_BROWSER_BIN
+try {
+    $env:AGENT_BROWSER_BIN = $target
+    & node $workflow --version
+    if ($LASTEXITCODE -ne 0) { throw 'Slipwing was installed but could not start.' }
+} finally { $env:AGENT_BROWSER_BIN = $previousBrowserBinary }
 if (-not $NoSkill) {
     $skillArgs = @($workflow, 'skill', '--install') + $(if ($SkillDir) { @('--dir', $SkillDir) } else { @() })
-    & node @skillArgs
+    $result = & node @skillArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Slipwing was installed but its skill could not be installed. Run slipwing skill --install to try again.' }
+    $skill = ($result | ConvertFrom-Json).data
+    if ($skill.kept) { Say ("Kept the existing skill in " + ($skill.kept -join ', ') + ". Run slipwing skill to read the installed guide.") }
 }
 Say ''
-Say "Installed Slipwing $($bundle.version). Tell your agent: use the slipwing skill."
+Say "Installed Slipwing $($bundle.version)."
+if (-not $NoSkill -and $skill.installed) { Say 'Tell your agent: use the slipwing skill.' }
 Say 'Back to the official packages: npm install -g agent-desktop agent-browser'
