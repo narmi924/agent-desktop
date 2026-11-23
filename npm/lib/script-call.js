@@ -40,7 +40,7 @@ function invoke(binary, args, { input, timeout = DEFAULT_WAIT_MS, env, children,
       try { reply = JSON.parse(out); } catch { return finish(reject, new Error('The command printed no JSON reply.')); }
       if (reply.ok ?? reply.success) return finish(resolve, reply.data);
       const error = new Error(String(reply.error?.message ?? reply.error ?? 'Command refused'));
-      if (reply.error?.code) Object.assign(error, { code: reply.error.code, details: reply.error.details, disposition: reply.error.disposition });
+      if (reply.error?.code) Object.assign(error, { code: reply.error.code, details: reply.error.details, disposition: reply.error.disposition, suggestion: reply.error.suggestion });
       finish(reject, error);
     });
     if (input !== undefined) child.stdin.end(input);

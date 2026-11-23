@@ -88,7 +88,7 @@ async function job([action, id, ...rest], values, readText) {
 }
 
 function errorInfo(err) {
-  return { code: errorCode(err), message: String(err?.message ?? err) };
+  return { code: errorCode(err), message: String(err?.message ?? err), ...(err?.suggestion ? { suggestion: err.suggestion } : {}) };
 }
 
 /**

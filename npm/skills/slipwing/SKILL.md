@@ -123,6 +123,9 @@ On `INPUT_NOT_ALLOWED`, ask for the input time the step needs. After the user ag
 with `--allow-input` (or the chosen `--mode`). While the agent has the input the
 pointer turns into an amber arrow; the user touching the mouse or keyboard pauses typing, and Esc stops it.
 
+If Windows refuses to bring the target forward, ask the person to switch to that window or dismiss the open system
+menu. Read the current state before resuming the interrupted step.
+
 ## 6. Reading the reply
 
 - `data.result` is what the script returned. `ok: true` only means it ran; wait for results with `waitText`.

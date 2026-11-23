@@ -305,9 +305,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
 
   /** A person clicks only the window in front: a human-paced click on a window behind others brings it forward first. */
   async function bringForward(window) {
-    try {
-      await ad(['--headed', 'focus-window', '--window-id', await resolve(window)]);
-    } catch { /* the click itself reports a window that stayed behind */ }
+    await ad(['--headed', 'focus-window', '--window-id', await resolve(window)]);
   }
 
   /** Windows that opened, closed or changed title while `run` ran, as notes on the step. */

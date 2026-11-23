@@ -457,6 +457,20 @@ test('a name no control has is looked for in the picture at once, not after the 
   assert.ok(Date.now() - started < 1000, 'no four-second wait before the picture');
 });
 
+test('a human-paced click stops before dispatch when Windows refuses foreground activation', async () => {
+  const tools = fakeTools({
+    'desktop list-windows': [{ id: 'w-7', app_name: 'pwsh.exe', title: '测试' }],
+    'desktop snapshot': WINDOW,
+    'desktop --headed': words => {
+      assert.equal(words[1], 'focus-window');
+      throw Object.assign(new Error('Target window did not become foreground'), { code: 'ACTION_FAILED' });
+    },
+  });
+  await assert.rejects(tools.run("await desktop.click('w-7', '文件名');", { startPace: 'natural', allowInput: true }), { code: 'ACTION_FAILED' });
+  assert.equal(tools.calls.filter(c => c.words.includes('focus-window')).length, 1);
+  assert.ok(!tools.calls.some(c => c.words.includes('click')));
+});
+
 test('a name a control has never touches the picture, and picture:false keeps a step to controls', async () => {
   const tools = drawnTools({ 保存: [SPOT('保存', 50, 60)] }, { tree: WINDOW });
   await tools.run(`await desktop.click('自绘', '文件名');`);

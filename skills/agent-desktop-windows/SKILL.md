@@ -67,7 +67,9 @@ the last keyboard or mouse input).
 - **A window behind another window is drivable. A minimized one is not.**
   Every element of a minimized window reports `offscreen` and ref actions
   fail. Run `restore --app <image>` and snapshot again. Do not use
-  `focus-window` by reflex: it steals the user's foreground.
+  `focus-window` by reflex: it steals the user's foreground. For an agreed
+  headed action, if Windows refuses activation, ask the person to bring the
+  target forward. Check which window has focus before retrying input.
 - **No permission dialog exists.** `permissions` reports `automation` as
   `not_required`. Elevation boundaries are the only access control.
 - **Chromium and Electron apps read thin before they settle.** Pass a longer

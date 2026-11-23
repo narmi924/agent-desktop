@@ -108,7 +108,7 @@ function run(binary, args, input, check) {
   if (!(reply.ok ?? reply.success)) {
     const message = reply.error?.message ?? reply.error ?? 'Command refused';
     const error = new Error(String(message).replace(/^Evaluation error: Error: ([^\n]*)\n\s+at [\s\S]*$/, '$1'));
-    if (reply.error?.code) Object.assign(error, {code:reply.error.code, details:reply.error.details, disposition:reply.error.disposition});
+    if (reply.error?.code) Object.assign(error, {code:reply.error.code, details:reply.error.details, disposition:reply.error.disposition, suggestion:reply.error.suggestion});
     throw error;
   }
   return reply.data;
@@ -478,6 +478,7 @@ async function perform(command, values, check) {
 main().catch(err => {
   const partial=err.details?.typed_keystrokes;
   console.error(JSON.stringify({ok:false,error:err.message,code:errorCode(err),...(err.disposition ? {disposition:err.disposition} : {}),
+    ...(err.suggestion ? {suggestion:err.suggestion} : {}),
     ...(Number.isInteger(partial) ? {typed_keystrokes:partial,keystrokes:err.details.keystrokes} : {}),
     ...(err.report ?? {}),
     ...(err.details && ['MISSING_ARGS','EFFECT_MISMATCH','FINAL_NOT_ALLOWED','AMBIGUOUS_TARGET'].includes(err.code) ? {details:err.details} : {})}));

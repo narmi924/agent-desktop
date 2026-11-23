@@ -101,7 +101,7 @@ test('visible.scrollTo turns the wheel towards a text and fails when it never co
 });
 
 test('human() makes desktop.click use the real mouse and desktop.type sends real keys at that pace', async () => {
-  const native = { snapshot: WINDOW, click: { disposition: { delivery: 'delivered_unverified' } }, type: { disposition: { delivery: 'delivered_verified' } } };
+  const native = { snapshot: WINDOW, 'focus-window': {}, click: { disposition: { delivery: 'delivered_unverified' } }, type: { disposition: { delivery: 'delivered_verified' } } };
   const plain = run(`await desktop.click('w-1', '保存');`, () => QUIZ, native);
   await plain.result;
   assert.deepEqual(plain.calls.at(-1).words, ['click', '@s1:e2']);

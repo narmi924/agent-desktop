@@ -161,7 +161,8 @@ function createVisible({ flow, step, warn, pace, takeInput = () => {}, pressKey,
           const page = await bind(null);
           if (openedTab(page, known, address)) return shown(page);
         } catch { /* The new tab may not be readable yet. */ }
-        if (Date.now() >= until) throw Object.assign(new Error('Chrome did not show ' + address + ' within ' + OPEN_WAIT_MS / 1000 + ' s.'), { code: 'TIMEOUT' });
+        if (Date.now() >= until) throw Object.assign(new Error('Chrome did not show ' + address + ' within ' + OPEN_WAIT_MS / 1000 + ' s.'),
+          { code: 'TIMEOUT', suggestion: 'Bring Chrome forward and check whether the requested tab opened before opening it again.' });
         await delay(250);
       }
     }),
