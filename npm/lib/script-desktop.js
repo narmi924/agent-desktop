@@ -311,7 +311,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
   }
 
   /** Windows that opened, closed or changed title while `run` ran, as notes on the step. */
-  async function watchWindows(run) {
+  async function watchWindows(run, canBlock = () => true) {
     const list = async () => {
       try { return await ad(['list-windows']); } catch { return undefined; }
     };
@@ -324,7 +324,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     try {
       pending = control?.signal;
       const running = run();
-      result = control ? await Promise.race([running, blocked(before.filter(shown), running, control)]) : await running;
+      result = control ? await Promise.race([running, blocked(before.filter(shown), running, control, canBlock)]) : await running;
     } finally { listed = undefined; pending = undefined; }
     const after = before && await list();
     if (!before || !after) return result;
@@ -346,7 +346,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
    * A click whose app opens a modal dialog can wait until the dialog closes. A window that opens while the action
    * still waits ends the wait: the waiting command stops, the step counts as sent, and the new window is its effect.
    */
-  async function blocked(before, running, control) {
+  async function blocked(before, running, control, canBlock) {
     let done = false;
     running.then(() => { done = true; }, () => { done = true; });
     const known = new Set(before.map(w => w.id));
@@ -355,7 +355,7 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
       let now;
       try { now = await call(['list-windows'], {}); } catch { now = undefined; }
       const opened = (now ?? []).filter(w => !known.has(w.id) && w.visible !== false && !w.minimized);
-      if (opened.length && !done) {
+      if (opened.length && !done && canBlock()) {
         running.catch(() => {});
         control.abort(Object.assign(new Error('A window opened while the step waited.'), { code: 'ACTION_BLOCKED' }));
         warn('The step opened ' + opened.map(w => '"' + w.title + '"').join(', ') + ' and the app waits for it; the step was sent but not confirmed.');
@@ -369,21 +369,17 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
   /**
    * Clicks where the picture shows the text. With `behind`, and unless steps move like a person, the click is first
    * posted to the window as window messages, so the window stays where it is and the pointer stays with the person.
-   * When the window then shows no change, the window comes to the front and the real mouse clicks, which needs the
-   * input permission. A step refused for that and tried again once input is allowed goes straight to the real mouse.
+   * A real click is possible only if the native adapter refused the background method before sending anything.
    */
-  const postedInVain = new Set();
   async function clickPicture(id, target, options, behind = false) {
-    const key = id + '\n' + target;
-    if (behind && !pace() && !postedInVain.delete(key)) {
+    if (behind && !pace()) {
       const spot = await picture.find(id, target, options);
       if (!spot) return undefined;
-      const tried = await clickBehind(id, spot);
-      if (tried.done) return tried.done;
+      const result = await clickBehind(id, spot);
+      if (result) return result;
       const { x, y } = spot.hit.center;
-      const why = tried.sent ? 'a click posted there in the background changed nothing in the window' : 'the window did not take a click posted in the background';
+      const why = 'the window did not take a click posted in the background';
       if (!inputAllowed()) {
-        postedInVain.add(key);
         throw inputRefused('No control is named "' + target + '" in this window. Its picture shows it at ' + x + ',' + y + '; ' + why +
           ', and clicking with the real mouse brings the window to the front and moves the pointer.', 'Ask the user first; when they agree, run the steps that are left with run --allow-input.');
       }
@@ -408,16 +404,24 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     const { x, y } = spot.hit.center;
     const before = { windows: await appWindows(id), controls: (await controlChanges(id))?.length === 0, texts: pictureLines(spot.lines) };
     before.picture = pictureLines(await pictureText(id).catch(() => [])) === before.texts;
+    const unconfirmed = cause => Object.assign(new Error('The background click on "' + spot.hit.text +
+      '" may have reached the application. Check the result before clicking again.' + (cause ? ' ' + cause.message : '')),
+      { code: 'CLICK_UNCONFIRMED' });
     let report;
     try {
       report = await ad(['mouse-click', '--post', '--frame', spot.shot.path, '--xy', x + ',' + y]);
     } catch (err) {
-      if (err.disposition?.delivery === 'not_delivered' || err.code === 'INVALID_ARGS') return { sent: false };
-      if (!String(err.disposition?.delivery).startsWith('delivered')) throw err;
+      if (err.disposition?.delivery === 'not_delivered') {
+        if (err.code === 'ACTION_NOT_SUPPORTED') return undefined;
+        throw err;
+      }
+      throw unconfirmed(err);
     }
-    if (!(await shownBehind(id, before))) return { sent: true };
+    let changed;
+    try { changed = await shownBehind(id, before); } catch (err) { throw unconfirmed(err); }
+    if (!changed) throw unconfirmed();
     note('by picture in the background at ' + x + ',' + y);
-    return { sent: true, done: { via: 'picture', background: true, text: spot.hit.text, x, y, delivery: report?.disposition?.delivery ?? 'delivered_unverified' } };
+    return { via: 'picture', background: true, text: spot.hit.text, x, y, delivery: report?.disposition?.delivery ?? 'delivered_unverified' };
   }
 
   const pictureLines = lines => (lines ?? []).map(line => line.text).sort().join('\n');
@@ -598,10 +602,13 @@ function createDesktop({ call, step, warn, note = () => {}, picture: makePicture
     }),
     click: (window, target, options) => step('desktop.click', target, async () => {
       fromFreshRead(window);
+      let waitingForControl = false;
       const done = await watchWindows(() => act(window, target, options, async ref => {
         if (pace()) await bringForward(window);
-        return ad([...asPerson(), 'click', ref]);
-      }, Object.assign(id => clickPicture(id, target, options, true), { behind: true })));
+        waitingForControl = true;
+        try { return await ad([...asPerson(), 'click', ref]); }
+        finally { waitingForControl = false; }
+      }, Object.assign(id => clickPicture(id, target, options, true), { behind: true })), () => waitingForControl);
       views.clear();
       if (done?.via !== 'picture') await controlEffects(window, { pictureText: true });
       return done?.via === 'picture' ? done : undefined;

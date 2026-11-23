@@ -35,7 +35,8 @@ check `job list`.
 ## Fixing in place
 
 `waiting.step` is the failed step, `waiting.error` why, `waiting.scene` the interface at that moment, and
-`waiting.sent: true` means the step was already sent. It waits up to 10 minutes, then counts as failed. Waiting holds no
+`waiting.sent: true` means the step was sent or may have reached the application. Check the result before another action.
+The job waits up to 10 minutes, then counts as failed. Waiting holds no
 input. Read `waiting.scene`, then choose:
 
 ```bash

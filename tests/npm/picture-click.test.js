@@ -92,31 +92,44 @@ test('a background picture click needs no input permission when the window shows
   assert.equal(headedAt(calls), -1);
 });
 
-test('the real mouse clicks only after a posted click changed nothing in the window', async () => {
-  const { calls, run } = tools();
-  const data = await run(`return await desktop.click('自绘', '发送');`, { allowInput: true });
-  assert.deepEqual(data.result, { via: 'picture', text: '发送', x: 1012, y: 716, delivery: 'delivered_unverified' });
-  assert.ok(postedAt(calls) >= 0 && postedAt(calls) < headedAt(calls), 'the posted click came before any real input');
-  assert.deepEqual(calls.filter(args => args[0] === '--headed').map(args => args[1]), ['focus-window', '--when-idle']);
-  assert.match(data.steps[0], /a click posted there in the background changed nothing in the window, real mouse and keyboard, by picture at 1012,716/);
-  assert.equal(data.input_used, true);
+test('a silent application receives one click regardless of input permission', async () => {
+  for (const allowInput of [false, true]) {
+    const { calls, run } = tools();
+    await assert.rejects(run(`await desktop.click('自绘', '发送');`, { allowInput }), { code: 'CLICK_UNCONFIRMED' });
+    assert.equal(calls.filter(words => words.includes('mouse-click')).length, 1);
+    assert.equal(headedAt(calls), -1);
+  }
 });
 
-test('without input permission a posted click that changed nothing is refused, and says it was posted', async () => {
-  const { calls, run } = tools();
+test('a missing delivery disposition cannot authorize a real click', async () => {
+  const posted = () => { throw Object.assign(new Error('No usable reply'), { code: 'INVALID_ARGS' }); };
+  const { calls, run } = tools({ posted });
+  await assert.rejects(run(`await desktop.click('自绘', '发送');`, { allowInput: true }), { code: 'CLICK_UNCONFIRMED' });
+  assert.equal(headedAt(calls), -1);
+});
+
+test('losing the observation after sending is an unconfirmed click', async () => {
+  const windows = state => { if (state.posted) throw new Error('Observation timed out'); return [WINDOW]; };
+  const { calls, run } = tools({ windows });
+  await assert.rejects(run(`await desktop.click('自绘', '发送');`), { code: 'CLICK_UNCONFIRMED' });
+  assert.equal(headedAt(calls), -1);
+});
+
+test('a definite refusal requires input permission before using the real mouse', async () => {
+  const posted = () => { throw Object.assign(new Error('Unsupported point'), { code: 'ACTION_NOT_SUPPORTED', disposition: { delivery: 'not_delivered' } }); };
+  const { calls, run } = tools({ posted });
   const err = await run(`await desktop.click('自绘', '发送');`).catch(e => e);
   assert.equal(err.code, 'INPUT_NOT_ALLOWED');
-  assert.match(err.message, /picture shows it at 1012,716; a click posted there in the background changed nothing/);
+  assert.match(err.message, /picture shows it at 1012,716; the window did not take a click/);
   assert.match(err.message, /run the steps that are left with run --allow-input/);
   assert.ok(postedAt(calls) >= 0);
   assert.equal(headedAt(calls), -1);
 });
 
-test('a picture that changes on its own is no evidence, so the real mouse still clicks', async () => {
+test('a picture that changes on its own cannot confirm the click', async () => {
   const { calls, run } = tools({ shown: state => ['发送', '12:0' + state.reads] });
-  const data = await run(`return await desktop.click('自绘', '发送');`, { allowInput: true });
-  assert.equal(data.result.background, undefined);
-  assert.ok(postedAt(calls) < headedAt(calls));
+  await assert.rejects(run(`return await desktop.click('自绘', '发送');`, { allowInput: true }), { code: 'CLICK_UNCONFIRMED' });
+  assert.equal(headedAt(calls), -1);
 });
 
 test('a window that refuses the posted click goes straight to the real mouse, and the step says so', async () => {
@@ -153,18 +166,19 @@ test('a window of the same app that opens after the posted click is its effect; 
   assert.equal(data.result.background, true);
   assert.equal(headedAt(opened.calls), -1);
   const elsewhere = tools({ windows: state => [WINDOW, state.posted ? { ...OTHER, title: '别的程序 - 新标题' } : OTHER] });
-  const other = await elsewhere.run(`return await desktop.click('自绘', '发送');`, { allowInput: true });
-  assert.equal(other.result.background, undefined);
-  assert.ok(headedAt(elsewhere.calls) > postedAt(elsewhere.calls));
+  await assert.rejects(elsewhere.run(`return await desktop.click('自绘', '发送');`, { allowInput: true }), { code: 'CLICK_UNCONFIRMED' });
+  assert.equal(headedAt(elsewhere.calls), -1);
 });
 
-test('a step refused after a posted click changed nothing goes straight to the real mouse when it is tried again', async () => {
-  let granted = false;
+test('an interrupted job checks the result without replaying its unconfirmed click', async () => {
   const { calls, run } = tools();
-  const hands = { wait: async () => { granted = true; return 'retry'; }, using: () => {} };
-  const fix = { fixes: [], ask: async () => ({ action: 'stop' }) };
-  const data = await run(`return await desktop.click('自绘', '发送');`, { allowInput: () => granted, hands, fix });
-  assert.equal(data.result.via, 'picture');
-  assert.equal(calls.filter(args => args[0] === 'mouse-click' && args.includes('--post')).length, 1, 'the retry did not post again');
-  assert.ok(headedAt(calls) > postedAt(calls));
+  const wait = Object.assign(() => assert.fail('must not replay on resume'), { cutShort: () => true });
+  const fix = { fixes: [], ask: async info => {
+    assert.equal(info.sent, true);
+    return { action: 'do', source: 'return await desktop.read("自绘");' };
+  } };
+  const data = await run(`return await desktop.click('自绘', '发送');`, { hands: { wait }, fix });
+  assert.match(data.result, /发送/);
+  assert.equal(calls.filter(args => args.includes('mouse-click')).length, 1);
+  assert.equal(headedAt(calls), -1);
 });

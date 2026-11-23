@@ -44,10 +44,10 @@ only control is its title bar is read from its picture straight away.
   ordinary windows too. Reading moves nothing.
 - `desktop.click` by picture first posts the click to the window in the background: the window stays where it is and
   the pointer stays with the user. It counts when the window then shows a change (its text, a control, or a window of
-  the same app opening, closing or changing title) and returns `{via: "picture", background: true, text, x, y}`. When
-  nothing changes, the window comes forward and the real mouse clicks the same place, which needs `--allow-input`;
-  without it the step returns `INPUT_NOT_ALLOWED`, says the background click changed nothing, and gives where the
-  picture shows the name. A click whose effect does not show in the window therefore reaches it more than once.
+  the same app opening, closing or changing title) and returns `{via: "picture", background: true, text, x, y}`.
+  `CLICK_UNCONFIRMED` means the click may have arrived. Check the application's result, such as the saved record or
+  sent message, before deciding whether another click is needed. Only a confirmed refusal of the background method
+  before delivery allows a real click, which requires `--allow-input`.
 - `desktop.fill` by picture brings the window forward, clicks the text with the real mouse and types, then checks the
   picture; it needs `--allow-input`, does not clear the field first and returns `false` with a warning when the text
   does not show.

@@ -118,9 +118,9 @@ slipwing run --file task.js --args '{"who":"Gulnar"}' --allow-final
 
 `run` works in the background by default. A step that needs the real mouse and keyboard (`visible.*`, `human()`,
 `desktop.type`, filling by picture, `--headed`) is refused with `INPUT_NOT_ALLOWED` and nothing is sent. A click by
-picture is first posted to the window in the background and is refused only when the window showed no change. Then: the
-earlier steps already happened, so do not rerun them; tell the user what the step needs and for how long; after they
-agree, run only the remaining steps with `--allow-input` (or the right `--mode`). While the agent has the input the
+picture is first posted in the background. On `CLICK_UNCONFIRMED`, check the application's result before another click.
+On `INPUT_NOT_ALLOWED`, ask for the input time the step needs. After the user agrees, run only the remaining steps
+with `--allow-input` (or the chosen `--mode`). While the agent has the input the
 pointer turns into an amber arrow; the user touching the mouse or keyboard pauses typing, and Esc stops it.
 
 ## 6. Reading the reply

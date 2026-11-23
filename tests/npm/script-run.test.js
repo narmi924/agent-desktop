@@ -438,26 +438,22 @@ function drawnTools(places, { tree = DRAWN, typed } = {}) {
   });
 }
 
-test('a window with nothing but a title bar is clicked by its picture: posted first, then with the real mouse when nothing changed', async () => {
+test('a window with only a title bar receives a single click at the point read from its picture', async () => {
   const tools = drawnTools({ 发送: [SPOT('发送', 1012, 716)] });
-  const data = await tools.run(`return await desktop.click('自绘', '发送');`);
-  assert.deepEqual(data.result, { via: 'picture', text: '发送', x: 1012, y: 716, delivery: 'delivered_unverified' });
-  const headed = tools.calls.filter(c => c.words[0] === '--headed').map(c => c.words.slice(1, 3).join(' '));
-  assert.deepEqual(headed, ['focus-window --window-id', '--when-idle 600'], 'the window comes forward before it is captured and clicked');
+  await assert.rejects(tools.run(`return await desktop.click('自绘', '发送');`), { code: 'CLICK_UNCONFIRMED' });
+  assert.equal(tools.calls.filter(c => c.words.includes('mouse-click')).length, 1);
   const click = tools.calls.find(c => c.words.includes('mouse-click'));
   assert.equal(click.words[click.words.indexOf('--xy') + 1], '1012,716');
   assert.match(click.words[click.words.indexOf('--frame') + 1], /scene-.*\.png$/);
   const ocr = tools.calls.find(c => c.words[0] === 'ocr');
   assert.equal(ocr.words[ocr.words.indexOf('--scale') + 1], '2.25', 'the picture is read at the scale it was captured at');
-  assert.match(data.steps[0], /^desktop\.click 发送 \(a click posted there in the background changed nothing in the window, real mouse and keyboard, by picture at 1012,716\) \d+ms$/);
-  assert.equal(data.input_used, true);
+  assert.ok(!tools.calls.some(c => c.words.includes('--headed')));
 });
 
 test('a name no control has is looked for in the picture at once, not after the wait', async () => {
   const tools = drawnTools({ 发送: [SPOT('发送', 50, 60)] }, { tree: WINDOW });
   const started = Date.now();
-  const data = await tools.run(`return await desktop.click('自绘', '发送');`);
-  assert.equal(data.result.via, 'picture');
+  await assert.rejects(tools.run(`return await desktop.click('自绘', '发送');`), { code: 'CLICK_UNCONFIRMED' });
   assert.ok(Date.now() - started < 1000, 'no four-second wait before the picture');
 });
 

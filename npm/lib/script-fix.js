@@ -5,7 +5,7 @@ const NOT_FIXABLE = new Set(['MISSING_ARGS', 'INVALID_ARGS', 'EXPECTATION_FAILED
 /** A step the tool stopped itself because a person took the mouse or keyboard: not sent, safe to do again. */
 const YIELDED = /Cursor movement interrupted|stopped by Escape|held mouse button|left the foreground|PERSON_TOOK_OVER/;
 /** A step that was sent: doing it again could send it twice. */
-const SENT = new Set(['EFFECT_MISMATCH']);
+const SENT = new Set(['EFFECT_MISMATCH', 'CLICK_UNCONFIRMED']);
 /** Wait helpers that take their time limit as a plain number in this place rather than in an options object. */
 const TIME_IN_PLACE = { 'web.waitText': 1, 'visible.waitText': 1, 'desktop.waitText': 2 };
 const SUBJECT_LIMIT = 60;
@@ -74,7 +74,7 @@ function fixable(surfaces, { ask, runPatch, fixes = [], approvals = [], allowOnc
           } catch (err) {
             if (!err || NOT_FIXABLE.has(err.code)) throw err;
             const cutShort = waitHands?.cutShort?.() ?? false;
-            if (waitHands && (err.code === 'INPUT_NOT_ALLOWED' || YIELDED.test(err.message ?? '') || cutShort)) {
+            if (waitHands && !SENT.has(err.code) && (err.code === 'INPUT_NOT_ALLOWED' || YIELDED.test(err.message ?? '') || cutShort)) {
               const outcome = await waitHands({ step: err.step ?? surface + '.' + name, helper: name, reason: err.code === 'INPUT_NOT_ALLOWED' ? 'hands' : 'user', error: err, uncertain: cutShort && !YIELDED.test(err.message ?? '') });
               if (outcome === 'retry') { if (err.resumeWith) current = err.resumeWith; continue; }
               if (outcome !== 'fix') throw err;
