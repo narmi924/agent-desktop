@@ -3,12 +3,21 @@
 const { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } = require('node:fs');
 const { homedir } = require('node:os');
 const { join } = require('node:path');
+const { execFileSync } = require('node:child_process');
 
 const NAME = /^[\p{L}\p{N}][\p{L}\p{N}_.-]{0,63}$/u;
 const KEEP_VERSIONS = 10;
 
 function stateDir() {
   return process.env.AGENT_DESKTOP_HOME || join(homedir(), '.agent-desktop');
+}
+
+/** Create the Windows state root with the permissions required by the native CLI. */
+function initializeStateDir() {
+  if (process.platform !== 'win32' || existsSync(stateDir())) return;
+  const powershell = join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const initialize = readFileSync(join(__dirname, '..', 'scripts', 'initialize-state.ps1'), 'utf8');
+  execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', initialize], { windowsHide: true, stdio: 'inherit' });
 }
 
 function routinesDir() {
@@ -131,4 +140,4 @@ function remove(name) {
   updateIndex(name, undefined);
 }
 
-module.exports = { stateDir, routinesDir, checkName, readIndex, rebuildIndex, load, exists, save, update, remove };
+module.exports = { stateDir, initializeStateDir, routinesDir, checkName, readIndex, rebuildIndex, load, exists, save, update, remove };

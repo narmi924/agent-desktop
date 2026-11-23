@@ -57,6 +57,6 @@ slipwing run --space --file task.js                 # later runs keep that sign-
 It is separate from the user's Chrome and cannot see their tabs. `--login` opens a window, so tell the user first. A few
 sites refuse background browsers; then keep the `--login` window open while `run --space` works.
 
-## agent-browser directly
+## Run the bundled browser directly
 
-A new page with the user's sign-ins: `agent-browser --auto-connect --session my-chrome open URL`. Never give a session you connected to the user's Chrome to `run --session`: it stays connected to that browser. More: `agent-browser skills get core`.
+A new page with the user's sign-ins: `slipwing browser --auto-connect --session my-chrome open URL`. Never give a session you connected to the user's Chrome to `run --session`: it stays connected to that browser. More: `slipwing browser skills get core`.

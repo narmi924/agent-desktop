@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { execFileSync } = require('node:child_process');
+const { execFileSync, spawnSync } = require('node:child_process');
 const { existsSync, readFileSync, statSync } = require('node:fs');
 const { basename, delimiter, isAbsolute, join } = require('node:path');
 const { parseArgs } = require('node:util');
@@ -23,6 +23,7 @@ const { readPage } = require('../lib/page-read');
 const { pageLease } = require('../lib/page-lease');
 const { markRepeat, clearRepeat } = require('../lib/script-repeat');
 const routines = require('../lib/routine-command');
+const { initializeStateDir } = require('../lib/routine-store');
 const host = require('../lib/host-command');
 const prefs = require('../lib/prefs');
 const { COMMAND_OPTIONS, POSITIONAL_COMMANDS, parseOptions } = require('../lib/cli-options');
@@ -40,6 +41,7 @@ const BACKGROUND_SESSION = 'agent-desktop-background';
 
 const usage = [
   'slipwing --version   (the version of this bundle, and for each program the installed version and the official release it is built on)',
+  'slipwing desktop ARGS... | slipwing browser ARGS...   (run the bundled agent-desktop or agent-browser command, including --help)',
   'slipwing connect [--cdp URL]   (once: lets page commands use your running Chrome without taking the foreground)',
   'slipwing disconnect',
   'slipwing current [--window ID | --page PAGE] [--visible]   (--visible binds the tab for the real mouse and keyboard only and skips the background connection)',
@@ -163,6 +165,9 @@ function choose({ session, tab, field, input, value, position, format }) {
 
 function browserBinary() {
   if (process.env.AGENT_BROWSER_BIN) return process.env.AGENT_BROWSER_BIN;
+  if (require('../package.json').name === 'slipwing') {
+    return join(__dirname, '..', 'browser', 'bin', 'agent-browser-win32-' + process.arch + '.exe');
+  }
   for (const dir of (process.env.PATH ?? '').split(delimiter).filter(Boolean)) {
     const candidate = join(dir, 'node_modules', 'agent-browser', 'bin', 'agent-browser-win32-' + process.arch + '.exe');
     if (existsSync(candidate)) return candidate;
@@ -292,6 +297,14 @@ function joinCoordinates(args) {
 
 async function main() {
   const args = process.argv.slice(2);
+  if (args[0] === 'desktop' || args[0] === 'browser') {
+    if (args[0] === 'desktop' && !args.includes('--help') && !args.includes('--version')) initializeStateDir();
+    const binary = args.shift() === 'desktop' ? nativeBinary() : browserBinary();
+    const child = spawnSync(binary, args, { stdio: 'inherit', windowsHide: true });
+    if (child.error) throw child.error;
+    process.exitCode = child.status ?? 1;
+    return;
+  }
   if (args.includes('--help')) { console.log(usage); return; }
   if (args[0] === '--version') { console.log(JSON.stringify({ ok: true, data: versionReport({ nativeBinary: nativeBinary(), browserBinary: optionalBrowserBinary() }) })); return; }
   if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('The workflow commands require Node.js 22 or later.');
@@ -303,6 +316,7 @@ async function main() {
   if (names.includes('session') && !['run', 'routine'].includes(command) && !values.page && !values.session) values.session = process.env.AGENT_BROWSER_SESSION;
   if (command === 'run' && values.api) { console.log(api); return; }
   if (command === 'skill' && !values.list && !values.install) { console.log(skill.read(positionals[0])); return; }
+  initializeStateDir();
   const own = {
     replay: () => replay(values),
     run: () => script(values),

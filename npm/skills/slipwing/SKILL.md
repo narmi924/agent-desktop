@@ -5,10 +5,9 @@ description: Operate Windows desktop apps and web pages for the user, in the bac
 
 # Working on the user's computer
 
-Three commands do the work: `agent-desktop` (desktop apps), `agent-browser` (web pages) and `slipwing`
-(one script across both, saved routines, jobs, watches). Use them for desktop and browser work on this computer
-instead of screenshot-and-click tools: they read controls, keep the user's mouse free and type exactly under input
-methods that turn English into other scripts.
+Use `slipwing run` for one script across web pages and desktop apps. It reads controls, keeps the user's mouse
+free and types under input methods such as Microsoft Pinyin. For individual commands, invoke the bundled
+agent-desktop as `slipwing desktop` and agent-browser as `slipwing browser`, including when following their built-in help.
 
 An agent without a shell starts `slipwing mcp` as an MCP server over stdio: the same work as tools (`workflow_run`,
 `workflow_job`, ...), and its `workflow_guide` says which tool each command below is.
@@ -142,7 +141,7 @@ menu. Read the current state before resuming the interrupted step.
   to act on: `FINAL_NOT_ALLOWED`, `INPUT_NOT_ALLOWED` (nothing was sent; ask), `MISSING_ARGS`, `EFFECT_MISMATCH`,
   `ELEMENT_NOT_FOUND`, `AMBIGUOUS_TARGET`, `TIMEOUT`, `ACTION_FAILED` (the app, page or tool refused the step; read
   `error`), `SCRIPT_ERROR` (the script itself threw), `INVALID_ARGS`, `FILE_NOT_FOUND`, `ROUTINE_NOT_FOUND`,
-  `BROWSER_BUSY`. `agent-desktop` commands answer `{"ok": false, "error": {"code", "message", ...}}` instead.
+  `BROWSER_BUSY`. `slipwing desktop` commands answer `{"ok": false, "error": {"code", "message", ...}}` instead.
 - Two runs at once never share a page. `browser_session` means another run was using the background browser, so this
   run had one of its own; a next script continues on that page with `run --session NAME` within 10 minutes.
 

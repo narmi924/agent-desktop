@@ -57,7 +57,9 @@ function stub() {
 /** The skill folders of the agents this installs for, or the one folder the caller names. */
 function targets(dir) {
   if (dir) return [join(dir, NAME)];
-  return [join(homedir(), '.claude', 'skills', NAME), join(homedir(), '.codex', 'skills', NAME)];
+  const claude = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+  const codex = process.env.CODEX_HOME || join(homedir(), '.codex');
+  return [join(claude, 'skills', NAME), join(codex, 'skills', NAME)];
 }
 
 /**

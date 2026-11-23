@@ -37,6 +37,7 @@ test('every workflow command and flag the guide shows exists, so the guide canno
       for (const segment of segments) {
         const command = segment.match(/^([a-z-]+)/)?.[1];
         if (!command || ['--help', '--version'].includes(command)) continue;
+        if (command === 'browser' || command === 'desktop') continue;
         if (!Object.hasOwn(COMMAND_OPTIONS, command)) { unknown.push(file + ': command ' + command); continue; }
         const words = segment.split(/[`|]/)[0];
         for (const [, flag] of words.matchAll(/(?:^|\s)--([a-z][a-z-]*)/g)) {
@@ -46,6 +47,18 @@ test('every workflow command and flag the guide shows exists, so the guide canno
     }
   }
   assert.deepEqual(unknown, []);
+});
+
+test('the bundled CLI entry points forward arguments, streams and the exit status', () => {
+  for (const [command, variable] of [['browser', 'AGENT_BROWSER_BIN'], ['desktop', 'AGENT_DESKTOP_BIN']]) {
+    const program = 'process.stdout.write(JSON.stringify(process.argv.slice(1))); process.stdin.pipe(process.stderr); process.exitCode = 7';
+    const result = spawnSync(process.execPath, [workflow, command, '-e', program, '--', '--help', 'two words'], {
+      env: { ...process.env, [variable]: process.execPath }, input: 'from stdin', encoding: 'utf8',
+    });
+    assert.equal(result.status, 7);
+    assert.deepEqual(JSON.parse(result.stdout), ['--help', 'two words']);
+    assert.equal(result.stderr, 'from stdin');
+  }
 });
 
 test('installing writes a short entry that points to the guide and never replaces a skill it did not write', () => {

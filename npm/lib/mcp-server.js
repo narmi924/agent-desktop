@@ -190,7 +190,7 @@ function initialize(params) {
   return { protocolVersion: version, capabilities: { tools: {} }, serverInfo: serverInfo(), instructions: INSTRUCTIONS };
 }
 
-/** The Slipwing version, not the version of the agent-desktop package it ships in. */
+/** The version of the Slipwing bundle. */
 function serverInfo() {
   return { name: 'slipwing', version: bundle().version };
 }

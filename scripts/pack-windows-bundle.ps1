@@ -1,5 +1,4 @@
-# Packs Slipwing for Windows: both programs built from the personal branches, the agent-desktop npm package with the
-# workflow and its guide, the agent-browser guide files, bundle.json and install.ps1, into one zip with SHA256SUMS.
+# Packs the Windows x64 programs and the Slipwing skill into an installable npm tarball.
 # Usage: pwsh scripts/pack-windows-bundle.ps1 [-BrowserRepo ..\agent-browser] [-Out dist] [-DesktopExe PATH] [-BrowserExe PATH]
 # Without -DesktopExe and -BrowserExe both are built here with cargo (Visual Studio C++ build tools required).
 param(
@@ -39,26 +38,39 @@ if (-not $BrowserExe) {
     $BrowserExe = Join-Path $BrowserRepo 'cli\target\release\agent-browser.exe'
 }
 
-$name = "slipwing-$($bundle.version)"
-$stage = Join-Path $Out $name
-Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force $stage | Out-Null
+$null = New-Item -ItemType Directory -Force -Path $Out
+$Out = (Resolve-Path -LiteralPath $Out).Path
+$stage = Join-Path $repo ('tmp\slipwing-pack-' + [IO.Path]::GetRandomFileName())
+$bin = New-Item -ItemType Directory -Path (Join-Path $stage 'bin')
+$browserBin = New-Item -ItemType Directory -Path (Join-Path $stage 'browser\bin')
+$scripts = New-Item -ItemType Directory -Path (Join-Path $stage 'scripts')
 
-$tarball = (& npm pack (Join-Path $repo 'npm') --pack-destination $stage --silent | Select-Object -Last 1).Trim()
-if ($LASTEXITCODE -ne 0) { throw 'npm pack failed' }
-Rename-Item (Join-Path $stage $tarball) 'agent-desktop.tgz'
-Copy-Item $DesktopExe (Join-Path $stage 'agent-desktop-win32-x64.exe')
-Copy-Item $BrowserExe (Join-Path $stage 'agent-browser-win32-x64.exe')
-foreach ($folder in 'skill-data', 'skills') { Copy-Item (Join-Path $BrowserRepo $folder) (Join-Path $stage "agent-browser-$folder") -Recurse }
-$browserVersion = (Get-Content (Join-Path $BrowserRepo 'package.json') -Raw | ConvertFrom-Json).version
-$bundle | Add-Member -NotePropertyName 'agent_browser_npm' -NotePropertyValue $browserVersion -Force
-$bundle | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $stage 'bundle.json') -Encoding UTF8
-Copy-Item (Join-Path $PSScriptRoot 'install-windows-bundle.ps1') (Join-Path $stage 'install.ps1')
+Copy-Item -LiteralPath $DesktopExe -Destination (Join-Path $bin.FullName 'agent-desktop-win32-x64.exe')
+Copy-Item -LiteralPath $BrowserExe -Destination (Join-Path $browserBin.FullName 'agent-browser-win32-x64.exe')
+Copy-Item -LiteralPath (Join-Path $repo 'npm\bin\workflow.js') -Destination $bin.FullName
+Copy-Item -LiteralPath (Join-Path $repo 'npm\scripts\initialize-state.ps1') -Destination $scripts.FullName
+foreach ($file in 'lib', 'skills', 'bundle.json') {
+    Copy-Item -LiteralPath (Join-Path $repo "npm\$file") -Destination $stage -Recurse
+}
+Copy-Item -LiteralPath (Join-Path $repo 'LICENSE') -Destination $stage
+$browser = Split-Path -Parent $browserBin.FullName
+foreach ($file in 'skill-data', 'skills', 'LICENSE') {
+    Copy-Item -LiteralPath (Join-Path $BrowserRepo $file) -Destination $browser -Recurse
+}
+Copy-Item -Path (Join-Path $BrowserRepo 'cli\src\native\a11y\LICENSE-axe-core*.txt') -Destination $browser
 
-$zip = Join-Path $Out "$name.zip"
-Remove-Item $zip -Force -ErrorAction SilentlyContinue
-Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip
-$sums = Join-Path $Out 'SHA256SUMS'
-"$((Get-FileHash $zip -Algorithm SHA256).Hash.ToLower())  $name.zip" | Set-Content $sums -Encoding ASCII
-Copy-Item (Join-Path $PSScriptRoot 'install-windows-bundle.ps1') (Join-Path $Out 'install.ps1')
-Write-Output "Packed $zip ($([math]::Round((Get-Item $zip).Length / 1MB, 1)) MB), SHA256SUMS and install.ps1 in $Out"
+$manifest = [ordered]@{
+    name = 'slipwing'
+    version = $bundle.version
+    description = 'Operate Windows apps and web pages from one agent workflow.'
+    license = 'Apache-2.0'
+    repository = 'github:narmi924/slipwing'
+    bin = @{ slipwing = 'bin/workflow.js' }
+    engines = @{ node = '>=22' }
+    os = @('win32')
+    cpu = @('x64')
+    scripts = @{ postinstall = 'node bin/workflow.js skill --install' }
+}
+[IO.File]::WriteAllText((Join-Path $stage 'package.json'), ($manifest | ConvertTo-Json -Depth 4))
+& npm.cmd pack $stage --pack-destination $Out --silent
+if ($LASTEXITCODE -ne 0) { throw 'Could not pack Slipwing.' }

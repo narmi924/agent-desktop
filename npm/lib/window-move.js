@@ -69,10 +69,10 @@ function imageToken(path) {
 function windowOf(ad, id, app) {
   const wins = ad('list-windows').filter(w => w.visible && !w.minimized && (id ? w.id === id : w.app_name === app));
   if (!wins.length) {
-    throw Object.assign(new Error(id ? 'No open window has the id ' + id + ' (it closed, is minimized or the id is from an old list); agent-desktop list-windows shows the ids now.'
-      : 'No open window belongs to ' + app + '; agent-desktop list-windows shows the windows and their apps.'), { code: id ? 'WINDOW_NOT_FOUND' : 'APP_NOT_FOUND' });
+    throw Object.assign(new Error(id ? 'No open window has the id ' + id + ' (it closed, is minimized or the id is from an old list); slipwing desktop list-windows shows the ids now.'
+      : 'No open window belongs to ' + app + '; slipwing desktop list-windows shows the windows and their apps.'), { code: id ? 'WINDOW_NOT_FOUND' : 'APP_NOT_FOUND' });
   }
-  if (wins.length > 1) throw Object.assign(new Error(app + ' has ' + wins.length + ' open windows; pass --window with an id from agent-desktop list-windows.'), { code: 'AMBIGUOUS_TARGET' });
+  if (wins.length > 1) throw Object.assign(new Error(app + ' has ' + wins.length + ' open windows; pass --window with an id from slipwing desktop list-windows.'), { code: 'AMBIGUOUS_TARGET' });
   if (!wins[0].process_instance) throw Object.assign(new Error('Window ' + wins[0].id + ' has no identifiable owner, so a picture of it could not be tied to it.'), { code: 'ACTION_FAILED' });
   return wins[0];
 }
