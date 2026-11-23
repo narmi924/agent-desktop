@@ -37,6 +37,11 @@ if (-not $BrowserExe) {
     Build-Release (Join-Path $BrowserRepo 'cli\Cargo.toml') ''
     $BrowserExe = Join-Path $BrowserRepo 'cli\target\release\agent-browser.exe'
 }
+$mark = '+slipwing.' + $bundle.version
+foreach ($exe in $DesktopExe, $BrowserExe) {
+    $reported = (& $exe --version | Out-String).Trim()
+    if (-not $reported.EndsWith($mark)) { throw "$exe reports '$reported'; its Cargo version must end in $mark." }
+}
 
 $null = New-Item -ItemType Directory -Force -Path $Out
 $Out = (Resolve-Path -LiteralPath $Out).Path
