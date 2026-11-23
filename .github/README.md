@@ -2,107 +2,140 @@
 
 # Slipwing
 
-Use Slipwing to let your AI agent work in your Windows apps and browser while you keep using the PC.
+Slipwing is an independent Windows build of [vercel-labs/agent-desktop](https://github.com/vercel-labs/agent-desktop)
+and [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser). It hands your AI agent your desktop apps
+and your browser, and leaves you the mouse.
 
-Slipwing is a personal Windows build of [vercel-labs/agent-desktop](https://github.com/vercel-labs/agent-desktop) and
-[vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser), plus a `slipwing` command that runs one task
-across both. Version 0.1.0 is built on agent-desktop v1.3.1 (+6 commits) and agent-browser v0.43.0 (+38 commits);
-`slipwing --version` prints the exact bases. It runs on Windows and has been tested on Windows 11. On macOS and Linux,
-use the official packages.
+[![Watch the 25-second demo](../assets/Videos/slipwing-en.jpg)](../assets/Videos/slipwing-en.mp4?raw=true)
 
-<!-- MEDIA: 10 s clip, "fill the tracking number from order D6182 into the open register window, don't touch my mouse"; links to the MP4 -->
+## What your agent can do
 
-## Why
+- **Work while you work.** It fills fields, presses buttons and picks options in windows you are not looking at. The
+  window you type in stays in front.
+- **Use your Chrome.** Your sign-ins, in a tab of its own, with your open tabs left alone.
+- **Go from page to app in one call.** Read it on a website, enter it in a desktop app: one script, run once. A
+  six-field web form is filled and submitted in 0.71 s.
+- **Handle self-drawn apps.** Windows with no controls to read are read from their pixels, and clicks go in the
+  background first.
+- **Send once.** Send, submit, pay and delete wait for your yes in the chat. A click that may have landed is checked
+  before anything else is sent.
+- **Learn a task once.** Save what worked under a name and ask for it again with new values. Eight repeated tasks went
+  from 360 s to 189 s.
+- **Wait for the moment.** When the render finishes, the download lands or a window says done, it carries on.
+- **Look human on camera.** For demos and tutorials, the pointer glides and keys land at a human pace.
+- **Plug into any agent.** Anything that runs commands learns Slipwing from `slipwing skill`. Anything that speaks
+  MCP gets the same work as tools.
 
-I give my coding agent errands on the same computer I am working on: copy an order's tracking number from a web page
-into a desktop register, fill a form in a site I am signed in to, read a window I have open. I need three things for that.
-The agent must not take my mouse while I type. It must type exactly, and my input method is Microsoft Pinyin. And it must
-not do a send or submit twice when something goes wrong halfway.
-
-The official agent-desktop reads controls through UI Automation and works in the background, which is the right base.
-Most other tools I tried work on the screen itself.
-
-I measured four local test tasks on 2026-11-22: two forms on a web page, a desktop register window and a self-drawn
-chat window. Claude Sonnet drove each tool in a fresh session; the Codex and Claude apps used their own models. For the
-first three tools a note window stayed in front and received a character every 150 ms for the whole run, and recorded
-when it lost the foreground and any key press that did not come from my keyboard. The other four were measured earlier
-without the note, counting the tasks where they used the real mouse and keyboard.
-
-| Tool | Done right | While it worked | Time per task |
-|---|---|---|---|
-| Slipwing 0.1.0 | 4 of 4 | the note stayed in front | 7 to 20 s |
-| [Sidehand](https://github.com/Blue-B/sidehand) 0.5.2 | 4 of 4; the web sign-up failed once in two runs | the note stayed in front, apart from a 0.1 s switch in the failed run | 6 to 28 s |
-| official agent-desktop 1.3.1 and agent-browser 0.43.0 | 4 of 4 | on the register task the register came to the front at a `set-value` and stayed there for the rest of the run (14 s and 21 s in two runs), with two key presses from outside the keyboard | 12 to 35 s |
-| [Windows-MCP](https://github.com/CursorTouch/Windows-MCP) 0.9.0 | 4 of 4 | used the real mouse and keyboard on 4 tasks | 20 to 70 s |
-| [Hybrid Computer Use](https://github.com/microsoft/Hybrid-Computer-Use) 1.0.1 | 4 of 4 | used the real mouse and keyboard on 3 tasks | 8 to 46 s |
-| Codex Computer Use (Codex app) | 2 of 4 | used the real mouse and keyboard on 3 tasks | both web tasks stopped because it could not confirm the browser address |
-| Claude desktop computer use | 2 of 4 | at least 1 task; the app does not show the rest | read-only in browsers; its built-in browser did not open the local address |
-
-Sidehand is the closest: it also leaves the window in front alone, and it was faster on the two desktop tasks. Slipwing
-was faster on the two web forms, which it fills in a browser that stays out of sight. What Slipwing adds is around
-these tasks:
-
-| Added | What you get |
-|---|---|
-| web and desktop in one task | read an order in a browser tab and register it in a desktop app in one call; web steps use the page's own controls, native drop-downs included, without the foreground |
-| a browser you pick | your signed-in Chrome in its own tab, a clean browser, or your Chrome on screen so you can watch |
-| four ways of working | background, watch, record, direct; watch and record move the pointer and type at a human pace; set per request, per routine, per project folder or everywhere |
-| step reports | each step says which windows opened and which controls changed, so a click that did nothing shows |
-| a stop before final steps | send, submit, pay and delete steps it recognizes by name wait until you agree in the chat |
-| sharing the mouse | when you touch the mouse or keyboard the agent stops typing and waits; nothing is sent on a locked screen |
-| routines | a task done once is saved by name and runs again with new values, without the model reading the screen |
-| watches | wait for a window, a line of text (self-drawn windows included), a notification or a downloaded file, then run a routine |
+![Your agent calls the slipwing command; web steps go to agent-browser and Chrome, desktop steps go to agent-desktop and Windows apps; the real mouse and keyboard only after you agree](../assets/slipwing-architecture.svg)
 
 ## Quick start
 
-You need Windows 10 or 11. In PowerShell:
+Windows 10 or 11 (x64) with [Node.js](https://nodejs.org) 22 or later. In PowerShell:
 
 ```powershell
-irm https://github.com/narmi924/slipwing/releases/latest/download/install.ps1 | iex
+npm install -g slipwing --allow-scripts=slipwing
 ```
 
-It installs the [Node.js](https://nodejs.org) LTS with winget when Node.js 22 or later is missing, replaces the
-official `agent-desktop` and `agent-browser` npm packages, adds the `slipwing` command, and adds a short `slipwing`
-skill for Claude Code and Codex. Then tell your agent:
+This adds the `slipwing` command. Any agent that can run commands learns it from `slipwing skill`; the installer also
+registers it as a skill with Claude Code and Codex, and `slipwing skill --install --dir FOLDER` adds it to any other
+agent's skill folder. Official `agent-desktop` and `agent-browser` installs stay as they are. Restart your agent and
+try:
 
-> Use the slipwing skill. Copy the tracking number of order D6182 from my Chrome into the open Customer register
-> window and save it. Don't touch my mouse.
+> Use slipwing. Look up tomorrow's weather in my Chrome and add it as a new line in the open Notepad window. Don't touch
+> my mouse.
 
-To use your own Chrome, turn on remote debugging once at `chrome://inspect/#remote-debugging`; Chrome asks you to allow
-the connection after each restart. Back to the official packages: `npm install -g agent-desktop agent-browser`.
+Or paste this to your agent:
 
-## What to say
+```text
+Install Slipwing (https://github.com/narmi924/slipwing) for me: run
+npm install -g slipwing --allow-scripts=slipwing
+then run slipwing skill and use it from now on.
+```
+
+- **Your own Chrome:** turn on remote debugging once at `chrome://inspect/#remote-debugging`. After each restart, Chrome
+  asks you to allow the first connection.
+- **MCP clients** such as Claude Desktop or Cursor:
+  `{ "mcpServers": { "slipwing": { "command": "cmd", "args": ["/c", "slipwing", "mcp"] } } }`
+- **Your data** stays in `%USERPROFILE%\.agent-desktop`: routines, preferences and job records. Delete it to start over.
+- **Uninstall:** `npm uninstall -g slipwing`, then delete the `slipwing` folders under `%USERPROFILE%\.claude\skills`
+  and `%USERPROFILE%\.codex\skills`.
+
+## Usage
+
+Tell your agent what you want. These words change how it works:
 
 | You say | It does |
 |---|---|
-| nothing about how | works in a clean browser and through controls, in the background |
-| "use my browser" | works in your Chrome in its own tab, still in the background |
-| "let me watch" | works on screen at a human pace with an amber pointer that says "don't touch" |
+| nothing about how | works in the background, in a browser you don't see |
+| "use my browser" | your signed-in Chrome, in a tab of its own, still in the background |
+| "let me watch" | on screen at a human pace; an amber pointer means hands off |
 | "this is for a recording" | the same, with your own pointer |
-| "just use the mouse" | uses real input where a step needs it, at full speed |
-| "from now on in this project …" | remembers that way for the project folder |
-| "save this" | keeps the task as a routine to run again by name |
-| "when the export finishes, upload it" | waits for that window or file, then runs the upload routine |
+| "just use the mouse" | real input where a step needs it, at full speed |
+| "save this" | keeps the task to run again by name |
+| "when the export finishes, upload it" | waits for that window or file, then runs the upload |
+| "from now on in this project …" | remembers the way of working for that folder |
 
-Agents that cannot run commands can use `slipwing mcp` as an MCP server with the same tools.
+## Why Slipwing
 
-## How it works
+I run coding agents on the Windows PC I work on, and I wanted them to run errands in my browser and desktop apps
+without taking my mouse. Vercel's two tools were the right base, so I built on them and added what I was missing.
 
-The agent writes one JavaScript task and runs it once with `slipwing run`. Web steps go to agent-browser over the
-Chrome DevTools Protocol; desktop steps go to agent-desktop over UI Automation, setting values and invoking buttons
-without moving the pointer. A window with no controls is read from its picture with the Windows OCR engine. Only steps
-that need real input take the mouse and keyboard, and only after you agreed or chose a way that does.
+| Tool | What it does well | What it lacks |
+|---|---|---|
+| [Codex Computer Use](https://developers.openai.com/codex/app/computer-use), [Claude computer use](https://code.claude.com/docs/en/desktop#let-claude-use-your-computer) | built into the app, works from screenshots on any window | takes the pointer and the foreground on Windows |
+| [Windows-MCP](https://github.com/CursorTouch/Windows-MCP), [Hybrid Computer Use](https://github.com/microsoft/Hybrid-Computer-Use) | read UI Automation, any model through MCP | click and type with the real mouse and keyboard |
+| [agent-desktop](https://github.com/vercel-labs/agent-desktop), [agent-browser](https://github.com/vercel-labs/agent-browser) | background actions through UI Automation and the Chrome DevTools Protocol | no task that spans both; on Windows, typing, drag and right-click need the screen; background actions can pull a window to the front ([#567](https://github.com/vercel-labs/agent-desktop/issues/567)) |
+| [Sidehand](https://github.com/Blue-B/sidehand) | leaves your window in front, works with any MCP client, fast on desktop apps | web pages only through the browser window, no `<select>` in the background, no saved tasks |
 
-Measured on this machine (Windows 11, min of 7 runs): reading a page's text 0.27 s, a six-field web form with submit
-0.71 s, reading a desktop window 0.3 to 0.56 s. A saved routine cut eight repeated tasks from 360 s to 189 s, mostly by
-not asking the model again.
+## What it adds to the Vercel tools
 
-Everything it keeps is in `%USERPROFILE%\.agent-desktop`: routines, preferences, job records. Delete the folder to
-start over. Routines store parameter names, not the values you passed.
+### agent-desktop
 
-The agent-desktop changes and the `slipwing` command are in this repository. The agent-browser changes are in
-[narmi924/agent-browser](https://github.com/narmi924/agent-browser) on its `personal` branch.
+- Background actions leave the window you are using in front. In three runs, a note in front received every character
+  typed into it: 58 of 58, 55 of 55, 51 of 51.
+- Windows that draw their own interface are read from their picture and clicked in the background.
+- Typing under input methods such as Microsoft Pinyin keeps every character in order.
+- A human-paced pointer and typing, an amber pointer while the agent has the mouse, and a pause when you touch it.
+- Reports what changed after an action, checks that a save really changed the file, and waits until you stop typing.
+- Clicks the visible part of a partly covered control, opens installed apps by name and reads the selected text.
+- Reads large windows faster by fetching a node's children in one call.
+
+### agent-browser
+
+- Works in your running Chrome in a tab of its own and leaves your other tabs alone.
+- Clicks in background tabs return in 75 ms instead of about 5 s.
+- Real key events for fields that ignore inserted text.
+- Finds fields with no label by the text next to them.
+- Clicks land inside nested frames, on CSS carousel buttons and on partly covered targets.
+- Every command that changes the page says what happened: a new address, a new tab or a dialog.
+- A human-paced pointer and typing.
+
+### The `slipwing` command
+
+- One script with web and desktop steps, run in one call. Reading a page takes 0.27 s and a desktop window 0.3 to
+  0.56 s (Windows 11, fastest of seven runs).
+- Three browsers: a clean one by default, your signed-in Chrome, or a profile the agent signs in to once.
+- Four ways of working: background by default, watch, record and direct, remembered per request, routine, project
+  folder or everywhere.
+- Send, submit, pay and delete steps wait until you agree in the chat.
+- A click that may have landed is checked before another one, and work stops when Windows keeps another window in front.
+- Routines, jobs that keep running in the background, and watches that wait for a window, a line of text, a
+  notification or a file.
+- Works with any agent: a guide that any agent with a shell reads from `slipwing skill`, and an MCP server for the
+  rest.
+
+## Thanks
+
+Slipwing exists because Vercel Labs released agent-desktop and agent-browser as open source. Thank you to their
+maintainers and contributors. Fixes that belong upstream go back as pull requests to
+[agent-desktop](https://github.com/vercel-labs/agent-desktop/pulls?q=author%3Anarmi924) and
+[agent-browser](https://github.com/vercel-labs/agent-browser/pulls?q=author%3Anarmi924).
+
+Slipwing is not affiliated with or endorsed by Vercel. Please report Slipwing problems here, not upstream.
+`slipwing --version` prints the upstream commits this build is based on. The agent-browser changes live in
+[narmi924/agent-browser](https://github.com/narmi924/agent-browser).
 
 ## License
 
-Apache-2.0, as the two upstream projects. The upstream license files are kept.
+Apache-2.0, as the two upstream projects. Their license files are kept, and every change is in this repository's
+history.
