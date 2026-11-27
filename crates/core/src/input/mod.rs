@@ -3,6 +3,7 @@ pub(crate) mod clipboard_content;
 pub(crate) mod clipboard_format;
 pub(crate) mod direction;
 pub(crate) mod drag_params;
+pub(crate) mod file_drop;
 pub(crate) mod human_glide;
 pub(crate) mod human_input;
 pub(crate) mod human_pace;

@@ -82,6 +82,30 @@ agent-desktop --headed drag --from-xy 100,200 --to-xy 400,500 --drop-delay 800
 
 The destination app is never focused first, because raising it could cover the source. The report describes the gesture (`target.kind: "drag"` with `from` and `to`), not its outcome, so verify the moved item with a fresh snapshot. Native cross-app drag and drop can ignore synthetic events. Errors: `INVALID_ARGS` for a missing endpoint or timing that does not fit `--timeout-ms`, `TIMEOUT` when preparation used up the budget, and the errors listed under [`hover`](#hover).
 
+## drop-files
+
+Drops files onto a window at an element or at a point of a captured image, as a person drops them from File Explorer. Windows only.
+
+```bash
+agent-desktop drop-files "C:\Work\clip.mp4" --ref @s8f3k2p9:e7
+agent-desktop drop-files "C:\Work\a.png" "C:\Work\b.png" --frame window.png --xy 640,410
+```
+
+<table>
+  <thead>
+    <tr><th>Flag</th><th>Default</th><th>Meaning</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>FILE...</code></td><td>required</td><td>One or more files or folders, all from one folder.</td></tr>
+    <tr><td><code>--ref REF</code></td><td>required, one of</td><td>Drop at the centre of this element.</td></tr>
+    <tr><td><code>--frame IMAGE.png</code> with <code>--xy X,Y</code></td><td>required, one of</td><td>Drop at this point of an image saved by the companion's <code>view</code> command, in the image's pixels.</td></tr>
+  </tbody>
+</table>
+
+It needs no `--headed`. The cursor does not move and the window may stay behind others: agent-desktop becomes the drag source inside its own process, and the receiving app gets its ordinary drag-enter, drag-over and drop calls at the point. Only copying is offered, so the originals stay where they are. The point must be inside a window that is not minimized, on an area that registered for dropped files; otherwise the command fails before anything is dragged, with `INVALID_ARGS` or `ACTION_NOT_SUPPORTED` (`not_delivered`). With `--frame`, a window that was resized or retitled, or a picture around the point that changed, is refused with `STALE_REF`.
+
+A drop the app takes is `delivered_unverified` with a `files_dropped` step, `details.delivery: "ole_drop"`, `details.effect` (`copy`) and `details.receiver_class`; read the window to see the result. An app that refuses the files returns `ACTION_FAILED`. Some apps bring their window forward when files land; `details.foreground.outcome` then reports whether the previous window was put back (`restored`) or Windows refused that and the app kept the front (`taken`). Escape cancels a drop in progress.
+
 ## mouse-move
 
 Moves the cursor to absolute coordinates.

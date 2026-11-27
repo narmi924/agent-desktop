@@ -60,6 +60,7 @@ pub use input::direction::Direction;
 pub use input::drag_params::{
     DragParams, MAX_DRAG_DROP_DELAY_MS, MAX_DRAG_DURATION_MS, MAX_DRAG_STEPS,
 };
+pub use input::file_drop::FileDrop;
 pub use input::human_input::HumanInput;
 pub use input::human_pace::HumanPace;
 pub use input::human_path::{

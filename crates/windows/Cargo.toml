@@ -60,6 +60,7 @@ windows-sys = { version = "0.61", features = [
   # here - removing this feature fails the build.
   "Win32_System_IO",
   "Win32_System_Memory",
+  "Win32_System_Ole",
   "Win32_System_Pipes",
   "Win32_System_StationsAndDesktops",
   "Win32_NetworkManagement_IpHelper",

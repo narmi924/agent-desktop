@@ -64,6 +64,16 @@ impl InputOps for WindowsAdapter {
     }
 
     #[cfg(target_os = "windows")]
+    fn frame_window_point(
+        &self,
+        frame: &agent_desktop_core::commands::drag::frame::WindowFrame,
+        local: &agent_desktop_core::Point,
+        deadline: Deadline,
+    ) -> Result<agent_desktop_core::Point, AdapterError> {
+        crate::input::drag_frame::window_point(frame, local, deadline)
+    }
+
+    #[cfg(target_os = "windows")]
     fn frame_patch_matches(
         &self,
         frame: &agent_desktop_core::commands::drag::frame::WindowFrame,
@@ -83,6 +93,15 @@ impl InputOps for WindowsAdapter {
         lease: &InteractionLease,
     ) -> Result<OperationReport, AdapterError> {
         crate::input::mouse::mouse_post::post_click(frame, local, event, lease.deadline())
+    }
+
+    #[cfg(target_os = "windows")]
+    fn drop_files(
+        &self,
+        drop: &agent_desktop_core::FileDrop,
+        lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        crate::input::file_drop::drop_files(drop, lease.deadline())
     }
 
     fn stop_requested(&self) -> bool {

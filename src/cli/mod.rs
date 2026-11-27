@@ -15,6 +15,7 @@ use crate::cli_args::{
     batch::BatchArgs,
     cursor_overlay::CursorOverlayArgs,
     drag::DragCliArgs,
+    file_drop::DropFilesArgs,
     mouse_wheel::MouseWheelArgs,
     notifications::{
         DismissAllNotificationsCliArgs, DismissNotificationCliArgs, ListNotificationsCliArgs,
@@ -95,6 +96,10 @@ pub(crate) enum Commands {
     Hover(HoverArgs),
     #[command(about = "Drag from one element or point to another (requires --headed)")]
     Drag(DragCliArgs),
+    #[command(
+        about = "Drop files onto a window at an element or a point of a captured image, without the pointer or the foreground"
+    )]
+    DropFiles(DropFilesArgs),
     #[command(about = "Move cursor to absolute screen coordinates (requires --headed)")]
     MouseMove(MouseMoveArgs),
     #[command(about = "Click at absolute screen coordinates (requires --headed)")]
@@ -229,6 +234,7 @@ impl Commands {
             Self::KeyUp(_) => CommandMetadata::new("key-up", false),
             Self::Hover(_) => CommandMetadata::new("hover", true),
             Self::Drag(_) => CommandMetadata::new("drag", true),
+            Self::DropFiles(_) => CommandMetadata::new("drop-files", false),
             Self::MouseMove(_) => CommandMetadata::new("mouse-move", false),
             Self::MouseClick(_) => CommandMetadata::new("mouse-click", false),
             Self::MouseDown(_) => CommandMetadata::new("mouse-down", false),
@@ -302,6 +308,7 @@ impl Commands {
             | Self::KeyUp(_)
             | Self::Hover(_)
             | Self::Drag(_)
+            | Self::DropFiles(_)
             | Self::MouseMove(_)
             | Self::MouseClick(_)
             | Self::MouseDown(_)

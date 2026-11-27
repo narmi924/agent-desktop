@@ -103,6 +103,7 @@ fn dispatch_command(
         Commands::KeyUp(args) => keyboard_mouse::key_up(args, adapter),
         Commands::Hover(args) => keyboard_mouse::hover(args, adapter, context),
         Commands::Drag(args) => keyboard_mouse::drag(args, adapter, context),
+        Commands::DropFiles(args) => keyboard_mouse::drop_files(args, adapter, context),
         Commands::MouseMove(args) => keyboard_mouse::mouse_move(args, adapter, context),
         Commands::MouseClick(args) => keyboard_mouse::mouse_click(args, adapter, context),
         Commands::MouseDown(args) => keyboard_mouse::mouse_down(args, adapter, context),

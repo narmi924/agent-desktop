@@ -42,6 +42,8 @@ pub(crate) mod drag_frame;
 mod drag_state;
 pub(crate) mod elevation;
 #[cfg(target_os = "windows")]
+pub(crate) mod file_drop;
+#[cfg(target_os = "windows")]
 pub(crate) mod human_pointer;
 pub(crate) mod keyboard;
 #[cfg(target_os = "windows")]

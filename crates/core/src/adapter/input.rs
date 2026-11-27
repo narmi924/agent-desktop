@@ -75,6 +75,17 @@ pub trait InputOps: Send + Sync {
         Err(AdapterError::not_supported("frame coordinates"))
     }
 
+    /// Where a point of a captured window is on the screen now, in physical
+    /// pixels, whether or not another window covers it.
+    fn frame_window_point(
+        &self,
+        _frame: &WindowFrame,
+        _local: &crate::Point,
+        _deadline: crate::Deadline,
+    ) -> Result<crate::Point, AdapterError> {
+        Err(AdapterError::not_supported("frame coordinates"))
+    }
+
     fn frame_patch_matches(
         &self,
         _frame: &WindowFrame,
@@ -203,6 +214,17 @@ pub trait InputOps: Send + Sync {
         _lease: &InteractionLease,
     ) -> Result<OperationReport, AdapterError> {
         Err(AdapterError::not_supported("drag in window frames"))
+    }
+
+    /// Drops files onto a window at a point without the pointer or the
+    /// keyboard, as a drag that starts outside every window. The window does
+    /// not have to be in front. The report carries what the window answered.
+    fn drop_files(
+        &self,
+        _drop: &crate::FileDrop,
+        _lease: &InteractionLease,
+    ) -> Result<OperationReport, AdapterError> {
+        Err(AdapterError::not_supported("drop_files"))
     }
 
     fn clear_clipboard(&self, _lease: &InteractionLease) -> Result<OperationReport, AdapterError> {

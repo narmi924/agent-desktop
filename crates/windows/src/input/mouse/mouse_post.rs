@@ -271,7 +271,7 @@ fn inside_client_area(window: HWND, client: POINT) -> bool {
     read && (0..area.right).contains(&client.x) && (0..area.bottom).contains(&client.y)
 }
 
-fn child_at(parent: HWND, physical: POINT) -> Option<HWND> {
+pub(crate) fn child_at(parent: HWND, physical: POINT) -> Option<HWND> {
     let _scope = WindowDpiScope::enter(parent)?;
     let client = own_client_point(parent, physical)?;
     let child = unsafe { RealChildWindowFromPoint(parent, client) };
@@ -291,7 +291,7 @@ fn scale_unknown() -> AdapterError {
     .with_disposition(DeliverySemantics::not_delivered())
 }
 
-fn window_process(window: HWND) -> ProcessId {
+pub(crate) fn window_process(window: HWND) -> ProcessId {
     let mut pid = 0u32;
     unsafe { GetWindowThreadProcessId(window, &mut pid) };
     ProcessId::new(pid)
@@ -302,7 +302,7 @@ fn has_double_clicks(window: HWND) -> bool {
     style & CS_DBLCLKS != 0
 }
 
-fn class_name(window: HWND) -> String {
+pub(crate) fn class_name(window: HWND) -> String {
     let mut buffer = [0u16; 256];
     let length = unsafe { GetClassNameW(window, buffer.as_mut_ptr(), buffer.len() as i32) };
     String::from_utf16_lossy(&buffer[..usize::try_from(length).unwrap_or(0)])

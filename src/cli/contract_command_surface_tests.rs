@@ -94,6 +94,7 @@ const ADAPTER_PASSTHROUGH_COMMANDS: &[&str] = &[
     "dismiss-all-notifications",
     "dismiss-notification",
     "drag",
+    "drop-files",
     "get",
     "hover",
     "key-down",
@@ -168,7 +169,7 @@ fn macos_capability_count_includes_restored_notifications() {
     let commands = cli_command_names();
     assert_eq!(
         commands.len(),
-        64,
+        65,
         "the published CLI command count changed; update capability documentation"
     );
 }

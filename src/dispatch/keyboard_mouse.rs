@@ -1,10 +1,11 @@
 use agent_desktop_core::{
     AppError, MouseButton, MouseEvent, MouseEventKind, PlatformAdapter, Point,
     commands::{
-        drag as drag_command, frame_pointer, helpers, hover as hover_command,
-        key_down as key_down_command, key_up as key_up_command, mouse_click as mouse_click_command,
-        mouse_down as mouse_down_command, mouse_move as mouse_move_command,
-        mouse_up as mouse_up_command, mouse_wheel as mouse_wheel_command, press as press_command,
+        drag as drag_command, drop_files as drop_files_command, frame_pointer, helpers,
+        hover as hover_command, key_down as key_down_command, key_up as key_up_command,
+        mouse_click as mouse_click_command, mouse_down as mouse_down_command,
+        mouse_move as mouse_move_command, mouse_up as mouse_up_command,
+        mouse_wheel as mouse_wheel_command, press as press_command,
     },
     context::CommandContext,
 };
@@ -13,6 +14,7 @@ use serde_json::Value;
 use crate::cli_args::{
     actions::{HoverArgs, KeyComboArgs, MouseClickArgs, MouseMoveArgs, MousePointArgs, PressArgs},
     drag::DragCliArgs,
+    file_drop::DropFilesArgs,
     mouse_wheel::MouseWheelArgs,
 };
 use crate::dispatch::parse::{parse_modifiers, parse_mouse_button, parse_xy, parse_xy_opt};
@@ -105,6 +107,31 @@ pub(super) fn drag(
             "Provide both --from-frame and --to-frame",
         )),
     }
+}
+
+pub(super) fn drop_files(
+    args: DropFilesArgs,
+    adapter: &dyn PlatformAdapter,
+    context: &CommandContext,
+) -> Result<Value, AppError> {
+    let xy = parse_xy_opt(args.xy.as_deref())?;
+    let place = match (args.ref_id.as_deref(), args.frame.as_deref(), xy) {
+        (Some(ref_id), None, None) => drop_files_command::DropPlace::Ref(ref_id),
+        (None, Some(image), Some((x, y))) => drop_files_command::DropPlace::Frame { image, x, y },
+        _ => {
+            return Err(AppError::invalid_input(
+                "Give either --ref, or --frame with --xy",
+            ));
+        }
+    };
+    drop_files_command::execute(
+        drop_files_command::DropFilesArgs {
+            files: args.files,
+            place,
+        },
+        adapter,
+        context,
+    )
 }
 
 pub(super) fn mouse_move(

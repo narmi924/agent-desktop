@@ -15,7 +15,7 @@ pub struct FramePointer<'a> {
     pub y: f64,
 }
 
-fn picture_changed() -> AppError {
+pub(crate) fn picture_changed() -> AppError {
     AdapterError::stale_ref_because(
         "The picture around this point changed since the image was captured",
     )

@@ -69,6 +69,20 @@ pub(crate) fn frame_origin(frame: &WindowFrame, deadline: Deadline) -> Result<Re
 
 /// Converts a point in the captured image to the screen, refusing when the
 /// window changed or something else now covers that point.
+/// Where `local` of the captured window is on the screen now, whether or not
+/// another window covers it.
+pub(crate) fn window_point(
+    frame: &WindowFrame,
+    local: &Point,
+    deadline: Deadline,
+) -> Result<Point, AdapterError> {
+    let origin = frame_origin(frame, deadline)?;
+    Ok(Point {
+        x: origin.x + local.x,
+        y: origin.y + local.y,
+    })
+}
+
 pub(crate) fn screen_point(
     frame: &WindowFrame,
     local: &Point,

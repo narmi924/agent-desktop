@@ -63,6 +63,7 @@ pub(crate) fn policy_for(cmd: &Commands) -> PermissionNeed {
         Commands::Press(_) | Commands::KeyDown(_) | Commands::KeyUp(_) => Accessibility,
         Commands::Hover(_)
         | Commands::Drag(_)
+        | Commands::DropFiles(_)
         | Commands::MouseMove(_)
         | Commands::MouseClick(_)
         | Commands::MouseDown(_)
@@ -229,6 +230,11 @@ fn validate_args(cmd: &Commands) -> Result<(), AppError> {
                 validate_ref_id(ref_id)?;
             }
             if let Some(ref_id) = &args.target.to {
+                validate_ref_id(ref_id)?;
+            }
+        }
+        Commands::DropFiles(args) => {
+            if let Some(ref_id) = &args.ref_id {
                 validate_ref_id(ref_id)?;
             }
         }

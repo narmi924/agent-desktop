@@ -73,6 +73,7 @@ pub(crate) fn parse_command(item: BatchCommand) -> Result<Commands, AppError> {
         "key-up" => decode(command, item.args).map(Commands::KeyUp),
         "hover" => decode(command, item.args).map(Commands::Hover),
         "drag" => decode(command, item.args).map(Commands::Drag),
+        "drop-files" => decode(command, item.args).map(Commands::DropFiles),
         "mouse-move" => decode(command, item.args).map(Commands::MouseMove),
         "mouse-click" => decode(command, item.args).map(Commands::MouseClick),
         "mouse-down" => decode(command, item.args).map(Commands::MouseDown),
